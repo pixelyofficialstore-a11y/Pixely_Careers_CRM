@@ -1,0 +1,116 @@
+Act as a senior product architect and security-focused UX designer.
+
+Build a TEAM (Users) section for PixelCRM where ONLY the Admin (Founder) can manage user accounts.
+
+THEME
+- Dark theme (default)
+- Primary color: Blue
+- Clean, professional, enterprise-style UI
+- No unnecessary animations
+
+====================
+ACCESS RULES
+====================
+- Only ADMIN can access the Team section
+- Support and Designers must NOT see this section
+
+====================
+TEAM SECTION PURPOSE
+====================
+Allow Admin to:
+- Create user accounts
+- Set username and password
+- Assign roles
+- Edit user details
+- Reset or change passwords
+- Enable or disable users
+
+====================
+USER ROLES
+====================
+Available roles:
+- Admin
+- Support
+- Designer
+
+====================
+TEAM DASHBOARD (MAIN VIEW)
+====================
+Display a table/list of all users with columns:
+- Username
+- Role (Admin / Support / Designer)
+- Status (Active / Disabled)
+- Created Date
+- Actions
+
+Actions per user:
+- Edit user
+- Reset password
+- Disable / Enable account
+
+====================
+CREATE NEW USER (ADMIN ONLY)
+====================
+Provide a clear “Create New User” button.
+
+Create User Form Fields:
+- Username (unique, required)
+- Password (min 8 characters, required)
+- Role (dropdown: Admin / Support / Designer)
+- Account Status (Active by default)
+
+On submit:
+- User account is created
+- Password is securely stored (hashed internally)
+- User can log in immediately
+
+====================
+EDIT USER
+====================
+Admin can edit:
+- Username
+- Role
+- Account status (Active / Disabled)
+
+Rules:
+- Disabled users cannot log in
+- Changes apply immediately
+
+====================
+RESET / CHANGE PASSWORD
+====================
+Admin can:
+- Reset password for any user
+- Set a new password manually
+
+Rules:
+- User does NOT see old password
+- Password reset does not log out Admin
+- Optional confirmation prompt before reset
+
+====================
+SECURITY RULES (CRITICAL)
+====================
+- Passwords must never be visible in plain text
+- No user can see or edit other users except Admin
+- Designers and Support cannot create accounts
+- Full audit log for Admin actions (optional for V1)
+
+====================
+UX COPY RULES
+====================
+- Professional internal tool tone
+- Clear labels (no emojis)
+- Simple language (Create User, Edit, Reset Password)
+- Error messages must be clear (e.g., “Username already exists”)
+
+====================
+DELIVERABLE
+====================
+Build a fully functional Team / Users section with:
+- Admin-only access
+- User creation
+- Role assignment
+- Password reset
+- Account enable/disable
+- Clean dark-blue UI consistent with PixelCRM

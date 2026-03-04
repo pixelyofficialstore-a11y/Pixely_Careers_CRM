@@ -1,0 +1,134 @@
+Act as a senior product designer and operations-focused UX copywriter.
+
+Design the ORDERS section for PixelCRM, an internal agency CRM used to manage ATS CV, LinkedIn, and Cover Letter orders.
+
+THEME
+- Dark theme (default)
+- Blue primary color
+- Clean, enterprise UI
+- High readability, no clutter
+
+CURRENCY
+- All monetary values must be in PKR (₨)
+- Do NOT show finance fields to non-admin roles
+
+========================
+ORDERS PAGE STRUCTURE
+========================
+
+The Orders page must have TWO main tabs:
+
+--------------------------------
+TAB 1: TODAY’S ORDERS
+--------------------------------
+Purpose: Daily operations & workload visibility.
+
+Header:
+- Title: “Today’s Orders”
+- Subtitle: “Orders received or active today”
+
+Table Columns:
+- Order ID
+- Client Name
+- Service Type
+  (ATS CV / LinkedIn / Cover Letter / Bundle)
+- Assigned Designer
+- Deadline (Date & Time)
+- Order Status
+  (New / Working / Ready / Delivered)
+- Payment Status
+  (Paid / Pending)  ← Admin + Support only
+- Actions:
+  - View Order
+  - Assign / Reassign Designer (Admin / Support)
+  - Update Status
+
+Behavior:
+- Orders due today or overdue should be visually highlighted.
+- Default filter: Today only.
+- Search by Order ID or Client Name.
+- Status dropdown for quick updates.
+
+Visibility Rules:
+- Admin: Sees ALL fields.
+- Support: Sees everything EXCEPT billing amounts.
+- Designer: Sees ONLY orders assigned to them, NO payment column.
+
+--------------------------------
+TAB 2: MONTHLY ORDERS
+--------------------------------
+Purpose: Performance tracking & workload trends.
+
+Header:
+- Title: “Monthly Orders”
+- Subtitle: “All orders for the selected month”
+
+Controls:
+- Month selector (current month default)
+- Filters:
+  - Status
+  - Designer
+  - Service Type
+
+Table Columns:
+- Order ID
+- Order Date
+- Client Name
+- Service Type
+- Assigned Designer
+- Order Status
+- Delivery Status
+- Payment Status (Admin + Support only)
+
+Admin-Only Summary Bar (Top):
+- Total Orders (This Month)
+- Delivered Orders
+- Pending Orders
+- Collected Payments (PKR)
+- Remaining Payments (PKR)
+
+Designer View (Monthly):
+- Only their own orders
+- Show:
+  - Total completed this month
+  - Pending orders
+
+--------------------------------
+ORDER DETAIL VIEW (ON CLICK)
+--------------------------------
+When “View Order” is clicked:
+- Show full order details
+- Assigned chats (WhatsApp)
+- File uploads (client docs & deliverables)
+- Internal notes:
+  - Admin + Support only
+- Status change history (audit log)
+
+--------------------------------
+COPY & LABELING RULES
+--------------------------------
+- Use professional agency tone
+- No emojis
+- No sales language
+- Clear time references (Today / This Month)
+- Short, direct labels
+
+--------------------------------
+SECURITY RULES
+--------------------------------
+- Designers must NEVER see:
+  - Billing amounts
+  - Other designers’ orders
+  - Monthly totals
+- Support must NEVER see:
+  - Revenue totals
+  - Profit
+- Admin sees everything
+
+DELIVERABLE
+Implement the Orders page with:
+- Today’s Orders tab
+- Monthly Orders tab
+- Role-based visibility
+- PKR currency handling
+- Clean, scalable UI

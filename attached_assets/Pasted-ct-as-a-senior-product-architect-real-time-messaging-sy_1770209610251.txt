@@ -1,0 +1,148 @@
+ct as a senior product architect, real-time messaging system designer, and UX engineer.
+
+Implement a FULLY FUNCTIONAL WhatsApp module inside PixelCRM using WhatsApp Cloud API (Meta – direct). This module must replace the existing Chats section and follow strict role-based visibility and workflow rules.
+
+================================================
+NAVIGATION & NAMING
+================================================
+* Rename the existing “Chats” section to **WhatsApp**
+* Clicking “WhatsApp” opens a dedicated WhatsApp module (same app, new tab/route)
+
+================================================
+ACCESS & VISIBILITY RULES
+================================================
+
+ADMIN:
+* Can see ALL WhatsApp chats
+* Can read all messages
+* Can send messages, files, voice notes
+* Can assign / reassign chats
+* Can change chat tags
+* Can view linked Order details
+
+SUPPORT:
+* Can see ALL WhatsApp chats
+* Same permissions as Admin except:
+  - Cannot delete chats
+  - Cannot access finance
+
+DESIGNER:
+* Can see ONLY chats assigned to them
+* Can reply, send files, send voice notes
+* Can change chat tags for their assigned chats
+* Cannot see unassigned chats
+
+================================================
+WHATSAPP UI STRUCTURE
+================================================
+
+LEFT SIDEBAR (Admin & Support):
+* Tabs:
+  - All Chats
+  - New Chats
+  - By Designer (list of designers → assigned chats)
+
+LEFT SIDEBAR (Designer):
+* Tabs:
+  - My Chats
+  - New Chats
+
+CHAT LIST:
+* Client name / number
+* Last message preview
+* Assigned designer (Admin/Support only)
+* Chat tag (color-coded)
+* Unread indicator
+
+================================================
+CHAT TAG SYSTEM (MANDATORY)
+================================================
+
+Available tags:
+* New
+* Working
+* Pending
+* Changes
+* Issues
+* Satisfied Client
+
+Rules:
+* Admin & Support can change tags for any chat
+* Designer can change tags ONLY for assigned chats
+* When Designer sets tag = **Satisfied Client**:
+  - Chat is automatically UNASSIGNED from that designer
+  - Chat moves out of Designer’s view
+  - Chat remains visible to Admin & Support
+
+================================================
+CHAT FUNCTIONALITY (ALL MUST WORK)
+================================================
+
+Messaging:
+* Send & receive text messages
+* Send multiple files at once (PDF, DOC, images)
+* Download received files
+* Send voice messages
+* Listen to received voice messages
+* Message timestamps
+* Delivery/read indicators (if API supports)
+
+Shortcuts:
+* Typing “/” opens shortcut messages
+* Examples:
+  - /payment
+  - /ready
+  - /thanks
+* Admin can manage shortcut templates
+* Support & Designers can use shortcuts
+
+================================================
+ORDER LINKING (CRITICAL)
+================================================
+
+* Each WhatsApp chat must be linkable to ONE Order ID
+* In chat header, show a 3-dot (⋮) menu
+* Clicking it opens:
+  - Order details panel
+  - Client info
+  - Services list
+  - Order status
+  - Payment status
+* Navigation between WhatsApp ↔ Order must be one-click
+
+================================================
+SYSTEM RULES (IMPORTANT)
+================================================
+
+* All buttons, icons, and UI elements must be FUNCTIONAL
+* If any element cannot be implemented in current phase:
+  - REMOVE it from UI
+  - Do NOT leave dummy buttons
+
+* No fake UI
+* No placeholder actions
+* Everything visible must work
+
+================================================
+TECHNICAL REQUIREMENTS
+================================================
+
+* Use WhatsApp Cloud API (Meta – direct)
+* Use webhooks for incoming messages
+* Store messages, files, and metadata in Database
+* Enforce role-based access on backend
+* Log:
+  - Message sender
+  - Assignments
+  - Tag changes
+
+================================================
+DELIVERABLE
+================================================
+
+Deliver a production-ready WhatsApp module that:
+* Fully replaces the Chats section
+* Supports real-time communication
+* Enforces strict role isolation
+* Integrates cleanly with Orders
+* Is safe for internal CRM usage with multiple team members

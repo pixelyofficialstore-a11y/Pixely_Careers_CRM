@@ -1,0 +1,117 @@
+Act as a senior data analyst, product architect, and operations strategist.
+
+Add a fully functional ANALYTICS section to PixelCRM that is visible ONLY to Admin (Founder). This section must provide clear insights into Designer performance and Marketing performance with accurate calculations.
+
+================================================
+ACCESS CONTROL
+================================================
+- Analytics section is ADMIN ONLY
+- Support and Designers must NOT see this section
+
+================================================
+ANALYTICS SECTION OVERVIEW
+================================================
+The Analytics section must have TWO main modules:
+
+1) DESIGNER PERFORMANCE ANALYTICS
+2) MARKETING & CAMPAIGN ANALYTICS
+
+================================================
+1) DESIGNER PERFORMANCE ANALYTICS
+================================================
+
+Purpose:
+Measure each designer’s daily, monthly, and overall productivity based on completed work.
+
+DATA LOGIC (CRITICAL):
+- A designer’s performance is counted ONLY when an order status changes from:
+  Working → Ready
+- The date of this status change is stored as the **Completion Date**
+- ALL designer performance calculations must be based on Completion Date
+
+METRICS PER DESIGNER:
+- Orders Completed Today
+- Orders Completed This Month
+- Total Orders Completed
+- Pending Orders
+- Canceled Orders (assigned to that designer)
+
+REPORT VIEWS:
+- Daily Performance Report (designer-wise)
+- Monthly Performance Report (designer-wise)
+- Overall Performance Summary
+
+TABLE COLUMNS (Designer Analytics):
+- Designer Name
+- Orders Completed Today
+- Orders Completed This Month
+- Pending Orders
+- Canceled Orders
+- Average Daily Completion Rate
+
+================================================
+2) MARKETING & CAMPAIGN ANALYTICS
+================================================
+
+Purpose:
+Track marketing performance and link orders back to campaigns.
+
+HIERARCHY STRUCTURE (MANDATORY):
+- Campaign
+  → Ad Set
+    → Ad (Creative)
+
+Each Order must be optionally linked to:
+- Campaign Name
+- Ad Set Name
+- Ad Name / Creative Code
+
+MARKETING METRICS:
+- Total Orders per Campaign
+- Orders per Ad Set
+- Orders per Ad / Creative
+- Paid vs Pending orders (count-based)
+- Conversion trend over time
+
+REPORT VIEWS:
+- Campaign Performance Summary
+- Ad Set Breakdown per Campaign
+- Creative-Level Performance
+
+================================================
+COMBINED ANALYTICS DASHBOARD (ADMIN)
+================================================
+
+Top-Level Summary Cards:
+- Total Orders Completed Today
+- Total Orders Completed This Month
+- Best Performing Designer (by completed orders)
+- Best Performing Campaign
+
+Filters:
+- Date range
+- Designer
+- Campaign / Ad Set / Ad
+
+================================================
+CALCULATION RULES (IMPORTANT)
+================================================
+- Designer performance is calculated per day automatically.
+- No manual input required for performance.
+- Status change timestamps must drive all analytics.
+- Deleted (Canceled) orders must NOT count toward performance totals.
+
+================================================
+SECURITY & DATA INTEGRITY
+================================================
+- Analytics data is read-only
+- No role except Admin can view analytics
+- No manual editing of analytics data
+
+================================================
+DELIVERABLE
+================================================
+Build a fully working Analytics section that:
+- Accurately tracks designer performance daily
+- Shows clear marketing performance from Campaign → Ad Set → Ad
+- Helps Admin make decisions on team efficiency and ad optimization

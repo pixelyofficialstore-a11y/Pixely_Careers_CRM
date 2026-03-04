@@ -1,0 +1,262 @@
+import { 
+  users, orders, notifications, orderServices, paymentVerifications, supportDesignerAssignments,
+  type User, type InsertUser, type Order, type InsertOrder,
+  type OrderService, type InsertOrderService, type OrderWithServices,
+  type PaymentVerification, type InsertPaymentVerification, type PaymentVerificationWithUsers,
+  type Notification, type SupportDesignerAssignment
+} from "@shared/schema";
+import { db } from "./db";
+import { eq, ne, desc, sql, and, isNotNull, inArray } from "drizzle-orm";
+
+export interface IStorage {
+  getUser(id: number): Promise<User | undefined>;
+  getUserByUsername(username: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
+  updateUser(id: number, updates: Partial<InsertUser>): Promise<User>;
+  getUsers(): Promise<User[]>;
+
+  getOrder(id: number): Promise<OrderWithServices | undefined>;
+  getOrders(role: string, userId: number): Promise<OrderWithServices[]>;
+  createOrder(order: InsertOrder, services?: Omit<InsertOrderService, 'orderId'>[]): Promise<Order>;
+  updateOrder(id: number, updates: Partial<InsertOrder>): Promise<Order>;
+  getOrderServices(orderId: number): Promise<OrderService[]>;
+  createOrderService(service: InsertOrderService): Promise<OrderService>;
+  generateOrderNumber(): Promise<string>;
+
+  getNotifications(userId: number): Promise<Notification[]>;
+  markNotificationRead(id: number): Promise<Notification>;
+  createNotification(userId: number, type: string, message: string, relatedId?: number, relatedType?: string): Promise<Notification>;
+
+  getStats(): Promise<any>;
+
+  getPaymentVerifications(role: string, userId: number): Promise<PaymentVerificationWithUsers[]>;
+  getPaymentVerificationsByOrder(orderId: number): Promise<PaymentVerificationWithUsers[]>;
+  getPaymentVerificationByScreenshotUrl(url: string): Promise<PaymentVerification | undefined>;
+  createPaymentVerification(data: InsertPaymentVerification): Promise<PaymentVerification>;
+  updatePaymentVerification(id: number, updates: Partial<InsertPaymentVerification>): Promise<PaymentVerification>;
+
+  getDesignerAssignments(supportUserId: number): Promise<SupportDesignerAssignment[]>;
+  getAllDesignerAssignments(): Promise<SupportDesignerAssignment[]>;
+  setDesignerAssignments(supportUserId: number, designerIds: number[]): Promise<void>;
+}
+
+export class DatabaseStorage implements IStorage {
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const [user] = await db.insert(users).values(insertUser).returning();
+    return user;
+  }
+
+  async updateUser(id: number, updates: Partial<InsertUser>): Promise<User> {
+    const [user] = await db.update(users).set(updates).where(eq(users.id, id)).returning();
+    return user;
+  }
+
+  async getUsers(): Promise<User[]> {
+    return await db.select().from(users).orderBy(users.id);
+  }
+
+  async getOrder(id: number): Promise<OrderWithServices | undefined> {
+    const [order] = await db.select().from(orders).where(eq(orders.id, id));
+    if (!order) return undefined;
+    const services = await this.getOrderServices(id);
+    const allUsers = await this.getUsers();
+    const assignee = order.assignedToId ? allUsers.find(u => u.id === order.assignedToId) : null;
+    return { ...order, services, assignee };
+  }
+
+  async getOrders(role: string, userId: number): Promise<OrderWithServices[]> {
+    let orderList: Order[];
+    if (role === "admin") {
+      orderList = await db.select().from(orders).where(ne(orders.status, "pending_payment")).orderBy(desc(orders.createdAt));
+    } else if (role === "support") {
+      orderList = await db.select().from(orders).where(and(eq(orders.createdById, userId), ne(orders.status, "pending_payment"))).orderBy(desc(orders.createdAt));
+    } else {
+      orderList = await db.select().from(orders).where(and(eq(orders.assignedToId, userId), ne(orders.status, "pending_payment"))).orderBy(desc(orders.createdAt));
+    }
+    const allServices = await db.select().from(orderServices);
+    const allUsers = await this.getUsers();
+    return orderList.map(order => ({
+      ...order,
+      services: allServices.filter(s => s.orderId === order.id),
+      assignee: order.assignedToId ? allUsers.find(u => u.id === order.assignedToId) : null
+    }));
+  }
+
+  async createOrder(order: InsertOrder, services?: Omit<InsertOrderService, 'orderId'>[]): Promise<Order> {
+    const [newOrder] = await db.insert(orders).values(order).returning();
+    if (services && services.length > 0) {
+      for (const svc of services) {
+        await this.createOrderService({ ...svc, orderId: newOrder.id });
+      }
+    }
+    return newOrder;
+  }
+
+  async updateOrder(id: number, updates: Partial<InsertOrder>): Promise<Order> {
+    const [updatedOrder] = await db.update(orders).set(updates).where(eq(orders.id, id)).returning();
+    return updatedOrder;
+  }
+
+  async getOrderServices(orderId: number): Promise<OrderService[]> {
+    return await db.select().from(orderServices).where(eq(orderServices.orderId, orderId));
+  }
+
+  async createOrderService(service: InsertOrderService): Promise<OrderService> {
+    const [newService] = await db.insert(orderServices).values(service).returning();
+    return newService;
+  }
+
+  async generateOrderNumber(): Promise<string> {
+    const year = new Date().getFullYear().toString().slice(-2);
+    const month = (new Date().getMonth() + 1).toString().padStart(2, '0');
+    const approvedOrders = await db.select().from(orders).where(isNotNull(orders.orderNumber));
+    const count = approvedOrders.length + 1;
+    return `PX-${year}${month}-${count.toString().padStart(3, '0')}`;
+  }
+
+  async getNotifications(userId: number): Promise<Notification[]> {
+    return await db.select().from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt));
+  }
+
+  async markNotificationRead(id: number): Promise<Notification> {
+    const [notification] = await db.update(notifications)
+      .set({ read: true })
+      .where(eq(notifications.id, id))
+      .returning();
+    return notification;
+  }
+
+  async createNotification(userId: number, type: string, message: string, relatedId?: number, relatedType?: string): Promise<Notification> {
+    const [notification] = await db.insert(notifications).values({
+      userId,
+      type,
+      message,
+      relatedId,
+      relatedType
+    }).returning();
+    return notification;
+  }
+
+  async getStats(): Promise<any> {
+    const allOrdersRaw = await db.select().from(orders);
+    const allOrders = allOrdersRaw.filter(o => o.advancePaymentStatus === 'approved');
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayOrders = allOrders.filter(o => new Date(o.createdAt!) >= today);
+    const thisMonth = new Date();
+    thisMonth.setDate(1);
+    thisMonth.setHours(0, 0, 0, 0);
+    const monthlyOrders = allOrders.filter(o => new Date(o.createdAt!) >= thisMonth);
+    
+    const orderStats = {
+      total: allOrders.length,
+      today: todayOrders.length,
+      monthly: monthlyOrders.length,
+      new: allOrders.filter(o => o.status === 'new').length,
+      working: allOrders.filter(o => o.status === 'working').length,
+      ready: allOrders.filter(o => o.status === 'ready').length,
+      delivered: allOrders.filter(o => o.status === 'delivered').length,
+      canceled: allOrders.filter(o => o.status === 'canceled').length,
+    };
+
+    const totalRevenue = allOrders.reduce((acc, curr) => acc + (curr.advanceAmount || 0), 0);
+    const pendingPayments = allOrders.reduce((acc, curr) => acc + (curr.remainingAmount || 0), 0);
+
+    return {
+      orders: orderStats,
+      finance: {
+        totalRevenue,
+        monthlyRevenue: monthlyOrders.reduce((acc, curr) => acc + (curr.advanceAmount || 0), 0),
+        pendingPayments,
+      },
+    };
+  }
+
+  async getPaymentVerifications(role: string, userId: number): Promise<PaymentVerificationWithUsers[]> {
+    let verificationList: PaymentVerification[];
+    
+    if (role === "admin") {
+      verificationList = await db.select().from(paymentVerifications).orderBy(desc(paymentVerifications.createdAt));
+    } else {
+      verificationList = await db.select().from(paymentVerifications)
+        .where(eq(paymentVerifications.submittedById, userId))
+        .orderBy(desc(paymentVerifications.createdAt));
+    }
+
+    const allUsers = await this.getUsers();
+    return verificationList.map(pv => ({
+      ...pv,
+      screenshotData: null,
+      submittedBy: allUsers.find(u => u.id === pv.submittedById) || null,
+      reviewedBy: pv.reviewedById ? allUsers.find(u => u.id === pv.reviewedById) || null : null,
+    }));
+  }
+
+  async getPaymentVerificationByScreenshotUrl(url: string): Promise<PaymentVerification | undefined> {
+    const [verification] = await db.select().from(paymentVerifications)
+      .where(eq(paymentVerifications.screenshotUrl, url));
+    return verification;
+  }
+
+  async getPaymentVerificationsByOrder(orderId: number): Promise<PaymentVerificationWithUsers[]> {
+    const verificationList = await db.select().from(paymentVerifications)
+      .where(eq(paymentVerifications.orderId, orderId))
+      .orderBy(desc(paymentVerifications.createdAt));
+    
+    const allUsers = await this.getUsers();
+    return verificationList.map(pv => ({
+      ...pv,
+      screenshotData: null,
+      submittedBy: allUsers.find(u => u.id === pv.submittedById) || null,
+      reviewedBy: pv.reviewedById ? allUsers.find(u => u.id === pv.reviewedById) || null : null,
+    }));
+  }
+
+  async createPaymentVerification(data: InsertPaymentVerification): Promise<PaymentVerification> {
+    const [verification] = await db.insert(paymentVerifications).values(data).returning();
+    return verification;
+  }
+
+  async updatePaymentVerification(id: number, updates: Partial<InsertPaymentVerification>): Promise<PaymentVerification> {
+    const [verification] = await db.update(paymentVerifications).set(updates).where(eq(paymentVerifications.id, id)).returning();
+    return verification;
+  }
+
+  async getDesignerAssignments(supportUserId: number): Promise<SupportDesignerAssignment[]> {
+    return await db.select().from(supportDesignerAssignments)
+      .where(eq(supportDesignerAssignments.supportUserId, supportUserId));
+  }
+
+  async getAllDesignerAssignments(): Promise<SupportDesignerAssignment[]> {
+    return await db.select().from(supportDesignerAssignments);
+  }
+
+  async setDesignerAssignments(supportUserId: number, designerIds: number[]): Promise<void> {
+    await db.delete(supportDesignerAssignments)
+      .where(eq(supportDesignerAssignments.supportUserId, supportUserId));
+    
+    if (designerIds.length > 0) {
+      await db.insert(supportDesignerAssignments).values(
+        designerIds.map(designerUserId => ({
+          supportUserId,
+          designerUserId,
+        }))
+      );
+    }
+  }
+}
+
+export const storage = new DatabaseStorage();

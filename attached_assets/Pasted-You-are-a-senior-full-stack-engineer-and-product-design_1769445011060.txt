@@ -1,0 +1,135 @@
+You are a senior full-stack engineer and product designer.
+
+Build an internal role-based web platform for my agency (Pixely Careers) with secure login (username + password) and strict data visibility rules.
+
+THEME & UI (MANDATORY)
+- Theme: DARK MODE (default)
+- Primary Color: Blue (#2563EB)
+- Secondary Accent: Light Blue (#38BDF8)
+- Background: Dark Grey / Near Black (#0F172A / #111827)
+- Text: White / Soft Grey
+- Style: Clean, professional, minimal (no flashy animations)
+
+ROLES & PERMISSIONS (CRITICAL)
+
+====================
+1) ADMIN (OWNER)
+====================
+Admin has FULL ACCESS.
+
+Admin Dashboard must show:
+- ALL WhatsApp chats (assigned to anyone)
+- Chat categories & filters:
+  • New Messages
+  • Changes Requested
+  • Satisfied Clients
+  • Issues / Complaints
+- Daily Orders Assigned to Designers
+- Designer Performance Reports:
+  • Daily
+  • Weekly
+  • Monthly
+- ALL Orders (full order database)
+- Finance Section (ADMIN ONLY):
+  • Total Bill
+  • Remaining Payments
+  • Collected Payments (This Month)
+- Users Management:
+  • Create / Edit / Disable users
+  • Assign roles (Admin / Support / Designer)
+- Ability to assign or reassign:
+  • Chats
+  • Orders
+- Full audit log (who changed what and when)
+
+Admin can see EVERYTHING.
+
+====================
+2) SUPPORT (Customer Support)
+====================
+Support has operational access ONLY (no finance).
+
+Support Dashboard must show:
+- ALL WhatsApp chats in shared inbox
+- Chat tags & filters:
+  • New
+  • Satisfied
+  • Changes
+  • Issues
+- Ability to:
+  • Create new orders
+  • Assign orders to designers
+  • Assign chats to designers
+  • Update order status
+- Orders – Today’s Full Sheet:
+  • Order ID
+  • Client Name
+  • Service Type
+  • Assigned Designer
+  • Deadline
+  • Status
+- Payment Visibility:
+  • ONLY status: Paid / Pending
+  • NO amounts
+  • NO totals
+  • NO profit
+Support must NOT see:
+- Total revenue
+- Monthly earnings
+- Designer salary or performance analytics
+
+====================
+3) DESIGNERS
+====================
+Designers see ONLY their own work.
+
+Designer Dashboard must show:
+- ONLY orders assigned to that designer
+- ONLY chats assigned to that designer
+- Order details:
+  • Order ID
+  • Client Name
+  • Service Type
+  • Deadline
+  • Status (Working / Ready / Delivered)
+- Upload deliverables (CV, Cover Letter, LinkedIn, etc.)
+- Change order status to Ready / Delivered
+- Their own reports:
+  • Daily completed orders
+  • Weekly completed orders
+  • Monthly completed orders
+
+Designers must NEVER see:
+- Other designers’ orders or chats
+- Company revenue
+- Client billing amounts
+- Ads data or finance data
+
+CORE FEATURES (MVP)
+- Secure login (username + password)
+- Role-based dashboards
+- WhatsApp Business API integration:
+  • Auto-sync chats
+  • Assign chats to users
+- Order management system
+- File uploads (store in Google Drive, link by Order ID)
+- In-app notifications:
+  • Order assigned
+  • Order marked Ready
+  • Changes requested
+- Status highlighting for overdue deadlines
+
+DATA SECURITY RULES
+- Finance data visible to Admin ONLY
+- No shared logins
+- No cross-role visibility
+- Designers cannot export data
+- Support cannot access finance screens
+
+DELIVERABLE
+Build an MVP with dummy data that demonstrates:
+- Role-based access
+- Chat assignment
+- Order assignment
+- Designer-only visibility
+- Admin finance dashboard

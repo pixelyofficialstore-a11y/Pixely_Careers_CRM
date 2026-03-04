@@ -1,0 +1,166 @@
+Act as a senior product architect, UX designer, and collaboration-system expert.
+
+Enhance the existing PixelCRM platform with the following REQUIRED changes and functional upgrades. These changes must strictly respect role-based access and data visibility rules.
+
+================================================
+GLOBAL UI & RULES
+================================================
+* Dark Theme with Blue primary color
+* Clean, minimal, professional UI
+* Role-based visibility must be enforced everywhere
+* Designers must NEVER see unassigned data
+
+================================================
+1) ORDERS SECTION – CLIENT CONTACT VISIBILITY
+================================================
+
+Update Orders section to display client contact information.
+
+Rules:
+* Show Client Contact (WhatsApp number) in:
+  - Admin Orders view
+  - Support Orders view
+  - Designer Orders view (ONLY for assigned orders)
+* Client contact must NOT be editable by Designers
+* Client contact should be copyable (click-to-copy)
+
+================================================
+2) DESIGNER MONTHLY ORDERS – EDITABLE PAYMENT STATUS
+================================================
+
+Enhance Designer Orders section with Monthly Orders access.
+
+Rules:
+* Designers must see:
+  - Daily Orders (assigned to them)
+  - Monthly Orders (assigned to them ONLY)
+* Designers must NOT see other designers’ monthly orders
+
+Payment Status:
+* Designers can change Payment Status:
+  - Pending → Paid
+* Same behavior as Daily Orders list
+* Payment status change must reflect immediately in:
+  - Orders
+  - Reports
+  - Admin dashboard
+
+================================================
+3) CHATS SECTION – FULLY FUNCTIONAL (CORE FEATURE)
+================================================
+
+Make the Chats section fully functional using WhatsApp API integration.
+
+====================
+CHAT ACCESS RULES
+====================
+* Admin:
+  - Can see ALL chats
+* Support:
+  - Can see ALL chats
+* Designer:
+  - Can see ONLY chats assigned to them
+
+====================
+CHAT UI STRUCTURE
+====================
+
+LEFT SIDEBAR TABS (Admin & Support):
+* All Chats
+* New Messages
+* By Designer:
+  - Designer Name → Assigned Chats list
+
+LEFT SIDEBAR TABS (Designer):
+* My Chats
+* New Messages
+
+====================
+CHAT FEATURES (MANDATORY)
+====================
+* Real-time messaging
+* Ability to:
+  - Send text messages
+  - Send multiple files at once (CVs, PDFs, images, docs)
+  - Preview files before sending
+* Message timestamps
+* Read / delivered indicators (if supported by API)
+
+====================
+CHAT ACTIONS
+====================
+* Assign / Reassign chats (Admin & Support only)
+* Chat tags:
+  - New
+  - Changes
+  - Satisfied
+  - Issues
+* Search chats by:
+  - Client name
+  - Phone number
+  - Order ID
+
+====================
+CALLING & COMMUNICATION
+====================
+* Click-to-call button using client WhatsApp number
+* Redirects to WhatsApp calling interface (if supported)
+
+====================
+SHORTCUT / SLASH COMMANDS
+====================
+* Support and Admin can type “/” to open quick message shortcuts
+* Example shortcuts:
+  - /payment → “Your payment is pending. Please confirm.”
+  - /ready → “Your CV is ready. Please review.”
+  - /thanks → “Thank you for choosing Pixely Careers.”
+* Admin can manage shortcut messages
+
+====================
+BULK MESSAGING (ADMIN And Support)
+====================
+* They Can send bulk messages to:
+  - Filtered chats (e.g., Pending Payment)
+* Must use approved WhatsApp templates
+* Designers cannot send bulk messages
+
+================================================
+SYSTEM-RECOMMENDED ADDITIONS (IMPORTANT)
+================================================
+Add the following features to improve operations and avoid future issues:
+
+1) CHAT ↔ ORDER LINKING
+* Each chat can be linked to an Order ID
+* One-click navigation between Order and Chat
+
+2) INTERNAL NOTES
+* Team can add internal notes inside chat
+
+3) CHAT ACTIVITY LOG
+* Record:
+  - Who replied
+  - Who assigned the chat
+  - Status/tag changes
+
+4) AUTO-ASSIGN RULE (OPTIONAL)
+* New chats can auto-assign to Support
+* Support manually assigns to Designers
+
+================================================
+SECURITY & CONTROL
+================================================
+* Designers cannot see:
+  - Unassigned chats
+  - Other designers’ chats
+  - Bulk messaging tools
+* Support cannot see finance amounts
+* Admin has full control
+
+================================================
+DELIVERABLE
+================================================
+Deliver a fully functional Chats module and enhanced Orders module that:
+* Supports real-time WhatsApp communication
+* Maintains strict role isolation
+* Improves daily operations and accountability
+* Integrates smoothly with existing Orders and Reports

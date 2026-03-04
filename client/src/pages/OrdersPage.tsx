@@ -1,0 +1,1392 @@
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from "@/components/ui/table";
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogTrigger 
+} from "@/components/ui/dialog";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { format, isToday, isPast, startOfMonth } from "date-fns";
+import { 
+  Search, 
+  Eye, 
+  UserPlus, 
+  CheckCircle2, 
+  Clock, 
+  AlertCircle,
+  TrendingUp,
+  Package,
+  Calendar as CalendarIcon,
+  Plus,
+  Trash2,
+  X,
+  XCircle,
+  MoreVertical,
+  Copy,
+  Check,
+  FileText,
+  History,
+  Download,
+  Star,
+  Crown,
+  Wrench
+} from "lucide-react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import type { OrderWithServices, User, SupportDesignerAssignment } from "@shared/schema";
+
+const SERVICE_TYPES = [
+  "ATS CV",
+  "Professional CV", 
+  "Europass CV",
+  "LinkedIn Profile",
+  "Cover Letter (Professional)",
+  "Cover Letter (Europass)",
+];
+
+const PACKAGE_LABELS: Record<string, string> = {
+  starter: "Starter",
+  professional: "Professional",
+  executive: "Executive",
+  custom: "Custom Order",
+};
+
+export default function OrdersPage() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const [search, setSearch] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth().toString());
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<OrderWithServices | null>(null);
+  const [detailsSheetOpen, setDetailsSheetOpen] = useState(false);
+  const [copiedPhone, setCopiedPhone] = useState<number | null>(null);
+
+  const { data: orders, isLoading } = useQuery<OrderWithServices[]>({
+    queryKey: ["/api/orders"],
+  });
+
+  const { data: teamMembers } = useQuery<User[]>({
+    queryKey: ["/api/users"],
+  });
+
+  const { data: designerAssignments } = useQuery<SupportDesignerAssignment[]>({
+    queryKey: ["/api/designer-assignments"],
+    enabled: user?.role === "support",
+  });
+
+  const updateOrderMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: number; updates: any }) => {
+      return apiRequest("PATCH", `/api/orders/${id}`, updates);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      toast({ title: "Success", description: "Order updated successfully" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update order", variant: "destructive" });
+    },
+  });
+
+  if (isLoading) return null;
+
+  const isAdmin = user?.role === "admin";
+  const isSupport = user?.role === "support";
+  const isDesigner = user?.role === "designer";
+  const canSeeFinance = isAdmin;
+  const canCreateOrder = isAdmin || isSupport;
+
+  const getAvailableDesigners = () => {
+    const allDesigners = teamMembers?.filter(u => u.role === 'designer') || [];
+    if (isSupport) {
+      if (!designerAssignments) return [];
+      const assignedIds = designerAssignments.map(a => a.designerUserId);
+      return allDesigners.filter(d => assignedIds.includes(d.id));
+    }
+    return allDesigners;
+  };
+  const availableDesigners = getAvailableDesigners();
+  
+  const copyPhone = (orderId: number, phone: string) => {
+    navigator.clipboard.writeText(phone);
+    setCopiedPhone(orderId);
+    toast({ title: "Copied", description: "Phone number copied to clipboard" });
+    setTimeout(() => setCopiedPhone(null), 2000);
+  };
+  
+  const openOrderDetails = (order: OrderWithServices) => {
+    setSelectedOrder(order);
+    setDetailsSheetOpen(true);
+  };
+
+  const filteredOrders = orders?.filter(order => {
+    const matchesSearch = 
+      (order.orderNumber?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
+      order.clientName.toLowerCase().includes(search.toLowerCase());
+    return matchesSearch;
+  });
+
+  // Only count orders with approved payment status in all views
+  // Admin can see all orders (including non-approved), others only see approved
+  const visibleOrders = isAdmin 
+    ? (filteredOrders || [])
+    : (filteredOrders?.filter(order => order.advancePaymentStatus === 'approved') || []);
+  const approvedOrders = filteredOrders?.filter(order => order.advancePaymentStatus === 'approved') || [];
+  
+  const todayOrders = visibleOrders.filter(order => {
+    const createdDate = new Date(order.createdAt!);
+    // Only show orders created today
+    if (!isToday(createdDate)) {
+      return false;
+    }
+    // Designers only see orders assigned to them (filter out unassigned)
+    if (isDesigner && order.assignedToId !== user?.id) {
+      return false;
+    }
+    return true;
+  });
+
+  const monthlyOrders = visibleOrders.filter(order => {
+    const createdDate = new Date(order.createdAt!);
+    const inMonth = createdDate.getMonth().toString() === selectedMonth;
+    const inYear = createdDate.getFullYear().toString() === selectedYear;
+    if (isDesigner) {
+      return inMonth && inYear && order.assignedToId === user?.id;
+    }
+    return inMonth && inYear;
+  });
+
+  // Approved monthly orders - same logic as dashboard (advancePaymentStatus === 'approved')
+  const approvedMonthlyOrders = monthlyOrders.filter(o => o.advancePaymentStatus === 'approved');
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "pending_payment": return <Badge variant="secondary" className="bg-orange-500/10 text-orange-500 border-orange-500/20">Pending Payment</Badge>;
+      case "new": return <Badge variant="secondary" className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">New</Badge>;
+      case "working": return <Badge variant="secondary" className="bg-blue-500/10 text-blue-500 border-blue-500/20">Working</Badge>;
+      case "ready": return <Badge variant="secondary" className="bg-green-500/10 text-green-500 border-green-500/20">Ready</Badge>;
+      case "delivered": return <Badge variant="secondary" className="bg-slate-500/10 text-slate-400 border-slate-500/20">Delivered</Badge>;
+      case "canceled": return <Badge variant="secondary" className="bg-red-500/10 text-red-500 border-red-500/20">Canceled</Badge>;
+      default: return null;
+    }
+  };
+
+  const getAdvancePaymentStatusBadge = (status: string | null | undefined) => {
+    switch (status) {
+      case "pending": return <Badge variant="secondary" className="bg-orange-500/10 text-orange-500 border-orange-500/20">Pending</Badge>;
+      case "approved": return <Badge variant="secondary" className="bg-green-500/10 text-green-500 border-green-500/20">Approved</Badge>;
+      case "disapproved": return <Badge variant="secondary" className="bg-red-500/10 text-red-500 border-red-500/20">Disapproved</Badge>;
+      default: return <Badge variant="secondary" className="bg-slate-500/10 text-slate-400 border-slate-500/20">-</Badge>;
+    }
+  };
+
+  const getServicesDisplay = (order: OrderWithServices) => {
+    if (order.packageType && order.packageType !== "custom") {
+      const label = PACKAGE_LABELS[order.packageType] || order.packageType;
+      return (
+        <Badge variant="secondary" className="bg-blue-500/10 text-blue-400 border-blue-500/20">
+          {label}
+        </Badge>
+      );
+    }
+    
+    const services = order.services;
+    if (!services || services.length === 0) return "-";
+    const totalServices = services.reduce((acc, s) => acc + (s.quantity || 1), 0);
+    const servicesList = services.map(s => `${s.quantity}x ${s.serviceType}`);
+    
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="cursor-pointer underline decoration-dotted underline-offset-2">
+            {totalServices} {totalServices === 1 ? "Service" : "Services"}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent className="bg-slate-800 border-slate-700 text-white">
+          <ul className="list-disc list-inside space-y-1">
+            {servicesList.map((s, i) => (
+              <li key={i} className="text-sm">{s}</li>
+            ))}
+          </ul>
+        </TooltipContent>
+      </Tooltip>
+    );
+  };
+  
+  const canDelete = isAdmin || isSupport;
+
+  const exportOrdersPDF = () => {
+    const doc = new jsPDF();
+    const monthName = format(new Date(parseInt(selectedYear), parseInt(selectedMonth), 1), "MMMM yyyy");
+    
+    doc.setFontSize(18);
+    doc.text(`Orders Report - ${monthName}`, 14, 22);
+    doc.setFontSize(11);
+    doc.text(`Generated: ${format(new Date(), "MMM dd, yyyy h:mm a")}`, 14, 32);
+    
+    const tableData = monthlyOrders?.map(order => [
+      order.orderNumber,
+      format(new Date(order.createdAt!), "MMM dd"),
+      order.clientName,
+      order.clientPhone || "-",
+      (order.packageType && order.packageType !== "custom") 
+        ? PACKAGE_LABELS[order.packageType] || order.packageType
+        : (order.services?.map(s => `${s.quantity}x ${s.serviceType}`).join(", ") || "-"),
+      order.assignee?.name || "Unassigned",
+      order.status.charAt(0).toUpperCase() + order.status.slice(1),
+      order.paymentStatus === "paid" ? "Paid" : "Pending"
+    ]) || [];
+
+    autoTable(doc, {
+      startY: 40,
+      head: [["Order ID", "Date", "Client", "Phone", "Services", "Designer", "Status", "Payment"]],
+      body: tableData,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [37, 99, 235] }
+    });
+
+    doc.save(`orders-${monthName.replace(" ", "-")}.pdf`);
+  };
+
+  return (
+    <div className="p-8 space-y-8">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold font-display text-white mb-2">Orders Management</h1>
+          <p className="text-slate-400">Manage ATS CV, LinkedIn, and Cover Letter requests.</p>
+        </div>
+        
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative w-full md:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+            <Input 
+              placeholder="Search Order ID or Client..." 
+              className="pl-10 bg-slate-900 border-slate-800 text-white"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              data-testid="input-search-orders"
+            />
+          </div>
+          
+          {isAdmin && (
+            <Button variant="outline" onClick={exportOrdersPDF} data-testid="button-export-orders">
+              <Download className="w-4 h-4 mr-2" />
+              Export PDF
+            </Button>
+          )}
+          
+          {canCreateOrder && (
+            <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="bg-primary" data-testid="button-create-order">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Order
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="bg-slate-900 border-slate-800 max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="text-white font-display text-xl">Create New Order</DialogTitle>
+                </DialogHeader>
+                <CreateOrderForm 
+                  designers={availableDesigners} 
+                  onSuccess={() => setCreateDialogOpen(false)} 
+                />
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
+      </div>
+
+      {isAdmin && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
+            <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500"><Package className="w-5 h-5" /></div>
+            <div><p className="text-xs text-slate-500">Total Monthly</p><p className="font-bold text-white">{approvedMonthlyOrders.length}</p></div>
+          </div>
+          <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
+            <div className="p-2 bg-green-500/10 rounded-lg text-green-500"><CheckCircle2 className="w-5 h-5" /></div>
+            <div><p className="text-xs text-slate-500">Delivered</p><p className="font-bold text-white">{approvedMonthlyOrders.filter(o => o.status === 'delivered').length}</p></div>
+          </div>
+          <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
+            <div className="p-2 bg-orange-500/10 rounded-lg text-orange-500"><Clock className="w-5 h-5" /></div>
+            <div><p className="text-xs text-slate-500">Pending</p><p className="font-bold text-white">{approvedMonthlyOrders.filter(o => o.status !== 'delivered').length}</p></div>
+          </div>
+          <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
+            <div className="p-2 bg-green-500/10 rounded-lg text-green-500"><TrendingUp className="w-5 h-5" /></div>
+            <div><p className="text-xs text-slate-500">Collected</p><p className="font-bold text-white">₨{(approvedMonthlyOrders.reduce((acc, o) => acc + (o.advanceAmount || 0), 0) / 100).toLocaleString()}</p></div>
+          </div>
+          <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
+            <div className="p-2 bg-red-500/10 rounded-lg text-red-500"><AlertCircle className="w-5 h-5" /></div>
+            <div><p className="text-xs text-slate-500">Remaining</p><p className="font-bold text-white">₨{(approvedMonthlyOrders.reduce((acc, o) => acc + (o.remainingAmount || 0), 0) / 100).toLocaleString()}</p></div>
+          </div>
+        </div>
+      )}
+
+      <Tabs defaultValue="today" className="w-full">
+        <TabsList className="bg-slate-900 border border-slate-800 p-1 mb-6">
+          <TabsTrigger value="today" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white" data-testid="tab-today-orders">Today's Orders</TabsTrigger>
+          <TabsTrigger value="monthly" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white" data-testid="tab-monthly-orders">Monthly Orders</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="today">
+          <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
+            <div className="p-6 border-b border-slate-800">
+              <h3 className="text-lg font-bold text-white">Today's Orders</h3>
+              <p className="text-sm text-slate-500">Orders created today</p>
+            </div>
+            <div className="table-scroll-wrapper">
+            <Table>
+              <TableHeader className="bg-slate-900/50">
+                <TableRow className="border-slate-800 hover:bg-transparent">
+                  <TableHead className="text-slate-400">Order ID</TableHead>
+                  <TableHead className="text-slate-400">Date Placed</TableHead>
+                  <TableHead className="text-slate-400">Client</TableHead>
+                  <TableHead className="text-slate-400">Contact</TableHead>
+                  <TableHead className="text-slate-400">Services</TableHead>
+                  {!isDesigner && <TableHead className="text-slate-400">Designer</TableHead>}
+                  <TableHead className="text-slate-400">Status</TableHead>
+                  {!isDesigner && <TableHead className="text-slate-400">Adv. Payment</TableHead>}
+                  <TableHead className="text-slate-400">Payment</TableHead>
+                  {canSeeFinance && <TableHead className="text-slate-400">Remaining</TableHead>}
+                  <TableHead className="text-right text-slate-400">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {todayOrders?.map((order) => {
+                  const isDesignerUser = user?.role === 'designer';
+                  // All roles can see all status options
+                  const getStatusOptions = () => {
+                    // Designers can't cancel orders
+                    if (isDesignerUser) {
+                      return [
+                        { value: "new", label: "New" },
+                        { value: "working", label: "Working" },
+                        { value: "ready", label: "Ready" },
+                        { value: "delivered", label: "Delivered" },
+                      ];
+                    }
+                    return [
+                      { value: "new", label: "New" },
+                      { value: "working", label: "Working" },
+                      { value: "ready", label: "Ready" },
+                      { value: "delivered", label: "Delivered" },
+                      { value: "canceled", label: "Canceled" },
+                    ];
+                  };
+                  
+                  return (
+                    <TableRow key={order.id} className="border-slate-800 hover:bg-slate-900/50" data-testid={`row-order-${order.id}`}>
+                      <TableCell className="font-mono text-xs text-blue-400">{order.orderNumber}</TableCell>
+                      <TableCell className="text-slate-400 text-xs">{format(new Date(order.createdAt!), "MMM dd, yyyy")}</TableCell>
+                      <TableCell className="text-white font-medium">{order.clientName}</TableCell>
+                      <TableCell>
+                        {order.clientPhone ? (
+                          <div className="flex items-center gap-1">
+                            <span className="text-slate-300 text-sm">{order.clientPhone}</span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-slate-400 hover:text-white"
+                              onClick={() => copyPhone(order.id, order.clientPhone!)}
+                              data-testid={`button-copy-phone-${order.id}`}
+                            >
+                              {copiedPhone === order.id ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-slate-500 text-sm">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-slate-300 text-sm">{getServicesDisplay(order)}</TableCell>
+                      {!isDesigner && (
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-[10px] text-slate-400">
+                              {order.assignee?.name?.charAt(0) || "?"}
+                            </div>
+                            <span className="text-sm text-slate-300">{order.assignee?.name || "Unassigned"}</span>
+                          </div>
+                        </TableCell>
+                      )}
+                      <TableCell>
+                        <Select 
+                          defaultValue={order.status} 
+                          onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { status: val } })}
+                        >
+                          <SelectTrigger className="w-32 bg-transparent border-0 h-auto p-0 focus:ring-0 shadow-none hover:bg-white/5 rounded px-2 py-1" data-testid={`select-status-${order.id}`}>
+                            <SelectValue>{getStatusBadge(order.status)}</SelectValue>
+                          </SelectTrigger>
+                          <SelectContent className="bg-slate-900 border-slate-800">
+                            {getStatusOptions().map(opt => (
+                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      {!isDesigner && (
+                        <TableCell>
+                          {isAdmin ? (
+                            <Select 
+                              defaultValue={order.advancePaymentStatus || "pending"} 
+                              onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { advancePaymentStatus: val } })}
+                            >
+                              <SelectTrigger className="w-32 bg-transparent border-0 h-auto p-0 focus:ring-0 shadow-none hover:bg-white/5 rounded px-2 py-1" data-testid={`select-adv-payment-${order.id}`}>
+                                <SelectValue>{getAdvancePaymentStatusBadge(order.advancePaymentStatus)}</SelectValue>
+                              </SelectTrigger>
+                              <SelectContent className="bg-slate-900 border-slate-800">
+                                <SelectItem value="pending">Pending</SelectItem>
+                                <SelectItem value="approved">Approved</SelectItem>
+                                <SelectItem value="disapproved">Disapproved</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            getAdvancePaymentStatusBadge(order.advancePaymentStatus)
+                          )}
+                        </TableCell>
+                      )}
+                      <TableCell>
+                        {isAdmin ? (
+                          <Select 
+                            defaultValue={order.paymentStatus || "pending"} 
+                            onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { paymentStatus: val } })}
+                          >
+                            <SelectTrigger className="w-28 bg-transparent border-0 h-auto p-0 focus:ring-0 shadow-none hover:bg-white/5 rounded px-2 py-1" data-testid={`select-payment-${order.id}`}>
+                              <SelectValue>
+                                <Badge 
+                                  variant="outline" 
+                                  className={cn(
+                                    "border-0",
+                                    order.paymentStatus === 'paid' ? "text-green-500" : "text-yellow-500"
+                                  )}
+                                >
+                                  {order.paymentStatus === 'paid' ? "Paid" : "Pending"}
+                                </Badge>
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent className="bg-slate-900 border-slate-800">
+                              <SelectItem value="pending">Pending</SelectItem>
+                              <SelectItem value="paid">Paid</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Badge 
+                            variant="outline" 
+                            className={cn(
+                              "border-0",
+                              order.paymentStatus === 'paid' ? "text-green-500" : "text-yellow-500"
+                            )}
+                            data-testid={`badge-payment-${order.id}`}
+                          >
+                            {order.paymentStatus === 'paid' ? "Paid" : "Pending"}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      {canSeeFinance && (
+                        <TableCell className="text-red-400 font-medium">
+                          ₨{((order.remainingAmount || 0) / 100).toLocaleString()}
+                        </TableCell>
+                      )}
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          {(isAdmin || isSupport) && (
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-white" data-testid={`button-assign-${order.id}`}><UserPlus className="w-4 h-4" /></Button>
+                              </DialogTrigger>
+                              <DialogContent className="bg-slate-900 border-slate-800">
+                                <DialogHeader><DialogTitle className="text-white font-display">Assign Designer</DialogTitle></DialogHeader>
+                                <div className="space-y-4 py-4">
+                                  <Select 
+                                    defaultValue={order.assignedToId?.toString()} 
+                                    onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { assignedToId: parseInt(val) } })}
+                                  >
+                                    <SelectTrigger className="bg-slate-950 border-slate-800 text-white">
+                                      <SelectValue placeholder="Select designer" />
+                                    </SelectTrigger>
+                                    <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                                      {availableDesigners.map(designer => (
+                                        <SelectItem key={designer.id} value={designer.id.toString()}>{designer.name}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
+                          )}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-white" data-testid={`button-menu-${order.id}`}>
+                                <MoreVertical className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="bg-slate-900 border-slate-800">
+                              <DropdownMenuItem onClick={() => openOrderDetails(order)} className="text-slate-300 hover:text-white" data-testid={`menu-view-details-${order.id}`}>
+                                <FileText className="w-4 h-4 mr-2" />
+                                View Details
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator className="bg-slate-800" />
+                              {canDelete && order.status !== 'canceled' && (
+                                <DropdownMenuItem 
+                                  onClick={() => updateOrderMutation.mutate({ id: order.id, updates: { status: 'canceled' } })}
+                                  className="text-red-400 hover:text-red-300"
+                                  data-testid={`menu-cancel-${order.id}`}
+                                >
+                                  <XCircle className="w-4 h-4 mr-2" />
+                                  Cancel Order
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                {(!todayOrders || todayOrders.length === 0) && (
+                  <TableRow className="border-slate-800">
+                    <TableCell colSpan={10} className="text-center text-slate-500 py-8">
+                      No orders for today
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="monthly">
+          <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
+            <div className="p-6 border-b border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div>
+                <h3 className="text-lg font-bold text-white">Monthly Orders</h3>
+                <p className="text-sm text-slate-500">All orders for the selected month</p>
+              </div>
+              
+              <div className="flex gap-2">
+                <Select value={selectedYear} onValueChange={setSelectedYear}>
+                  <SelectTrigger className="w-24 bg-slate-900 border-slate-800 text-white" data-testid="select-year">
+                    <SelectValue placeholder="Year" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                    {[2024, 2025, 2026, 2027].map((year) => (
+                      <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                  <SelectTrigger className="w-36 bg-slate-900 border-slate-800 text-white" data-testid="select-month">
+                    <CalendarIcon className="w-4 h-4 mr-2" />
+                    <SelectValue placeholder="Month" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                    {Array.from({ length: 12 }).map((_, i) => (
+                      <SelectItem key={i} value={i.toString()}>{format(new Date(2026, i, 1), "MMMM")}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            
+            <div className="table-scroll-wrapper">
+            <Table>
+              <TableHeader className="bg-slate-900/50">
+                <TableRow className="border-slate-800">
+                  <TableHead className="text-slate-400">Date Placed</TableHead>
+                  <TableHead className="text-slate-400">Order ID</TableHead>
+                  <TableHead className="text-slate-400">Client</TableHead>
+                  <TableHead className="text-slate-400">Contact</TableHead>
+                  <TableHead className="text-slate-400">Services</TableHead>
+                  {!isDesigner && <TableHead className="text-slate-400">Designer</TableHead>}
+                  <TableHead className="text-slate-400">Status</TableHead>
+                  {!isDesigner && <TableHead className="text-slate-400">Adv. Payment</TableHead>}
+                  <TableHead className="text-slate-400">Payment</TableHead>
+                  {canSeeFinance && <TableHead className="text-slate-400">Remaining</TableHead>}
+                  <TableHead className="text-right text-slate-400">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {monthlyOrders?.map((order) => {
+                  const isDesignerUser = user?.role === 'designer';
+                  // All roles can see all status options
+                  const getMonthlyStatusOptions = () => {
+                    // Designers can't cancel orders
+                    if (isDesignerUser) {
+                      return [
+                        { value: "new", label: "New" },
+                        { value: "working", label: "Working" },
+                        { value: "ready", label: "Ready" },
+                        { value: "delivered", label: "Delivered" },
+                      ];
+                    }
+                    return [
+                      { value: "new", label: "New" },
+                      { value: "working", label: "Working" },
+                      { value: "ready", label: "Ready" },
+                      { value: "delivered", label: "Delivered" },
+                      { value: "canceled", label: "Canceled" },
+                    ];
+                  };
+                  
+                  return (
+                  <TableRow key={order.id} className="border-slate-800" data-testid={`row-monthly-order-${order.id}`}>
+                    <TableCell className="text-slate-400 text-xs">{format(new Date(order.createdAt!), "MMM dd")}</TableCell>
+                    <TableCell className="font-mono text-xs text-blue-400">{order.orderNumber}</TableCell>
+                    <TableCell className="text-white font-medium">{order.clientName}</TableCell>
+                    <TableCell>
+                      {order.clientPhone ? (
+                        <div className="flex items-center gap-1">
+                          <span className="text-slate-300 text-sm">{order.clientPhone}</span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-slate-400 hover:text-white"
+                            onClick={() => copyPhone(order.id, order.clientPhone!)}
+                          >
+                            {copiedPhone === order.id ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="text-slate-500 text-sm">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-slate-300 text-sm">{getServicesDisplay(order)}</TableCell>
+                    {!isDesigner && <TableCell className="text-slate-300">{order.assignee?.name || "Unassigned"}</TableCell>}
+                    <TableCell>
+                      <Select 
+                        defaultValue={order.status} 
+                        onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { status: val } })}
+                      >
+                        <SelectTrigger className="w-32 bg-transparent border-0 h-auto p-0 focus:ring-0 shadow-none hover:bg-white/5 rounded px-2 py-1" data-testid={`select-monthly-status-${order.id}`}>
+                          <SelectValue>{getStatusBadge(order.status)}</SelectValue>
+                        </SelectTrigger>
+                        <SelectContent className="bg-slate-900 border-slate-800">
+                          {getMonthlyStatusOptions().map(opt => (
+                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    {!isDesigner && (
+                      <TableCell>
+                        {isAdmin ? (
+                          <Select 
+                            defaultValue={order.advancePaymentStatus || "pending"} 
+                            onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { advancePaymentStatus: val } })}
+                          >
+                            <SelectTrigger className="w-32 bg-transparent border-0 h-auto p-0 focus:ring-0 shadow-none hover:bg-white/5 rounded px-2 py-1" data-testid={`select-monthly-adv-payment-${order.id}`}>
+                              <SelectValue>{getAdvancePaymentStatusBadge(order.advancePaymentStatus)}</SelectValue>
+                            </SelectTrigger>
+                            <SelectContent className="bg-slate-900 border-slate-800">
+                              <SelectItem value="pending">Pending</SelectItem>
+                              <SelectItem value="approved">Approved</SelectItem>
+                              <SelectItem value="disapproved">Disapproved</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          getAdvancePaymentStatusBadge(order.advancePaymentStatus)
+                        )}
+                      </TableCell>
+                    )}
+                    <TableCell>
+                      {isAdmin ? (
+                        <Select 
+                          defaultValue={order.paymentStatus || "pending"} 
+                          onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { paymentStatus: val } })}
+                        >
+                          <SelectTrigger className="w-28 bg-transparent border-0 h-auto p-0 focus:ring-0 shadow-none hover:bg-white/5 rounded px-2 py-1" data-testid={`select-monthly-payment-${order.id}`}>
+                            <SelectValue>
+                              <Badge 
+                                variant="outline" 
+                                className={cn("border-0", order.paymentStatus === 'paid' ? "text-green-500" : "text-yellow-500")}
+                              >
+                                {order.paymentStatus === 'paid' ? "Paid" : "Pending"}
+                              </Badge>
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent className="bg-slate-900 border-slate-800">
+                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="paid">Paid</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Badge 
+                          variant="outline" 
+                          className={cn("border-0", order.paymentStatus === 'paid' ? "text-green-500" : "text-yellow-500")}
+                          data-testid={`badge-monthly-payment-${order.id}`}
+                        >
+                          {order.paymentStatus === 'paid' ? "Paid" : "Pending"}
+                        </Badge>
+                      )}
+                    </TableCell>
+                    {canSeeFinance && (
+                      <TableCell className="text-red-400 font-medium">
+                        ₨{(((order.totalPrice || 0) - (order.advanceAmount || 0)) / 100).toLocaleString()}
+                      </TableCell>
+                    )}
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-white">
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="bg-slate-900 border-slate-800">
+                          <DropdownMenuItem onClick={() => openOrderDetails(order)} className="text-slate-300 hover:text-white">
+                            <FileText className="w-4 h-4 mr-2" />
+                            View Details
+                          </DropdownMenuItem>
+                          {(isAdmin || isSupport) && order.status !== 'canceled' && (
+                            <>
+                              <DropdownMenuSeparator className="bg-slate-800" />
+                              <DropdownMenuItem 
+                                onClick={() => updateOrderMutation.mutate({ id: order.id, updates: { status: 'canceled' } })}
+                                className="text-red-400 hover:text-red-300"
+                              >
+                                <XCircle className="w-4 h-4 mr-2" />
+                                Cancel Order
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                  );
+                })}
+                {(!monthlyOrders || monthlyOrders.length === 0) && (
+                  <TableRow className="border-slate-800">
+                    <TableCell colSpan={10} className="text-center text-slate-500 py-8">
+                      No orders for this month
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      <Sheet open={detailsSheetOpen} onOpenChange={setDetailsSheetOpen}>
+        <SheetContent className="bg-slate-900 border-slate-800 w-full sm:max-w-xl overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="text-white font-display flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              Order Details
+            </SheetTitle>
+          </SheetHeader>
+          {selectedOrder && (
+            <div className="mt-6 space-y-6">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  {!isDesigner && <span className="text-2xl font-bold text-blue-400 font-mono">{selectedOrder.orderNumber}</span>}
+                  {getStatusBadge(selectedOrder.status)}
+                </div>
+                <p className="text-slate-400 text-sm">Created {format(new Date(selectedOrder.createdAt!), "MMMM dd, yyyy 'at' h:mm a")}</p>
+              </div>
+
+              <div className="space-y-3 p-4 bg-slate-950 rounded-lg border border-slate-800">
+                <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Client Information</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-slate-500">Name</p>
+                    <p className="text-white font-medium">{selectedOrder.clientName}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Contact</p>
+                    {selectedOrder.clientPhone ? (
+                      <div className="flex items-center gap-2">
+                        <p className="text-white">{selectedOrder.clientPhone}</p>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-slate-400 hover:text-white"
+                          onClick={() => copyPhone(selectedOrder.id, selectedOrder.clientPhone!)}
+                        >
+                          {copiedPhone === selectedOrder.id ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                        </Button>
+                      </div>
+                    ) : (
+                      <p className="text-slate-500">-</p>
+                    )}
+                  </div>
+                  {selectedOrder.clientEmail && (
+                    <div className="col-span-2">
+                      <p className="text-xs text-slate-500">Email</p>
+                      <p className="text-white">{selectedOrder.clientEmail}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-3 p-4 bg-slate-950 rounded-lg border border-slate-800">
+                <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+                  {selectedOrder.packageType && selectedOrder.packageType !== "custom" ? "Package" : "Services"}
+                </h4>
+                {selectedOrder.packageType && selectedOrder.packageType !== "custom" ? (
+                  <Badge variant="secondary" className="bg-blue-500/10 text-blue-400 border-blue-500/20 text-sm px-3 py-1">
+                    {PACKAGE_LABELS[selectedOrder.packageType] || selectedOrder.packageType}
+                  </Badge>
+                ) : (
+                  <div className="space-y-2">
+                    {selectedOrder.services.map((service, idx) => (
+                      <div key={idx} className="flex justify-between items-center py-2 border-b border-slate-800 last:border-0">
+                        <div>
+                          <p className="text-white">{service.serviceType}</p>
+                          {service.instructions && <p className="text-xs text-slate-500">{service.instructions}</p>}
+                        </div>
+                        <Badge variant="outline" className="text-slate-300">x{service.quantity}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-3 p-4 bg-slate-950 rounded-lg border border-slate-800">
+                <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Assignment</h4>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-lg text-slate-400">
+                    {selectedOrder.assignee?.name?.charAt(0) || "?"}
+                  </div>
+                  <div>
+                    <p className="text-white font-medium">{selectedOrder.assignee?.name || "Unassigned"}</p>
+                    <p className="text-xs text-slate-500">{selectedOrder.assignee?.title || "Designer"}</p>
+                  </div>
+                </div>
+              </div>
+
+              {canSeeFinance && (
+                <div className="space-y-3 p-4 bg-slate-950 rounded-lg border border-slate-800">
+                  <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Payment</h4>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <p className="text-xs text-slate-500">Total</p>
+                      <p className="text-white font-medium">₨{((selectedOrder.totalPrice || 0) / 100).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Advance</p>
+                      <p className="text-green-400 font-medium">₨{((selectedOrder.advanceAmount || 0) / 100).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Remaining</p>
+                      <p className="text-red-400 font-medium">₨{((selectedOrder.remainingAmount || 0) / 100).toLocaleString()}</p>
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-slate-800">
+                    <Badge variant="outline" className={selectedOrder.paymentStatus === 'paid' ? "text-green-500 border-green-500/30" : "text-yellow-500 border-yellow-500/30"}>
+                      {selectedOrder.paymentStatus === 'paid' ? "Paid" : "Payment Pending"}
+                    </Badge>
+                  </div>
+                </div>
+              )}
+
+              {!isDesigner && (selectedOrder.campaign || selectedOrder.adSet || selectedOrder.creative) && (
+                <div className="space-y-3 p-4 bg-slate-950 rounded-lg border border-slate-800">
+                  <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Marketing Data</h4>
+                  <div className="space-y-2">
+                    {selectedOrder.campaign && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Campaign</span>
+                        <span className="text-white">{selectedOrder.campaign}</span>
+                      </div>
+                    )}
+                    {selectedOrder.adSet && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Ad Set</span>
+                        <span className="text-white">{selectedOrder.adSet}</span>
+                      </div>
+                    )}
+                    {selectedOrder.creative && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Creative</span>
+                        <span className="text-white">{selectedOrder.creative}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {selectedOrder.notes && (
+                <div className="space-y-3 p-4 bg-slate-950 rounded-lg border border-slate-800">
+                  <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Notes</h4>
+                  <p className="text-slate-300 text-sm whitespace-pre-wrap">{selectedOrder.notes}</p>
+                </div>
+              )}
+
+              {selectedOrder.internalNotes && (isAdmin || isSupport) && (
+                <div className="space-y-3 p-4 bg-slate-950 rounded-lg border border-slate-800">
+                  <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Internal Notes</h4>
+                  <p className="text-slate-300 text-sm whitespace-pre-wrap">{selectedOrder.internalNotes}</p>
+                </div>
+              )}
+
+              {selectedOrder.readyDate && (
+                <div className="text-xs text-slate-500 flex items-center gap-1">
+                  <History className="w-3 h-3" />
+                  Ready on {format(new Date(selectedOrder.readyDate), "MMM dd, yyyy")}
+                </div>
+              )}
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+    </div>
+  );
+}
+
+function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSuccess: () => void }) {
+  const { toast } = useToast();
+  const [clientName, setClientName] = useState("");
+  const [clientPhone, setClientPhone] = useState("");
+  const [assignedToId, setAssignedToId] = useState("");
+  const [totalBill, setTotalBill] = useState("");
+  const [advanceAmount, setAdvanceAmount] = useState("");
+  const [campaign, setCampaign] = useState("");
+  const [adSet, setAdSet] = useState("");
+  const [creative, setCreative] = useState("");
+  const [notes, setNotes] = useState("");
+  const [packageType, setPackageType] = useState<string>("");
+  const [services, setServices] = useState([{ serviceType: "", quantity: 1, instructions: "" }]);
+  
+  // Payment verification fields
+  const [paymentType, setPaymentType] = useState<"advance" | "full">("advance");
+  const [paymentScreenshot, setPaymentScreenshot] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const createMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return apiRequest("POST", "/api/orders", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      toast({ title: "Success", description: "Order created successfully" });
+      onSuccess();
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to create order", variant: "destructive" });
+    },
+  });
+
+  const addService = () => {
+    setServices([...services, { serviceType: "", quantity: 1, instructions: "" }]);
+  };
+
+  const removeService = (index: number) => {
+    if (services.length > 1) {
+      setServices(services.filter((_, i) => i !== index));
+    }
+  };
+
+  const updateService = (index: number, field: string, value: any) => {
+    const updated = [...services];
+    (updated[index] as any)[field] = value;
+    setServices(updated);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const missingFields: string[] = [];
+    if (!clientName.trim()) missingFields.push("Client Name");
+    if (!clientPhone.trim()) missingFields.push("Phone Number");
+    if (!packageType) missingFields.push("Package");
+    if (packageType === "custom" && services.every(s => !s.serviceType)) missingFields.push("At least one service");
+    
+    if (missingFields.length > 0) {
+      toast({ 
+        title: "Missing Fields", 
+        description: `Please fill: ${missingFields.join(", ")}`, 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    const totalPriceValue = totalBill ? Math.round(parseFloat(totalBill) * 100) : 0;
+    const advanceValue = advanceAmount ? Math.round(parseFloat(advanceAmount) * 100) : 0;
+    const remainingValue = totalPriceValue - advanceValue;
+
+    // For payment verification system:
+    // - advance payment: advanceAmount is stored but status is pending_confirmation
+    // - full payment: total is stored but status is pending_confirmation
+    const paymentAmount = paymentType === "full" ? totalPriceValue : advanceValue;
+
+    setIsUploading(true);
+    try {
+      const orderServices = packageType === "custom" 
+        ? services.filter(s => s.serviceType).map(s => ({
+            serviceType: s.serviceType,
+            quantity: s.quantity || 1,
+            instructions: s.instructions || null,
+          }))
+        : [];
+
+      const orderRes = await apiRequest("POST", "/api/orders", {
+        clientName: clientName.trim(),
+        clientPhone: clientPhone.trim(),
+        assignedToId: assignedToId ? parseInt(assignedToId) : null,
+        paymentStatus: "pending",
+        totalPrice: totalPriceValue,
+        advanceAmount: 0,
+        remainingAmount: totalPriceValue,
+        packageType: packageType || null,
+        campaign: campaign.trim() || null,
+        adSet: adSet.trim() || null,
+        creative: creative.trim() || null,
+        notes: notes.trim() || null,
+        services: orderServices,
+      });
+      
+      const order = await orderRes.json();
+      
+      // Then create payment verification request with screenshot
+      if (paymentScreenshot && paymentAmount > 0) {
+        const formData = new FormData();
+        formData.append("screenshot", paymentScreenshot);
+        formData.append("orderId", order.id.toString());
+        formData.append("paymentType", paymentType);
+        formData.append("amount", paymentAmount.toString());
+        
+        const verificationRes = await fetch("/api/payment-verifications", {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+        });
+        
+        if (!verificationRes.ok) {
+          const errorData = await verificationRes.json().catch(() => ({}));
+          throw new Error(errorData.error || "Failed to submit payment verification");
+        }
+      }
+      
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/payment-verifications"] });
+      toast({ title: "Success", description: "Order created with payment request" });
+      onSuccess();
+    } catch (error: any) {
+      toast({ 
+        title: "Error", 
+        description: error?.message || "Failed to create order", 
+        variant: "destructive" 
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="space-y-4">
+        <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Client Information</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label className="text-slate-300">Client Name *</Label>
+            <Input 
+              value={clientName} 
+              onChange={(e) => setClientName(e.target.value)} 
+              className="bg-slate-950 border-slate-800 text-white"
+              placeholder="Enter client name"
+              data-testid="input-client-name"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-slate-300">Phone Number *</Label>
+            <Input 
+              value={clientPhone} 
+              onChange={(e) => setClientPhone(e.target.value)} 
+              className="bg-slate-950 border-slate-800 text-white"
+              placeholder="+92 300 1234567"
+              data-testid="input-client-phone"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Order Details</h4>
+        <div className="space-y-2">
+          <Label className="text-slate-300">Assigned Designer</Label>
+          <Select value={assignedToId} onValueChange={setAssignedToId}>
+            <SelectTrigger className="bg-slate-950 border-slate-800 text-white" data-testid="select-designer">
+              <SelectValue placeholder="Select designer" />
+            </SelectTrigger>
+            <SelectContent className="bg-slate-900 border-slate-800 text-white">
+              {designers.map(d => (
+                <SelectItem key={d.id} value={d.id.toString()}>{d.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Select Package *</h4>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { value: "starter", label: "Starter", Icon: Package },
+            { value: "professional", label: "Professional", Icon: Star },
+            { value: "executive", label: "Executive", Icon: Crown },
+            { value: "custom", label: "Custom Order", Icon: Wrench },
+          ].map((pkg) => (
+            <button
+              key={pkg.value}
+              type="button"
+              onClick={() => {
+                setPackageType(pkg.value);
+                if (pkg.value !== "custom") {
+                  setServices([{ serviceType: "", quantity: 1, instructions: "" }]);
+                }
+              }}
+              className={`p-4 rounded-xl border-2 text-center transition-all ${
+                packageType === pkg.value
+                  ? "border-blue-500 bg-blue-500/10 ring-1 ring-blue-500/30"
+                  : "border-slate-800 bg-slate-950 hover:border-slate-700"
+              }`}
+              data-testid={`button-package-${pkg.value}`}
+            >
+              <div className="flex justify-center mb-2">
+                <pkg.Icon className={`w-6 h-6 ${packageType === pkg.value ? "text-blue-400" : "text-slate-400"}`} />
+              </div>
+              <div className={`text-sm font-semibold ${packageType === pkg.value ? "text-blue-400" : "text-white"}`}>
+                {pkg.label}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {packageType === "custom" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Custom Services</h4>
+            <Button type="button" variant="ghost" size="sm" onClick={addService} className="text-blue-400 hover:text-blue-300" data-testid="button-add-service">
+              <Plus className="w-4 h-4 mr-1" /> Add Service
+            </Button>
+          </div>
+          
+          {services.map((service, index) => (
+            <div key={index} className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-400">Service {index + 1}</span>
+                {services.length > 1 && (
+                  <Button type="button" variant="ghost" size="icon" onClick={() => removeService(index)} className="h-6 w-6 text-red-400 hover:text-red-300" data-testid={`button-remove-service-${index}`}>
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                )}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="md:col-span-2">
+                  <Select value={service.serviceType} onValueChange={(val) => updateService(index, 'serviceType', val)}>
+                    <SelectTrigger className="bg-slate-900 border-slate-700 text-white" data-testid={`select-service-type-${index}`}>
+                      <SelectValue placeholder="Select service type" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                      {SERVICE_TYPES.map(type => (
+                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Input 
+                    type="number" 
+                    min="1" 
+                    value={service.quantity} 
+                    onChange={(e) => updateService(index, 'quantity', parseInt(e.target.value) || 1)} 
+                    className="bg-slate-900 border-slate-700 text-white"
+                    placeholder="Qty"
+                    data-testid={`input-quantity-${index}`}
+                  />
+                </div>
+              </div>
+              <Textarea 
+                value={service.instructions} 
+                onChange={(e) => updateService(index, 'instructions', e.target.value)} 
+                className="bg-slate-900 border-slate-700 text-white resize-none"
+                placeholder="Special instructions for this service..."
+                rows={2}
+                data-testid={`input-instructions-${index}`}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="space-y-4">
+        <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Billing (PKR)</h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <Label className="text-slate-300">Total Bill (₨)</Label>
+            <Input 
+              type="number"
+              min="0"
+              step="0.01"
+              value={totalBill} 
+              onChange={(e) => setTotalBill(e.target.value)} 
+              className="bg-slate-950 border-slate-800 text-white"
+              placeholder="0.00"
+              data-testid="input-total-bill"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-slate-300">Advance Paid (₨)</Label>
+            <Input 
+              type="number"
+              min="0"
+              step="0.01"
+              value={advanceAmount} 
+              onChange={(e) => setAdvanceAmount(e.target.value)} 
+              className="bg-slate-950 border-slate-800 text-white"
+              placeholder="0.00"
+              data-testid="input-advance-amount"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-slate-300">Remaining</Label>
+            <div className="h-9 flex items-center px-3 bg-slate-950 border border-slate-800 rounded-md text-white">
+              ₨{((parseFloat(totalBill) || 0) - (parseFloat(advanceAmount) || 0)).toFixed(2)}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Payment Verification</h4>
+        <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label className="text-slate-300">Payment Type *</Label>
+              <Select value={paymentType} onValueChange={(val: "advance" | "full") => setPaymentType(val)}>
+                <SelectTrigger className="bg-slate-900 border-slate-700 text-white" data-testid="select-payment-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                  <SelectItem value="advance">Advance (Partial)</SelectItem>
+                  <SelectItem value="full">Full Payment</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-slate-300">Payment Screenshot *</Label>
+              <Input 
+                type="file" 
+                accept="image/*"
+                onChange={(e) => setPaymentScreenshot(e.target.files?.[0] || null)}
+                className="bg-slate-900 border-slate-700 text-white file:bg-slate-800 file:text-slate-300 file:border-0 file:mr-3"
+                data-testid="input-payment-screenshot"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-slate-500">
+            {paymentType === "advance" 
+              ? "Upload screenshot of advance payment. Remaining will be collected later."
+              : "Upload screenshot of full payment. Order will be marked as paid after admin approval."}
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Marketing</h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <Label className="text-slate-300">Campaign</Label>
+            <Input 
+              value={campaign} 
+              onChange={(e) => setCampaign(e.target.value)} 
+              className="bg-slate-950 border-slate-800 text-white"
+              placeholder="Campaign name..."
+              data-testid="input-campaign"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-slate-300">Ad Set</Label>
+            <Input 
+              value={adSet} 
+              onChange={(e) => setAdSet(e.target.value)} 
+              className="bg-slate-950 border-slate-800 text-white"
+              placeholder="Ad set name..."
+              data-testid="input-ad-set"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-slate-300">Creative</Label>
+            <Input 
+              value={creative} 
+              onChange={(e) => setCreative(e.target.value)} 
+              className="bg-slate-950 border-slate-800 text-white"
+              placeholder="Creative name..."
+              data-testid="input-creative"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label className="text-slate-300">Internal Notes</Label>
+        <Textarea 
+          value={notes} 
+          onChange={(e) => setNotes(e.target.value)} 
+          className="bg-slate-950 border-slate-800 text-white resize-none"
+          placeholder="Add any internal notes..."
+          rows={3}
+          data-testid="input-notes"
+        />
+      </div>
+
+      <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+        <Button type="submit" className="bg-primary" disabled={isUploading} data-testid="button-submit-order">
+          {isUploading ? "Creating Order..." : "Create Order"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function cn(...inputs: any[]) {
+  return inputs.filter(Boolean).join(" ");
+}

@@ -1,0 +1,186 @@
+Act as a senior product architect, financial workflow designer, and security-focused system analyst.
+
+Design and implement a COMPLETE PAYMENT VERIFICATION SYSTEM inside PixelCRM that ensures all payments are verified, approved, and reflected correctly in orders and finance reports. This system must strictly enforce role-based permissions.
+
+================================================
+ROLES INVOLVED
+================================================
+1) Admin (Founder)
+2) Support
+3) Designer
+
+================================================
+NAVIGATION STRUCTURE
+================================================
+Add a new main navigation section:
+- Payments
+
+Visibility:
+- Admin: Full access
+- Support: Limited access (status tracking + request creation)
+- Designer: Limited access (request creation + status tracking)
+
+================================================
+PAYMENT REQUEST TYPES
+================================================
+There are TWO payment types:
+1) Advance Payment (Partial)
+2) Full Payment
+
+================================================
+PHASE 1 — PAYMENT REQUEST AT ORDER CREATION (SUPPORT)
+================================================
+
+When Support places a new order:
+
+In the Order Creation Form, add a PAYMENT REQUEST section:
+
+Fields:
+- Upload Payment Screenshot (required)
+- Payment Type (Dropdown):
+  - Advance (Partial)
+  - Full Payment
+
+System Behavior:
+- Order is created with:
+  - Payment Status: Pending Confirmation
+- Payment request is automatically linked to:
+  - Order ID
+  - Support user who created the order
+
+Logic:
+- If payment type = Advance:
+  - Order is placed
+  - Order Payment Status remains: Pending
+- If payment type = Full:
+  - Order Payment Status remains: Pending until Admin approval
+
+Support Rules:
+- Support can ONLY create payment requests during order creation
+- Support CANNOT approve, disapprove, or manually change payment status
+- Support can view the status of their submitted requests in Payments section
+
+================================================
+PHASE 2 — REMAINING PAYMENT REQUEST (DESIGNER)
+================================================
+
+If an order was created with Advance Payment:
+
+Assigned Designer can later submit a REMAINING PAYMENT request.
+
+Designer Payment Request Form:
+- Select Order ID (only orders assigned to that designer)
+- Upload Payment Screenshot
+- Payment Type: Remaining Payment (auto-detected)
+
+System Behavior:
+- Payment request is sent to Admin
+- Order Payment Status remains: Pending Confirmation
+
+Designer Rules:
+- Designers CANNOT approve payments
+- Designers CANNOT change payment status manually
+- Designers can only submit requests and track their status
+
+================================================
+ADMIN PAYMENTS SECTION (CORE CONTROL)
+================================================
+
+Admin Payments Dashboard must show a list of ALL payment requests.
+
+Table Columns:
+- Order ID
+- Requester (Support / Designer name)
+- Role (Support / Designer)
+- Payment Type (Advance / Full / Remaining)
+- Screenshot Preview
+- Request Date
+- Status (Pending Confirmation / Approved / Disapproved)
+
+Admin Actions:
+- Approve
+- Disapprove
+
+Admin Filters:
+- By Requester (All / Support / Designer / Specific User)
+- By Payment Type
+- By Status
+- By Date
+- By Order ID
+
+================================================
+PAYMENT APPROVAL LOGIC (CRITICAL)
+================================================
+
+When Admin APPROVES a payment request:
+
+Case 1: Advance Payment
+- Advance amount is marked as collected
+- Order Payment Status remains: Pending
+- Order continues normally
+
+Case 2: Full Payment
+- Remaining amount is marked as collected
+- Order Payment Status changes to: Paid
+
+Case 3: Remaining Payment
+- Remaining amount is marked as collected
+- Order Payment Status changes from: Pending → Paid
+
+When Admin DISAPPROVES a payment request:
+- No finance data is updated
+- Order Payment Status remains unchanged
+
+Only Admin approval triggers finance updates.
+
+================================================
+PAYMENTS SECTION — SUPPORT & DESIGNER VIEW
+================================================
+
+Support & Designer Payments Section:
+- Can see ONLY:
+  - Requests they submitted
+  - Status of each request (Pending / Approved / Disapproved)
+- Cannot edit or delete requests
+- Cannot see other users’ requests
+
+================================================
+ORDERS INTEGRATION
+================================================
+
+In Orders Table:
+- Payment Status must show:
+  - Pending Confirmation
+  - Pending
+  - Paid
+
+Three-dot (⋮) menu on order row must include:
+- Payment history
+- Uploaded screenshots
+- Approval / disapproval log
+- Request timestamps
+
+================================================
+SECURITY & AUDIT LOGS
+================================================
+
+- Every payment request must store:
+  - Who submitted it
+  - When it was submitted
+  - Screenshot file reference
+- Every admin action must log:
+  - Admin name
+  - Action (Approved / Disapproved)
+  - Timestamp
+
+No payment status or finance data can be modified outside this workflow.
+
+================================================
+DELIVERABLE
+================================================
+
+Deliver a secure, auditable, role-safe payment verification system that:
+- Prevents unauthorized payment confirmation
+- Supports advance, full, and remaining payments
+- Integrates cleanly with Orders and Finance modules
+- Scales safely with business growth

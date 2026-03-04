@@ -1,0 +1,172 @@
+Act as a senior product architect, UX strategist, and security-focused system designer.
+
+Update and enhance the existing PixelCRM platform according to the following REQUIRED changes and rules. These are mandatory system behaviors.
+
+================================================
+GLOBAL RULES
+================================================
+- Dark Theme with Blue primary color
+- PKR (₨) currency system
+- Role-based access must be enforced everywhere
+- No user should see data beyond their role
+
+================================================
+ROLES
+================================================
+1) Admin (Founder)
+2) Support (Customer Support)
+3) Designer
+
+================================================
+ORDERS MANAGEMENT – UPDATED RULES
+================================================
+
+1) ORDER DELETION
+- Admin AND Support must be able to DELETE orders.
+- Designers must NOT be able to delete orders.
+- Deleted orders move to status: **Canceled** (soft delete).
+- Canceled orders must remain visible in reports (Admin only).
+
+2) MULTIPLE SERVICES DISPLAY (UI BEHAVIOR)
+- One Order can contain multiple services.
+- In Orders table:
+  - Show only a short summary (e.g. “3 Services”).
+  - On hover OR click tooltip:
+    - Display full list of services (CVs, Cover Letters, LinkedIn, etc.).
+- Client, Designer, and Admin should NOT see all services expanded by default.
+
+3) PAYMENT STATUS (EDITABLE)
+- Payment Status must be editable by:
+  - Admin
+  - Support
+  - Designer
+- Allowed values:
+  - Pending
+  - Paid
+- No payment amounts visible to Support or Designers.
+
+4) DESIGNER DATA VISIBILITY
+- Designers can see ONLY orders assigned to them.
+- Designers cannot see:
+  - Other designers’ orders
+  - Finance totals
+  - Admin reports
+
+================================================
+DESIGNER DASHBOARD (MAIN VIEW)
+================================================
+
+Designer Dashboard must contain these sections:
+
+- Today’s Orders (ONLY assigned to that designer)
+- This Month’s Orders (ONLY assigned to that designer)
+- Pending Orders (ONLY assigned to that designer)
+- Canceled Orders (ONLY assigned to that designer)
+
+No finance, no other team data.
+
+================================================
+DESIGNER ORDERS TAB – COLUMNS
+================================================
+
+Designer Orders table must have these columns ONLY:
+
+- Order ID
+- Date Placed
+- Client Name
+- Services (collapsed view with hover details)
+- Designer
+- Status
+- Payment Status (Pending / Paid – editable)
+
+================================================
+ORDER STATUS SYSTEM (UPDATED)
+================================================
+
+Available statuses:
+- New
+- Working
+- Ready
+- Delivered
+- Canceled (NEW)
+
+Rules:
+- Admin & Support can set ANY status.
+- Designer can update:
+  - Working → Ready
+  - Ready → Delivered
+- Designer can mark Payment Status as Paid if payment is received.
+
+================================================
+REMOVAL OF DEADLINE
+================================================
+
+- REMOVE Deadline field completely from:
+  - Order creation form
+  - Orders tables
+  - Sheets / database logic
+- System must operate WITHOUT deadlines.
+
+================================================
+REPORTING LOGIC (CRITICAL)
+================================================
+
+IMPORTANT RULE:
+When a Designer changes status from **Working → Ready**:
+- The system must record the DATE of this status change.
+- That date is used for ALL reports.
+
+Reports must be based on:
+- “Ready Date” (not order creation date).
+
+================================================
+ADMIN REPORTS SECTION
+================================================
+
+Admin Reports must include:
+
+- Total Orders This Month (based on Ready Date)
+- Orders Assigned to Each Designer
+- Orders Completed Per Day / Month
+- Canceled Orders Report
+- Finance Reports (Admin only):
+  - Collected Payments
+  - Pending Payments
+  - Monthly summaries
+
+================================================
+SUPPORT DASHBOARD
+================================================
+
+Support Dashboard must show ONLY safe operational data:
+
+- Today’s Orders
+- This Month’s Orders
+- Canceled Orders
+- Payment Status (Paid / Pending)
+
+Support must NOT see:
+- Revenue totals
+- Profit
+- Designer performance analytics
+
+================================================
+SECURITY & CONTROL
+================================================
+
+- Designers cannot delete orders.
+- Designers cannot see reports.
+- Support cannot see finance amounts.
+- Admin has full control over all sections.
+
+================================================
+DELIVERABLE
+================================================
+
+Update PixelCRM to fully support:
+- Order deletion via Canceled status
+- Multi-service hover display
+- Editable payment status
+- Designer-only visibility
+- New reporting logic based on Ready date
+- Clean, role-safe dashboards

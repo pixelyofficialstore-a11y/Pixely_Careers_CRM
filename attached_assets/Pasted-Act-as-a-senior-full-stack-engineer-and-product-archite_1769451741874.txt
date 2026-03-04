@@ -1,0 +1,152 @@
+Act as a senior full-stack engineer and product architect.
+
+Build a functional ORDERS MANAGEMENT SYSTEM for PixelCRM (Pixely Careers).  
+This is an internal agency platform. Focus on Orders first. Chats will be UI-only placeholders for now.
+
+====================
+GLOBAL RULES (V1)
+====================
+- Chats section: UI placeholder only (Coming Soon)
+- Orders section: FULLY FUNCTIONAL
+- Only ADMIN and SUPPORT can create orders
+- Designers NEVER create orders
+- One Order ID per client
+- One Order can contain MULTIPLE services (CVs, Cover Letters, LinkedIn, etc.)
+- Currency: PKR (₨)
+- Dark theme + Blue primary
+
+====================
+ROLES
+====================
+
+ADMIN (Founder)
+- Full access
+- Can create/edit orders
+- Can assign designers
+- Can see finance
+
+SUPPORT
+- Can create/edit orders
+- Can assign designers
+- Can see payment status (Paid / Pending only)
+- NO billing amounts
+
+DESIGNER
+- Cannot create orders
+- Can only view orders assigned to them
+- Can update delivery status
+- No finance visibility
+
+====================
+ORDER CREATION (CORE FEATURE)
+====================
+
+Create a dedicated **“Create New Order”** button.
+Visible ONLY to:
+- Admin
+- Support
+
+ORDER CREATION FORM (MANDATORY FIELDS):
+
+SECTION 1 — CLIENT INFO
+- Client Name
+- WhatsApp Number
+- Email (optional)
+
+SECTION 2 — ORDER DETAILS
+- Auto-generated Order ID (e.g. PX-260-001)
+- Order Date (auto)
+- Expected Delivery Date
+- Assigned Designer (dropdown)
+
+SECTION 3 — SERVICES (MULTI-SERVICE SYSTEM)
+Allow adding MULTIPLE services under ONE order.
+
+Service Type dropdown:
+- ATS CV
+- Professional CV
+- Europass CV
+- LinkedIn Profile
+- Cover Letter (ATS / Professional / Europass)
+
+For EACH service entry:
+- Service Type
+- Quantity (e.g. 2 CVs, 3 Cover Letters)
+- Notes / Instructions (per service)
+
+User must be able to:
+- Add another service
+- Remove a service
+- Edit services later
+
+IMPORTANT:
+One client = One Order ID  
+Multiple CVs / Cover Letters = stored inside same order as line items
+
+SECTION 4 — PAYMENT STATUS
+- Payment Status: Paid / Pending
+(Admin only can later see amounts in finance module)
+
+SECTION 5 — SAVE & ASSIGN
+- Save Order
+- Auto-assign to selected designer
+- Order becomes visible in:
+  • Designer’s dashboard
+  • Today’s Orders list
+
+====================
+ORDERS VISIBILITY
+====================
+
+ADMIN VIEW:
+- All orders
+- All services per order
+- Finance fields
+- Full history
+
+SUPPORT VIEW:
+- All orders
+- All services per order
+- Payment Status only (Paid / Pending)
+- No PKR amounts
+
+DESIGNER VIEW:
+- ONLY orders assigned to them
+- Can see:
+  • Client name
+  • Services list
+  • Instructions
+  • Deadline
+- Cannot see:
+  • Payment
+  • Other designers
+  • Other orders
+
+====================
+DASHBOARD INTEGRATION
+====================
+
+Admin & Support Dashboard MUST show:
+- Today’s Orders (count)
+- Orders In Progress
+- Pending Deliveries
+
+Clicking any card:
+- Redirects to filtered Orders page
+
+Designer Dashboard MUST show:
+- My Assigned Orders (Today)
+- Pending Orders
+
+====================
+ORDERS PAGE (FUNCTIONAL)
+====================
+
+Tabs:
+1) Today’s Orders
+2) Monthly Orders
+
+Each order row:
+- Order ID
+- Client Name
+- Services

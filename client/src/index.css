@@ -1,0 +1,98 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Slate-based dark theme (Default) */
+  --background: 222 47% 11%;      /* slate-950 */
+  --foreground: 210 40% 98%;      /* slate-50 */
+  
+  --card: 222 47% 11%;            /* slate-950 */
+  --card-foreground: 210 40% 98%;
+  
+  --popover: 222 47% 11%;
+  --popover-foreground: 210 40% 98%;
+  
+  --primary: 221 83% 53%;         /* blue-600 */
+  --primary-foreground: 210 40% 98%;
+  
+  --secondary: 199 89% 48%;       /* sky-500 */
+  --secondary-foreground: 210 40% 98%;
+  
+  --muted: 217 33% 17%;           /* slate-900 */
+  --muted-foreground: 215 20% 65%; /* slate-400 */
+  
+  --accent: 217 33% 17%;          /* slate-800 (hover state) */
+  --accent-foreground: 210 40% 98%;
+  
+  --destructive: 0 62% 30%;
+  --destructive-foreground: 210 40% 98%;
+
+  --border: 217 33% 17%;          /* slate-800 */
+  --input: 217 33% 17%;
+  --ring: 221 83% 53%;
+  
+  --radius: 0.75rem;
+  
+  --font-sans: 'Inter', sans-serif;
+  --font-display: 'Outfit', sans-serif;
+
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased selection:bg-primary/30 selection:text-primary-foreground;
+    font-family: var(--font-sans);
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    @apply tracking-tight;
+  }
+
+  /* Custom Scrollbar for dark theme */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-slate-900;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-slate-700 rounded-full hover:bg-slate-600 transition-colors;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-slate-900/60 backdrop-blur-xl border border-slate-800/50 shadow-xl;
+  }
+  
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-sky-300;
+  }
+  
+  /* Improved table scroll wrapper */
+  .table-scroll-wrapper {
+    @apply overflow-x-auto;
+    /* Always show scrollbar for discoverability */
+    scrollbar-gutter: stable;
+  }
+  
+  .table-scroll-wrapper::-webkit-scrollbar {
+    height: 12px;
+  }
+  
+  .table-scroll-wrapper::-webkit-scrollbar-track {
+    @apply bg-slate-800/50 rounded-lg mx-2;
+  }
+  
+  .table-scroll-wrapper::-webkit-scrollbar-thumb {
+    @apply bg-slate-600 rounded-lg border-4 border-transparent bg-clip-content hover:bg-slate-500;
+  }
+}

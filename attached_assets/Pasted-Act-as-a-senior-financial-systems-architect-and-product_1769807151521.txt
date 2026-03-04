@@ -1,0 +1,121 @@
+Act as a senior financial systems architect and product designer.
+
+Implement a complete FINANCE & PAYMENT DATA module inside PixelCRM with accurate calculations, monthly summaries, and secure internal payment verification workflows.
+
+================================================
+ACCESS CONTROL
+================================================
+* Finance data is visible ONLY to Admin (Founder).
+* Support and Designers must NOT see:
+  - Total revenue
+  - Monthly collections
+  - Remaining balances
+
+================================================
+MONTHLY FINANCE LOGIC (ADMIN ONLY)
+================================================
+
+1) MONTHLY COLLECTION & REMAINING AMOUNT
+* Admin must be able to select a month.
+* For each month, show:
+  - Total Collected Amount (PKR)
+  - Total Remaining Amount (PKR)
+
+Rules:
+* Data must reset automatically per month.
+* Admin Dashboard must always show data for the CURRENT month by default.
+
+================================================
+ADMIN DASHBOARD (FINANCE WIDGET)
+================================================
+
+On Admin Dashboard, show these cards (current month only):
+
+* Collected Amount (This Month)
+* Remaining Amount (This Month)
+
+Values must update in real time when payments are confirmed.
+
+================================================
+ORDER PAYMENT MATH (CRITICAL)
+================================================
+
+When an order is created:
+* Advance amount is recorded as Collected Amount.
+* Remaining amount is recorded as Pending / Remaining Amount.
+
+Payment Status options:
+* Pending
+* Paid
+
+When Payment Status changes:
+* If Pending → Paid:
+  - Remaining amount is added to Collected Amount.
+  - Remaining amount is subtracted from Pending Amount.
+* This change must reflect instantly in:
+  - Order
+  - Monthly finance summary
+  - Admin dashboard
+
+No manual finance calculation is allowed.
+
+================================================
+INTERNAL PAYMENT VERIFICATION CHAT
+================================================
+
+Create an internal-only chat section called:
+* **Payments** (Admin + Support + Designers)
+
+Workflow:
+1) When Support or Designer receives a payment screenshot:
+   - They upload the screenshot in the Payments internal chat.
+2) Admin receives notification.
+3) Admin has two action buttons:
+   - Confirmed
+   - Not Received
+
+
+Finance Rules:
+* ONLY when Admin marks payment as Confirmed:
+  - Payment Status becomes Paid
+  - Finance calculations update
+* If marked Not Received:
+  - No finance changes occur
+
+Designers and Support CANNOT confirm payments.
+
+================================================
+ORDERS SECTION — EXTENDED DETAILS MENU
+================================================
+
+Add a three-dot (⋮) menu at the end of each order row.
+
+When clicked, it must show:
+* Full order details
+* Client information
+* Services breakdown
+* Marketing data (Campaign / Ad Set / Ad)
+* Payment history
+* Internal notes
+* Order activity log (status & payment changes)
+
+This panel is read-only for Designers.
+
+================================================
+SECURITY & DATA INTEGRITY
+================================================
+
+* Finance math must be system-driven only.
+* Admin is the single source of payment confirmation.
+* Payment screenshots must be stored securely and linked to the order.
+* All finance actions must be logged with timestamp and user.
+
+================================================
+DELIVERABLE
+================================================
+
+Deliver a fully working finance system that:
+* Accurately tracks monthly collections and remaining balances
+* Updates finance data automatically on payment confirmation
+* Prevents unauthorized finance changes
+* Integrates smoothly with Orders, Dashboard, and Internal Chats
