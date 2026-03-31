@@ -1,0 +1,118 @@
+You are a senior full-stack engineer.
+
+I have a Node.js + Vite + TypeScript + Drizzle + Supabase project.
+
+Your task is to implement a production-ready image upload system for payment screenshots using Cloudinary.
+
+IMPORTANT:
+- Do NOT explain
+- Do NOT give suggestions
+- Directly create/update files with working code
+
+-----------------------------------
+GOAL
+-----------------------------------
+
+Implement this flow:
+
+1. User uploads payment screenshot
+2. Image is compressed before upload
+3. Upload to Cloudinary
+4. Get secure URL
+5. Store URL in database (Supabase via Drizzle)
+6. Return URL to frontend
+
+-----------------------------------
+STEP 1 — INSTALL DEPENDENCIES
+-----------------------------------
+
+Add:
+
+- cloudinary
+- multer
+- sharp
+
+-----------------------------------
+STEP 2 — CREATE CLOUDINARY CONFIG
+-----------------------------------
+
+Create file: config/cloudinary.js
+
+- Import cloudinary
+- Configure using env variables:
+  CLOUDINARY_CLOUD_NAME
+  CLOUDINARY_API_KEY
+  CLOUDINARY_API_SECRET
+
+Export configured cloudinary instance
+
+-----------------------------------
+STEP 3 — CREATE UPLOAD ROUTE
+-----------------------------------
+
+Create file: routes/upload.js
+
+Requirements:
+
+- Use multer for file handling (memory storage)
+- Use sharp to compress image:
+  - Resize max width 1000px
+  - Convert to JPEG
+  - Quality 70%
+
+- Upload compressed buffer to Cloudinary
+
+- Return:
+  { url: cloudinary_url }
+
+-----------------------------------
+STEP 4 — EXPRESS ROUTE
+-----------------------------------
+
+Add route:
+
+POST /api/upload-payment
+
+- Accept single file: "file"
+- Process compression
+- Upload to Cloudinary
+- Return URL
+
+-----------------------------------
+STEP 5 — DATABASE INTEGRATION
+-----------------------------------
+
+Update payment/order logic:
+
+- When payment proof uploaded
+- Save Cloudinary URL in DB field:
+  payment_proof_url
+
+-----------------------------------
+STEP 6 — ERROR HANDLING
+-----------------------------------
+
+- Handle missing file
+- Handle upload errors
+- Return proper JSON responses
+
+-----------------------------------
+STEP 7 — ENV VARIABLES
+-----------------------------------
+
+Ensure app uses:
+
+CLOUDINARY_CLOUD_NAME
+CLOUDINARY_API_KEY
+CLOUDINARY_API_SECRET
+
+-----------------------------------
+STEP 8 — OUTPUT
+-----------------------------------
+
+Return:
+
+1. cloudinary.js
+2. upload route full code
+3. updated server integration
+4. example API usage

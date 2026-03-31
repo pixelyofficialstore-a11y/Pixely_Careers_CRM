@@ -15,6 +15,8 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { ObjectStorageService, registerObjectStorageRoutes, objectStorageServiceInstance } from "./replit_integrations/object_storage";
+import sharp from "sharp";
+import { isCloudinaryConfigured, uploadToCloudinary } from "./cloudinary";
 
 const PgSession = connectPgSimple(session);
 
@@ -416,22 +418,16 @@ export async function registerRoutes(
     res.json(stats);
   });
 
-  // Configure multer for payment screenshot uploads
-  const uploadsDir = path.join(process.cwd(), 'uploads');
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-  }
-  
+  // Configure multer for payment screenshot uploads — memory storage so sharp can process in-memory
   const upload = multer({
-    storage: multer.diskStorage({
-      destination: uploadsDir,
-      filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.random().toString(36).substring(2, 12);
-        const ext = path.extname(file.originalname);
-        cb(null, uniqueSuffix + ext);
-      }
-    }),
+    storage: multer.memoryStorage(),
     limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      if (!file.mimetype.startsWith("image/")) {
+        return cb(new Error("Only image files are allowed"));
+      }
+      cb(null, true);
+    },
   });
 
   app.get("/api/payment-verifications/pending-count", requireRole(["admin"]), async (req, res) => {
@@ -518,13 +514,26 @@ export async function registerRoutes(
       let screenshotUrl: string | null = null;
       let screenshotData: string | null = null;
       let screenshotMimeType: string | null = null;
-      
+
       if (file) {
-        const fileBuffer = fs.readFileSync(file.path);
-        screenshotData = fileBuffer.toString('base64');
-        screenshotMimeType = file.mimetype || 'image/jpeg';
-        screenshotUrl = `/api/payment-files/db/${Date.now()}-${file.originalname}`;
-        try { fs.unlinkSync(file.path); } catch (e) {}
+        // Compress with sharp: resize max 1000px wide, convert to JPEG at 70% quality
+        const compressed = await sharp(file.buffer)
+          .resize({ width: 1000, withoutEnlargement: true })
+          .jpeg({ quality: 70 })
+          .toBuffer();
+
+        if (isCloudinaryConfigured()) {
+          // Upload to Cloudinary and store the returned URL directly
+          screenshotUrl = await uploadToCloudinary(compressed);
+          // No base64 data needed when using Cloudinary
+          screenshotData = null;
+          screenshotMimeType = null;
+        } else {
+          // Fallback: store compressed image as base64 in the database
+          screenshotData = compressed.toString("base64");
+          screenshotMimeType = "image/jpeg";
+          screenshotUrl = `/api/payment-files/db/${Date.now()}-${file.originalname}`;
+        }
       }
       
       const verification = await storage.createPaymentVerification({

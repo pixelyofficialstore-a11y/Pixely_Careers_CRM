@@ -8,6 +8,7 @@ const allowlist = [
   "@google/generative-ai",
   "@types/connect-pg-simple",
   "axios",
+  "cloudinary",
   "connect-pg-simple",
   "cors",
   "date-fns",
