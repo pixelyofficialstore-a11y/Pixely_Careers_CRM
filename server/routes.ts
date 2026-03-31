@@ -4,16 +4,19 @@ import { storage } from "./storage";
 import { api, errorSchemas } from "@shared/routes";
 import { z } from "zod";
 import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { type User, userRoles } from "@shared/schema";
-import { db } from "./db";
+import { db, pool } from "./db";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { ObjectStorageService, registerObjectStorageRoutes, objectStorageServiceInstance } from "./replit_integrations/object_storage";
+
+const PgSession = connectPgSimple(session);
 
 const scryptAsync = promisify(scrypt);
 
@@ -38,8 +41,13 @@ export async function registerRoutes(
     app.set("trust proxy", 1);
   }
   
+  const sessionStore = process.env.NODE_ENV === "production"
+    ? new PgSession({ pool, tableName: "user_sessions", createTableIfMissing: true })
+    : undefined;
+
   app.use(
     session({
+      store: sessionStore,
       secret: process.env.SESSION_SECRET || "pixely_secret_key",
       resave: false,
       saveUninitialized: false,

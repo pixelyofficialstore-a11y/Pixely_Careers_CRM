@@ -1,0 +1,129 @@
+You are a senior full-stack engineer.
+
+I have a Vite + TypeScript + Tailwind + Drizzle ORM project currently structured as a development app. I want to convert it into a production-ready full-stack app that can be deployed on Railway as a single service.
+
+IMPORTANT:
+Do NOT explain theory.
+Do NOT give suggestions.
+Directly modify/create files and show final working code.
+
+-----------------------------------
+GOAL
+-----------------------------------
+
+Make the app production-ready with:
+
+1. Express server (Node.js backend)
+2. Serve Vite build from backend
+3. Ensure Drizzle DB works in production
+4. Use Railway-compatible PORT
+5. Remove dependency on Vite dev server
+6. Prepare for single-command start
+
+-----------------------------------
+STEP 1 — CREATE EXPRESS SERVER
+-----------------------------------
+
+Create file: server.js
+
+Requirements:
+
+- Use Express
+- Serve static files from "dist" folder
+- Handle all routes → index.html (SPA support)
+- Use process.env.PORT
+
+Code structure:
+
+- import express
+- import path
+- serve dist folder
+- fallback route "*"
+- listen on PORT
+
+-----------------------------------
+STEP 2 — UPDATE VITE CONFIG
+-----------------------------------
+
+Modify vite.config.ts:
+
+- Ensure build output goes to "dist"
+- Base path "/"
+
+-----------------------------------
+STEP 3 — UPDATE PACKAGE.JSON
+-----------------------------------
+
+Modify scripts:
+
+"scripts": {
+  "dev": "vite",
+  "build": "vite build",
+  "start": "node server.js"
+}
+
+Ensure dependencies include:
+- express
+
+-----------------------------------
+STEP 4 — HANDLE ENV VARIABLES
+-----------------------------------
+
+Ensure app reads:
+
+- process.env.DATABASE_URL
+- process.env.NODE_ENV
+
+-----------------------------------
+STEP 5 — DRIZZLE CONFIG
+-----------------------------------
+
+Ensure drizzle.config.ts works in production:
+
+- Use DATABASE_URL from env
+- No local-only configs
+
+-----------------------------------
+STEP 6 — BUILD + SERVE FLOW
+-----------------------------------
+
+Ensure:
+
+npm run build → creates /dist  
+npm start → serves app from Express  
+
+-----------------------------------
+STEP 7 — FILE STRUCTURE
+-----------------------------------
+
+Ensure final structure:
+
+/dist
+/server.js
+/package.json
+/vite.config.ts
+/src
+
+-----------------------------------
+STEP 8 — ERROR HANDLING
+-----------------------------------
+
+- Add basic error handling in server
+- Prevent crash on missing routes
+
+-----------------------------------
+STEP 9 — OUTPUT
+-----------------------------------
+
+Return:
+
+1. server.js full code
+2. updated package.json
+3. updated vite.config.ts
+4. any additional required files
+
+Ensure everything runs with:
+
+npm install
+npm run build
+npm start
