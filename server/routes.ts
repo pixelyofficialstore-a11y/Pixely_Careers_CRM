@@ -526,17 +526,26 @@ export async function registerRoutes(
           .jpeg({ quality: 70 })
           .toBuffer();
 
+        let cloudinarySuccess = false;
+
         if (isCloudinaryConfigured()) {
-          // Upload to Cloudinary and store the returned URL directly
-          screenshotUrl = await uploadToCloudinary(compressed);
-          // No base64 data needed when using Cloudinary
-          screenshotData = null;
-          screenshotMimeType = null;
-        } else {
+          try {
+            screenshotUrl = await uploadToCloudinary(compressed);
+            screenshotData = null;
+            screenshotMimeType = null;
+            cloudinarySuccess = true;
+            console.log("[cloudinary] Upload OK:", screenshotUrl);
+          } catch (cloudErr: any) {
+            console.error("[cloudinary] Upload FAILED, falling back to DB base64:", cloudErr?.message || cloudErr);
+          }
+        }
+
+        if (!cloudinarySuccess) {
           // Fallback: store compressed image as base64 in the database
           screenshotData = compressed.toString("base64");
           screenshotMimeType = "image/jpeg";
           screenshotUrl = `/api/payment-files/db/${Date.now()}-${file.originalname}`;
+          console.warn("[screenshot] Stored as base64 in DB. Fix Cloudinary credentials to store as URL.");
         }
       }
       

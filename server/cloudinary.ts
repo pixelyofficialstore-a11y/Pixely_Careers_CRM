@@ -22,6 +22,20 @@ export function isCloudinaryConfigured(): boolean {
   return Boolean(cloudName && apiKey && apiSecret);
 }
 
+// Validate credentials at startup — logs a clear warning if they're wrong
+if (cloudName && apiKey && apiSecret) {
+  cloudinary.api.ping().then(() => {
+    console.log(`[cloudinary] Credentials valid — cloud: ${cloudName}`);
+  }).catch((err: any) => {
+    const reason = err?.message || err?.error?.message || JSON.stringify(err);
+    console.error(
+      `[cloudinary] INVALID CREDENTIALS (${reason}). ` +
+      "Uploads will fall back to base64 DB storage. " +
+      "Fix CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET in environment secrets."
+    );
+  });
+}
+
 export async function uploadToCloudinary(
   buffer: Buffer,
   folder = "pixelcrm/payments"
