@@ -93,7 +93,7 @@ export default function DashboardPage() {
   const todayOrders = approvedOrders.filter(o => isToday(new Date(o.createdAt!)));
   const monthlyOrders = approvedOrders.filter(o => new Date(o.createdAt!) >= monthStart);
   const pendingOrders = approvedOrders.filter(o => o.status === 'new' || o.status === 'working');
-  const canceledOrders = approvedOrders.filter(o => o.status === 'canceled');
+  const canceledOrders = approvedOrders.filter(o => o.status === 'canceled' && new Date(o.createdAt!) >= monthStart);
   const readyOrders = approvedOrders.filter(o => o.status === 'ready');
   const deliveredOrders = approvedOrders.filter(o => o.status === 'delivered');
 
