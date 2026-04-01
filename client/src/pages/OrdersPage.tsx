@@ -139,6 +139,7 @@ export default function OrdersPage() {
   const isSupport = user?.role === "support";
   const isDesigner = user?.role === "designer";
   const canSeeFinance = isAdmin;
+  const canSeeAmounts = isAdmin || isDesigner;
   const canCreateOrder = isAdmin || isSupport;
 
   const getAvailableDesigners = () => {
@@ -404,7 +405,8 @@ export default function OrdersPage() {
                   <TableHead className="text-slate-400">Status</TableHead>
                   {!isDesigner && <TableHead className="text-slate-400">Adv. Payment</TableHead>}
                   <TableHead className="text-slate-400">Payment</TableHead>
-                  {canSeeFinance && <TableHead className="text-slate-400">Remaining</TableHead>}
+                  {canSeeAmounts && <TableHead className="text-slate-400 text-right">Advance</TableHead>}
+                  {canSeeAmounts && <TableHead className="text-slate-400 text-right">Remaining</TableHead>}
                   <TableHead className="text-right text-slate-400">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -539,8 +541,13 @@ export default function OrdersPage() {
                           </Badge>
                         )}
                       </TableCell>
-                      {canSeeFinance && (
-                        <TableCell className="text-red-400 font-medium">
+                      {canSeeAmounts && (
+                        <TableCell className="text-green-400 font-medium text-right">
+                          ₨{((order.advanceAmount || 0) / 100).toLocaleString()}
+                        </TableCell>
+                      )}
+                      {canSeeAmounts && (
+                        <TableCell className="text-red-400 font-medium text-right">
                           ₨{((order.remainingAmount || 0) / 100).toLocaleString()}
                         </TableCell>
                       )}
@@ -659,7 +666,8 @@ export default function OrdersPage() {
                   <TableHead className="text-slate-400">Status</TableHead>
                   {!isDesigner && <TableHead className="text-slate-400">Adv. Payment</TableHead>}
                   <TableHead className="text-slate-400">Payment</TableHead>
-                  {canSeeFinance && <TableHead className="text-slate-400">Remaining</TableHead>}
+                  {canSeeAmounts && <TableHead className="text-slate-400 text-right">Advance</TableHead>}
+                  {canSeeAmounts && <TableHead className="text-slate-400 text-right">Remaining</TableHead>}
                   <TableHead className="text-right text-slate-400">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -778,9 +786,14 @@ export default function OrdersPage() {
                         </Badge>
                       )}
                     </TableCell>
-                    {canSeeFinance && (
-                      <TableCell className="text-red-400 font-medium">
-                        ₨{(((order.totalPrice || 0) - (order.advanceAmount || 0)) / 100).toLocaleString()}
+                    {canSeeAmounts && (
+                      <TableCell className="text-green-400 font-medium text-right">
+                        ₨{((order.advanceAmount || 0) / 100).toLocaleString()}
+                      </TableCell>
+                    )}
+                    {canSeeAmounts && (
+                      <TableCell className="text-red-400 font-medium text-right">
+                        ₨{((order.remainingAmount || 0) / 100).toLocaleString()}
                       </TableCell>
                     )}
                     <TableCell className="text-right">
@@ -915,14 +928,16 @@ export default function OrdersPage() {
                 </div>
               </div>
 
-              {canSeeFinance && (
+              {canSeeAmounts && (
                 <div className="space-y-3 p-4 bg-slate-950 rounded-lg border border-slate-800">
                   <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Payment</h4>
                   <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <p className="text-xs text-slate-500">Total</p>
-                      <p className="text-white font-medium">₨{((selectedOrder.totalPrice || 0) / 100).toLocaleString()}</p>
-                    </div>
+                    {canSeeFinance && (
+                      <div>
+                        <p className="text-xs text-slate-500">Total</p>
+                        <p className="text-white font-medium">₨{((selectedOrder.totalPrice || 0) / 100).toLocaleString()}</p>
+                      </div>
+                    )}
                     <div>
                       <p className="text-xs text-slate-500">Advance</p>
                       <p className="text-green-400 font-medium">₨{((selectedOrder.advanceAmount || 0) / 100).toLocaleString()}</p>
