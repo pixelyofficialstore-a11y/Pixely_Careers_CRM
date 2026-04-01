@@ -83,44 +83,43 @@ export default function DashboardPage() {
   const isDesigner = user?.role === "designer";
 
   // Filter orders for dashboard stats
+  // Only approved orders are considered real orders — unapproved are ignored in all stats
   const now = new Date();
   const monthStart = startOfMonth(now);
-  const allOrders = orders || [];
 
-  // Orders placed today (any status/payment)
-  const todayOrders = allOrders.filter(o => isToday(new Date(o.createdAt!)));
+  const approvedOrders = orders?.filter(o => o.advancePaymentStatus === 'approved') || [];
 
-  // All orders placed this month (any status/payment — assigned an order ID this month)
-  const monthlyOrders = allOrders.filter(o => new Date(o.createdAt!) >= monthStart);
+  // Stat card calculations — all based on approved orders only
+  const todayOrders = approvedOrders.filter(o => isToday(new Date(o.createdAt!)));
+  const monthlyOrders = approvedOrders.filter(o => new Date(o.createdAt!) >= monthStart);
+  const pendingOrders = approvedOrders.filter(o => o.status === 'new' || o.status === 'working');
+  const canceledOrders = approvedOrders.filter(o => o.status === 'canceled');
+  const readyOrders = approvedOrders.filter(o => o.status === 'ready');
+  const deliveredOrders = approvedOrders.filter(o => o.status === 'delivered');
 
-  // Pending = all orders currently in working/new status (no month filter, no payment filter)
-  const pendingOrders = allOrders.filter(o => o.status === 'new' || o.status === 'working');
-
-  // Canceled = orders canceled THIS month (by creation date)
-  const canceledOrders = allOrders.filter(o => o.status === 'canceled' && new Date(o.createdAt!) >= monthStart);
-
-  // Ready/Delivered status breakdowns (all-time, for status overview)
-  const readyOrders = allOrders.filter(o => o.status === 'ready');
-  const deliveredOrders = allOrders.filter(o => o.status === 'delivered');
-
-  // Ready this month = orders CREATED this month with Ready or Delivered tag
-  const readyThisMonth = allOrders.filter(o =>
+  // Ready this month = approved orders created this month with Ready or Delivered status
+  const readyThisMonth = approvedOrders.filter(o =>
     new Date(o.createdAt!) >= monthStart &&
     (o.status === 'ready' || o.status === 'delivered')
   );
 
-  // Active Orders = orders with approved advance payment AND not canceled
-  // (confirmed business — excludes canceled and those without payment approval)
-  const approvedOrders = allOrders.filter(o => o.advancePaymentStatus === 'approved');
+  // Active Orders = approved orders that have NOT been canceled
+  // Decreases dynamically when an order is canceled
   const activeOrders = approvedOrders.filter(o => o.status !== 'canceled');
 
-  // Finance calculations (Admin only) — approved orders only
+  // Finance calculations (Admin only)
+  // Total Collected = all advance amounts from approved orders (advance + any collected remaining)
+  // Total Outstanding = remaining amounts from non-canceled approved orders only
+  //   (canceled orders' remaining is excluded — not collected, not outstanding)
   const monthlyApprovedOrders = approvedOrders.filter(o => new Date(o.createdAt!) >= monthStart);
 
+  const nonCanceledApproved = approvedOrders.filter(o => o.status !== 'canceled');
   const totalCollected = approvedOrders.reduce((acc, o) => acc + (o.advanceAmount || 0), 0);
-  const outstandingBalance = approvedOrders.reduce((acc, o) => acc + (o.remainingAmount || 0), 0);
+  const outstandingBalance = nonCanceledApproved.reduce((acc, o) => acc + (o.remainingAmount || 0), 0);
   const monthlyCollected = monthlyApprovedOrders.reduce((acc, o) => acc + (o.advanceAmount || 0), 0);
-  const monthlyRemaining = monthlyApprovedOrders.reduce((acc, o) => acc + (o.remainingAmount || 0), 0);
+  const monthlyRemaining = monthlyApprovedOrders
+    .filter(o => o.status !== 'canceled')
+    .reduce((acc, o) => acc + (o.remainingAmount || 0), 0);
 
   // Designer Dashboard
   if (isDesigner) {
