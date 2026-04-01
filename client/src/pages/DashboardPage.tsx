@@ -9,7 +9,8 @@ import {
   XCircle,
   TrendingUp,
   Calendar,
-  Users
+  Users,
+  Activity
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, isToday, startOfMonth } from "date-fns";
@@ -82,35 +83,44 @@ export default function DashboardPage() {
   const isDesigner = user?.role === "designer";
 
   // Filter orders for dashboard stats
-  // ONLY include orders with approved payment status in ALL calculations
   const now = new Date();
   const monthStart = startOfMonth(now);
-  
-  // All active/approved orders (payment verified)
-  const approvedOrders = orders?.filter(o => o.advancePaymentStatus === 'approved') || [];
-  
-  // For counts - only count approved orders (advancePaymentStatus='approved')
-  const todayOrders = approvedOrders.filter(o => isToday(new Date(o.createdAt!)));
-  const monthlyOrders = approvedOrders.filter(o => new Date(o.createdAt!) >= monthStart);
-  const pendingOrders = approvedOrders.filter(o => o.status === 'new' || o.status === 'working');
-  const canceledOrders = approvedOrders.filter(o => o.status === 'canceled'); // Only approved orders that were canceled
-  const readyOrders = approvedOrders.filter(o => o.status === 'ready');
-  const deliveredOrders = approvedOrders.filter(o => o.status === 'delivered');
-  
-  // Finance calculations (Admin only) - using new advance/remaining fields
-  const monthlyApprovedOrders = approvedOrders.filter(o => new Date(o.createdAt!) >= monthStart);
-  
-  const totalCollected = approvedOrders.reduce((acc, o) => acc + (o.advanceAmount || 0), 0);
-  const totalBilled = approvedOrders.reduce((acc, o) => acc + (o.totalPrice || 0), 0);
-  const outstandingBalance = approvedOrders.reduce((acc, o) => acc + (o.remainingAmount || 0), 0);
-  const monthlyCollected = monthlyApprovedOrders.reduce((acc, o) => acc + (o.advanceAmount || 0), 0);
-  const monthlyRemaining = monthlyApprovedOrders.reduce((acc, o) => acc + (o.remainingAmount || 0), 0);
+  const allOrders = orders || [];
 
-  // Ready-based metrics (for Admin reports) - approved orders created this month with status ready or delivered
-  const readyThisMonth = approvedOrders.filter(o => 
+  // Orders placed today (any status/payment)
+  const todayOrders = allOrders.filter(o => isToday(new Date(o.createdAt!)));
+
+  // All orders placed this month (any status/payment — assigned an order ID this month)
+  const monthlyOrders = allOrders.filter(o => new Date(o.createdAt!) >= monthStart);
+
+  // Pending = all orders currently in working/new status (no month filter, no payment filter)
+  const pendingOrders = allOrders.filter(o => o.status === 'new' || o.status === 'working');
+
+  // Canceled = orders canceled THIS month (by creation date)
+  const canceledOrders = allOrders.filter(o => o.status === 'canceled' && new Date(o.createdAt!) >= monthStart);
+
+  // Ready/Delivered status breakdowns (all-time, for status overview)
+  const readyOrders = allOrders.filter(o => o.status === 'ready');
+  const deliveredOrders = allOrders.filter(o => o.status === 'delivered');
+
+  // Ready this month = orders CREATED this month with Ready or Delivered tag
+  const readyThisMonth = allOrders.filter(o =>
     new Date(o.createdAt!) >= monthStart &&
     (o.status === 'ready' || o.status === 'delivered')
   );
+
+  // Active Orders = orders with approved advance payment AND not canceled
+  // (confirmed business — excludes canceled and those without payment approval)
+  const approvedOrders = allOrders.filter(o => o.advancePaymentStatus === 'approved');
+  const activeOrders = approvedOrders.filter(o => o.status !== 'canceled');
+
+  // Finance calculations (Admin only) — approved orders only
+  const monthlyApprovedOrders = approvedOrders.filter(o => new Date(o.createdAt!) >= monthStart);
+
+  const totalCollected = approvedOrders.reduce((acc, o) => acc + (o.advanceAmount || 0), 0);
+  const outstandingBalance = approvedOrders.reduce((acc, o) => acc + (o.remainingAmount || 0), 0);
+  const monthlyCollected = monthlyApprovedOrders.reduce((acc, o) => acc + (o.advanceAmount || 0), 0);
+  const monthlyRemaining = monthlyApprovedOrders.reduce((acc, o) => acc + (o.remainingAmount || 0), 0);
 
   // Designer Dashboard
   if (isDesigner) {
@@ -281,7 +291,7 @@ export default function DashboardPage() {
         <p className="text-slate-400">Welcome back, {user?.name}. Here's your complete business overview.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <StatCard 
           title="Today's Orders" 
           value={todayOrders.length} 
@@ -304,7 +314,7 @@ export default function DashboardPage() {
           testId="stat-ready-month"
         />
         <StatCard 
-          title="Canceled Orders" 
+          title="Canceled This Month" 
           value={canceledOrders.length} 
           icon={XCircle}
           color="red"
@@ -316,6 +326,13 @@ export default function DashboardPage() {
           icon={Clock}
           color="orange"
           testId="stat-pending-orders"
+        />
+        <StatCard 
+          title="Active Orders" 
+          value={activeOrders.length} 
+          icon={Activity}
+          color="green"
+          testId="stat-active-orders"
         />
       </div>
 
