@@ -4,6 +4,13 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seedDatabase } from "./seed";
 
+process.on("uncaughtException", (err) => {
+  console.error("[uncaughtException]", err);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("[unhandledRejection]", reason);
+});
+
 const app = express();
 const httpServer = createServer(app);
 
@@ -61,6 +68,11 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Health check — must be first so Railway probe gets a fast 200
+  app.get("/health", (_req, res) => {
+    res.status(200).json({ status: "ok" });
+  });
+
   // Seed database with production data if needed
   await seedDatabase();
   
