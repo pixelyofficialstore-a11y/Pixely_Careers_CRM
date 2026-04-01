@@ -413,13 +413,14 @@ export default function OrdersPage() {
                   const isDesignerUser = user?.role === 'designer';
                   // All roles can see all status options
                   const getStatusOptions = () => {
-                    // Designers can't cancel orders
                     if (isDesignerUser) {
+                      // Completed orders are locked — designer cannot change back
+                      if (order.status === 'ready') return [{ value: "ready", label: "Ready" }];
+                      if (order.status === 'delivered') return [{ value: "delivered", label: "Delivered" }];
                       return [
                         { value: "new", label: "New" },
                         { value: "working", label: "Working" },
                         { value: "ready", label: "Ready" },
-                        { value: "delivered", label: "Delivered" },
                       ];
                     }
                     return [
@@ -667,13 +668,14 @@ export default function OrdersPage() {
                   const isDesignerUser = user?.role === 'designer';
                   // All roles can see all status options
                   const getMonthlyStatusOptions = () => {
-                    // Designers can't cancel orders
                     if (isDesignerUser) {
+                      // Completed orders are locked — designer cannot change back
+                      if (order.status === 'ready') return [{ value: "ready", label: "Ready" }];
+                      if (order.status === 'delivered') return [{ value: "delivered", label: "Delivered" }];
                       return [
                         { value: "new", label: "New" },
                         { value: "working", label: "Working" },
                         { value: "ready", label: "Ready" },
-                        { value: "delivered", label: "Delivered" },
                       ];
                     }
                     return [

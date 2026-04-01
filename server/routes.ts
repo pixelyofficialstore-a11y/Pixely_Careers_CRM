@@ -379,6 +379,11 @@ export async function registerRoutes(
       if (updates.status && updates.status === 'canceled') {
         return res.status(403).json({ message: "Designers cannot cancel orders" });
       }
+
+      // Anti-gaming: once an order is ready or delivered, designer cannot change its status
+      if (updates.status && (existingOrder.status === 'ready' || existingOrder.status === 'delivered')) {
+        return res.status(403).json({ message: "Order status is locked once completed" });
+      }
     }
     
     if (updates.status === 'ready' && existingOrder.status !== 'ready') {

@@ -166,34 +166,40 @@ export default function AnalyticsPage() {
   }) || [];
 
   // Designer Performance Calculations
-  // A designer's completion is counted when readyDate is set (Working → Ready transition)
+  // Only approved orders count toward performance — status must reach ready/delivered
   const getDesignerMetrics = (designerId: number) => {
-    const assignedOrders = orders?.filter(o => o.assignedToId === designerId) || [];
+    const assignedOrders = orders?.filter(
+      o => o.assignedToId === designerId && o.advancePaymentStatus === 'approved'
+    ) || [];
     
-    // Completed today = readyDate is today
+    // Completed today = status is ready/delivered AND readyDate is today
     const completedToday = assignedOrders.filter(o => {
       if (!o.readyDate) return false;
       return isToday(new Date(o.readyDate));
     }).length;
     
-    // Completed this month = readyDate is in current month
+    // Completed this month = status is ready/delivered AND readyDate is in current month
     const completedThisMonth = assignedOrders.filter(o => {
       if (!o.readyDate) return false;
       return new Date(o.readyDate) >= monthStart;
     }).length;
     
-    // Total completed = has readyDate (meaning it reached Ready status at some point)
-    const totalCompleted = assignedOrders.filter(o => o.readyDate).length;
+    // Total completed = orders currently in ready or delivered status
+    const totalCompleted = assignedOrders.filter(
+      o => o.status === 'ready' || o.status === 'delivered'
+    ).length;
     
     // Pending = new or working status
-    const pendingOrders = assignedOrders.filter(o => o.status === 'new' || o.status === 'working').length;
+    const pendingOrders = assignedOrders.filter(
+      o => o.status === 'new' || o.status === 'working'
+    ).length;
     
     // Canceled
     const canceledOrders = assignedOrders.filter(o => o.status === 'canceled').length;
     
-    // Average daily completion rate (for this month)
-    const daysInMonth = now.getDate();
-    const avgDailyRate = daysInMonth > 0 ? (completedThisMonth / daysInMonth).toFixed(1) : "0";
+    // Average daily completion rate (days elapsed this month so far)
+    const daysElapsed = now.getDate();
+    const avgDailyRate = daysElapsed > 0 ? (completedThisMonth / daysElapsed).toFixed(1) : "0";
     
     return {
       completedToday,
@@ -213,9 +219,10 @@ export default function AnalyticsPage() {
            createdDate.getFullYear().toString() === marketingYear;
   }) || [];
 
-  // Filter orders by selected month/year for performance analytics
+  // Filter orders by selected month/year for performance analytics (approved only)
   const performanceOrders = orders?.filter(o => {
     if (!o.readyDate) return false;
+    if (o.advancePaymentStatus !== 'approved') return false;
     const readyDate = new Date(o.readyDate);
     return readyDate.getMonth().toString() === performanceMonth && 
            readyDate.getFullYear().toString() === performanceYear;
@@ -271,9 +278,13 @@ export default function AnalyticsPage() {
     };
   };
   
-  // Top summary stats
-  const totalCompletedToday = orders?.filter(o => o.readyDate && isToday(new Date(o.readyDate))).length || 0;
-  const totalCompletedThisMonth = orders?.filter(o => o.readyDate && new Date(o.readyDate) >= monthStart).length || 0;
+  // Top summary stats — approved orders only, readyDate tracks when order was completed
+  const totalCompletedToday = orders?.filter(
+    o => o.advancePaymentStatus === 'approved' && o.readyDate && isToday(new Date(o.readyDate))
+  ).length || 0;
+  const totalCompletedThisMonth = orders?.filter(
+    o => o.advancePaymentStatus === 'approved' && o.readyDate && new Date(o.readyDate) >= monthStart
+  ).length || 0;
   
   // Best performing designer
   const designerPerformance = designers.map(d => ({
@@ -528,7 +539,7 @@ export default function AnalyticsPage() {
                   <BarChart3 className="w-5 h-5 text-blue-500" />
                   Monthly Designer Performance
                 </h3>
-                <p className="text-sm text-slate-500">Completed orders for selected month (based on Ready date)</p>
+                <p className="text-sm text-slate-500">Approved orders completed (Ready/Delivered) in selected month</p>
               </div>
               <Table>
                 <TableHeader className="bg-slate-900/50">
@@ -574,7 +585,7 @@ export default function AnalyticsPage() {
                   <BarChart3 className="w-5 h-5 text-blue-500" />
                   Overall Designer Performance
                 </h3>
-                <p className="text-sm text-slate-500">All-time performance based on order completion (Working → Ready)</p>
+                <p className="text-sm text-slate-500">All-time performance — approved orders only. Status locks at Ready/Delivered and cannot be reversed.</p>
               </div>
               <Table>
                 <TableHeader className="bg-slate-900/50">
