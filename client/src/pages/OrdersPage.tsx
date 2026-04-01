@@ -204,6 +204,11 @@ export default function OrdersPage() {
   // Approved monthly orders - same logic as dashboard (advancePaymentStatus === 'approved')
   const approvedMonthlyOrders = monthlyOrders.filter(o => o.advancePaymentStatus === 'approved');
 
+  // Approved today's orders — for Total Revenue of the day
+  const approvedTodayOrders = (orders || []).filter(o =>
+    o.advancePaymentStatus === 'approved' && isToday(new Date(o.createdAt!))
+  );
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "pending_payment": return <Badge variant="secondary" className="bg-orange-500/10 text-orange-500 border-orange-500/20">Pending Payment</Badge>;
@@ -343,7 +348,7 @@ export default function OrdersPage() {
       </div>
 
       {isAdmin && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
             <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500"><Package className="w-5 h-5" /></div>
             <div><p className="text-xs text-slate-500">Total Monthly</p><p className="font-bold text-white">{approvedMonthlyOrders.length}</p></div>
@@ -363,6 +368,13 @@ export default function OrdersPage() {
           <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
             <div className="p-2 bg-red-500/10 rounded-lg text-red-500"><AlertCircle className="w-5 h-5" /></div>
             <div><p className="text-xs text-slate-500">Remaining</p><p className="font-bold text-white">₨{(approvedMonthlyOrders.filter(o => o.status !== 'canceled').reduce((acc, o) => acc + (o.remainingAmount || 0), 0) / 100).toLocaleString()}</p></div>
+          </div>
+          <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
+            <div className="p-2 bg-purple-500/10 rounded-lg text-purple-500"><CalendarIcon className="w-5 h-5" /></div>
+            <div>
+              <p className="text-xs text-slate-500">Today's Revenue</p>
+              <p className="font-bold text-white">₨{(approvedTodayOrders.reduce((acc, o) => acc + (o.advanceAmount || 0) + (o.remainingAmount || 0), 0) / 100).toLocaleString()}</p>
+            </div>
           </div>
         </div>
       )}
