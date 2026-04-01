@@ -354,7 +354,7 @@ export default function OrdersPage() {
           </div>
           <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
             <div className="p-2 bg-orange-500/10 rounded-lg text-orange-500"><Clock className="w-5 h-5" /></div>
-            <div><p className="text-xs text-slate-500">Pending</p><p className="font-bold text-white">{approvedMonthlyOrders.filter(o => o.status !== 'delivered').length}</p></div>
+            <div><p className="text-xs text-slate-500">Pending</p><p className="font-bold text-white">{approvedMonthlyOrders.filter(o => o.status === 'new' || o.status === 'working' || o.status === 'ready').length}</p></div>
           </div>
           <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
             <div className="p-2 bg-green-500/10 rounded-lg text-green-500"><TrendingUp className="w-5 h-5" /></div>
@@ -362,7 +362,7 @@ export default function OrdersPage() {
           </div>
           <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
             <div className="p-2 bg-red-500/10 rounded-lg text-red-500"><AlertCircle className="w-5 h-5" /></div>
-            <div><p className="text-xs text-slate-500">Remaining</p><p className="font-bold text-white">₨{(approvedMonthlyOrders.reduce((acc, o) => acc + (o.remainingAmount || 0), 0) / 100).toLocaleString()}</p></div>
+            <div><p className="text-xs text-slate-500">Remaining</p><p className="font-bold text-white">₨{(approvedMonthlyOrders.filter(o => o.status !== 'canceled').reduce((acc, o) => acc + (o.remainingAmount || 0), 0) / 100).toLocaleString()}</p></div>
           </div>
         </div>
       )}
