@@ -252,7 +252,7 @@ export async function registerRoutes(
     const sanitizedOrders = orders.map(o => ({
       ...o,
       totalPrice: user.role === 'admin' ? o.totalPrice : undefined,
-      advanceAmount: user.role === 'admin' ? o.advanceAmount : undefined,
+      advanceAmount: (user.role === 'admin' || (user.role === 'designer' && o.assignedToId === user.id)) ? o.advanceAmount : undefined,
       remainingAmount: (user.role === 'admin' || (user.role === 'designer' && o.assignedToId === user.id)) ? o.remainingAmount : undefined,
     }));
 
@@ -341,8 +341,8 @@ export async function registerRoutes(
     const sanitized = {
       ...order,
       totalPrice: user.role === 'admin' ? order.totalPrice : undefined,
-      advanceAmount: user.role === 'admin' ? order.advanceAmount : undefined,
-      remainingAmount: user.role === 'admin' ? order.remainingAmount : undefined,
+      advanceAmount: (user.role === 'admin' || user.role === 'designer') ? order.advanceAmount : undefined,
+      remainingAmount: (user.role === 'admin' || user.role === 'designer') ? order.remainingAmount : undefined,
     };
 
     res.json(sanitized);
