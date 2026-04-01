@@ -74,6 +74,8 @@ export default function DashboardPage() {
   
   const { data: orders, isLoading } = useQuery<OrderWithServices[]>({
     queryKey: ["/api/orders"],
+    refetchInterval: 60 * 1000,
+    staleTime: 30 * 1000,
   });
 
   if (isLoading) return null;

@@ -43,9 +43,7 @@ export async function registerRoutes(
     app.set("trust proxy", 1);
   }
   
-  const sessionStore = process.env.NODE_ENV === "production"
-    ? new PgSession({ pool, tableName: "user_sessions", createTableIfMissing: true })
-    : undefined;
+  const sessionStore = new PgSession({ pool, tableName: "user_sessions", createTableIfMissing: true });
 
   app.use(
     session({
@@ -53,6 +51,7 @@ export async function registerRoutes(
       secret: process.env.SESSION_SECRET || "pixely_secret_key",
       resave: false,
       saveUninitialized: false,
+      rolling: true,
       cookie: { 
         secure: process.env.NODE_ENV === "production",
         sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",

@@ -142,10 +142,13 @@ export default function AnalyticsPage() {
   
   const { data: orders, isLoading } = useQuery<OrderWithServices[]>({
     queryKey: ["/api/orders"],
+    refetchInterval: 60 * 1000,
+    staleTime: 30 * 1000,
   });
   
   const { data: teamMembers } = useQuery<User[]>({
     queryKey: ["/api/users"],
+    staleTime: 5 * 60 * 1000,
   });
 
   // Only admin can access analytics

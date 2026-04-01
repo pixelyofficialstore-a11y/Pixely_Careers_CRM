@@ -109,15 +109,19 @@ export default function OrdersPage() {
 
   const { data: orders, isLoading } = useQuery<OrderWithServices[]>({
     queryKey: ["/api/orders"],
+    refetchInterval: 30 * 1000,
+    staleTime: 15 * 1000,
   });
 
   const { data: teamMembers } = useQuery<User[]>({
     queryKey: ["/api/users"],
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: designerAssignments } = useQuery<SupportDesignerAssignment[]>({
     queryKey: ["/api/designer-assignments"],
     enabled: user?.role === "support",
+    staleTime: 5 * 60 * 1000,
   });
 
   const updateOrderMutation = useMutation({

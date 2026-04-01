@@ -79,6 +79,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return api.auth.me.responses[200].parse(await res.json());
     },
     retry: false,
+    staleTime: 5 * 60 * 1000,
+    refetchInterval: 10 * 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 
   const { loginMutation, logoutMutation } = useAuthMutation();
