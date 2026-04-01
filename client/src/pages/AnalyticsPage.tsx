@@ -311,6 +311,7 @@ export default function AnalyticsPage() {
   const getSupportOrders = (filterType: 'day' | 'month') => {
     return orders?.filter(o => {
       if (!o.createdAt) return false;
+      if (o.advancePaymentStatus !== 'approved') return false;
       const createdDate = new Date(o.createdAt);
       if (filterType === 'day') {
         return createdDate.getMonth().toString() === supportMonth &&
@@ -329,31 +330,22 @@ export default function AnalyticsPage() {
     const agentMonthOrders = supportMonthOrders.filter(o => o.createdById === agentId);
     const agentDayOrders = supportDayOrders.filter(o => o.createdById === agentId);
 
-    const totalRevenue = agentMonthOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
+    // All-time approved orders placed by this agent
+    const totalOrders = (orders || []).filter(
+      o => o.createdById === agentId && o.advancePaymentStatus === 'approved'
+    ).length;
+
+    const totalRevenue = agentMonthOrders.reduce((sum, o) => sum + (o.advanceAmount || 0) + (o.remainingAmount || 0), 0);
     const collectedAmount = agentMonthOrders.reduce((sum, o) => sum + (o.advanceAmount || 0), 0);
     const pendingAmount = agentMonthOrders.reduce((sum, o) => sum + (o.remainingAmount || 0), 0);
-
-    const paidOrders = agentMonthOrders.filter(o => o.paymentStatus === 'paid').length;
-    const pendingPaymentOrders = agentMonthOrders.filter(o => o.paymentStatus === 'pending').length;
-
-    const statusBreakdown = {
-      new: agentMonthOrders.filter(o => o.status === 'new').length,
-      working: agentMonthOrders.filter(o => o.status === 'working').length,
-      ready: agentMonthOrders.filter(o => o.status === 'ready').length,
-      delivered: agentMonthOrders.filter(o => o.status === 'delivered').length,
-      canceled: agentMonthOrders.filter(o => o.status === 'canceled').length,
-    };
 
     return {
       totalMonthOrders: agentMonthOrders.length,
       totalDayOrders: agentDayOrders.length,
+      totalOrders,
       totalRevenue,
       collectedAmount,
       pendingAmount,
-      paidOrders,
-      pendingPaymentOrders,
-      statusBreakdown,
-      orders: agentDayOrders,
     };
   };
 
@@ -371,19 +363,18 @@ export default function AnalyticsPage() {
       const metrics = getSupportAgentMetrics(agent.id);
       return [
         agent.username,
+        metrics.totalOrders,
         metrics.totalMonthOrders,
         metrics.totalDayOrders,
         `Rs ${(metrics.totalRevenue / 100).toLocaleString()}`,
         `Rs ${(metrics.collectedAmount / 100).toLocaleString()}`,
         `Rs ${(metrics.pendingAmount / 100).toLocaleString()}`,
-        metrics.paidOrders,
-        metrics.pendingPaymentOrders,
       ];
     });
 
     autoTable(doc, {
       startY: 40,
-      head: [["Agent", "Month Orders", "Day Orders", "Total Revenue", "Collected", "Pending", "Paid", "Unpaid"]],
+      head: [["Agent", "Total Orders", "Month Orders", "Day Orders", "Total Revenue", "Collected", "Pending"]],
       body: tableData,
       headStyles: { fillColor: [37, 99, 235] }
     });
@@ -795,7 +786,7 @@ export default function AnalyticsPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-sm text-slate-500">{supportMonthOrders.length} orders this month</p>
+                <p className="text-sm text-slate-500">{supportMonthOrders.length} approved orders this month</p>
               </div>
               <Button variant="outline" onClick={exportSupportPDF} data-testid="button-export-support-pdf">
                 <Download className="w-4 h-4 mr-2" />
@@ -810,29 +801,32 @@ export default function AnalyticsPage() {
                   <div className="p-2 bg-blue-500/10 rounded-lg">
                     <Package className="w-4 h-4 text-blue-500" />
                   </div>
-                  <span className="text-sm text-slate-400">Month Orders</span>
+                  <span className="text-sm text-slate-400">Monthly Orders</span>
                 </div>
                 <p className="text-2xl font-bold text-white" data-testid="text-support-month-total">{supportMonthOrders.length}</p>
+                <p className="text-xs text-slate-500 mt-1">Approved orders this month</p>
               </div>
               <div className="glass-panel p-5 rounded-2xl border border-slate-800">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="p-2 bg-green-500/10 rounded-lg">
                     <DollarSign className="w-4 h-4 text-green-500" />
                   </div>
-                  <span className="text-sm text-slate-400">Month Revenue</span>
+                  <span className="text-sm text-slate-400">Monthly Revenue</span>
                 </div>
                 <p className="text-2xl font-bold text-white" data-testid="text-support-month-revenue">
-                  {"\u20A8"} {(supportMonthOrders.reduce((s, o) => s + (o.totalPrice || 0), 0) / 100).toLocaleString()}
+                  ₨{(supportMonthOrders.reduce((s, o) => s + (o.advanceAmount || 0) + (o.remainingAmount || 0), 0) / 100).toLocaleString()}
                 </p>
+                <p className="text-xs text-slate-500 mt-1">Collected + remaining of approved</p>
               </div>
               <div className="glass-panel p-5 rounded-2xl border border-slate-800">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="p-2 bg-orange-500/10 rounded-lg">
                     <FileText className="w-4 h-4 text-orange-500" />
                   </div>
-                  <span className="text-sm text-slate-400">Today&apos;s Orders</span>
+                  <span className="text-sm text-slate-400">Today's Orders</span>
                 </div>
                 <p className="text-2xl font-bold text-white" data-testid="text-support-day-total">{supportDayOrders.length}</p>
+                <p className="text-xs text-slate-500 mt-1">Approved orders on selected day</p>
               </div>
             </div>
 
@@ -851,13 +845,12 @@ export default function AnalyticsPage() {
                 <TableHeader className="bg-slate-900/50">
                   <TableRow className="border-slate-800">
                     <TableHead className="text-slate-400">Agent</TableHead>
+                    <TableHead className="text-slate-400 text-center">Total Orders</TableHead>
                     <TableHead className="text-slate-400 text-center">Month Orders</TableHead>
                     <TableHead className="text-slate-400 text-center">Day Orders</TableHead>
                     <TableHead className="text-slate-400 text-center">Total Revenue</TableHead>
                     <TableHead className="text-slate-400 text-center">Collected</TableHead>
                     <TableHead className="text-slate-400 text-center">Pending</TableHead>
-                    <TableHead className="text-slate-400 text-center">Paid</TableHead>
-                    <TableHead className="text-slate-400 text-center">Unpaid</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -874,106 +867,29 @@ export default function AnalyticsPage() {
                           </div>
                         </TableCell>
                         <TableCell className="text-center">
-                          <span className="text-2xl font-bold text-blue-400">{metrics.totalMonthOrders}</span>
+                          <span className="text-xl font-bold text-purple-400">{metrics.totalOrders}</span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="text-xl font-bold text-blue-400">{metrics.totalMonthOrders}</span>
                         </TableCell>
                         <TableCell className="text-center">
                           <span className="text-lg font-bold text-green-400">{metrics.totalDayOrders}</span>
                         </TableCell>
                         <TableCell className="text-center text-slate-300">
-                          {"\u20A8"} {(metrics.totalRevenue / 100).toLocaleString()}
+                          ₨{(metrics.totalRevenue / 100).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-center text-green-400">
-                          {"\u20A8"} {(metrics.collectedAmount / 100).toLocaleString()}
+                          ₨{(metrics.collectedAmount / 100).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-center text-yellow-400">
-                          {"\u20A8"} {(metrics.pendingAmount / 100).toLocaleString()}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="outline" className="border-0 text-green-500">{metrics.paidOrders}</Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="outline" className={cn("border-0", metrics.pendingPaymentOrders > 0 ? "text-yellow-500" : "text-slate-500")}>
-                            {metrics.pendingPaymentOrders}
-                          </Badge>
+                          ₨{(metrics.pendingAmount / 100).toLocaleString()}
                         </TableCell>
                       </TableRow>
                     );
                   })}
                   {supportAgents.length === 0 && (
                     <TableRow className="border-slate-800">
-                      <TableCell colSpan={8} className="text-center text-slate-500 py-8">
-                        No support agents found
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-
-            {/* Per-Agent Status Breakdown */}
-            <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
-              <div className="p-6 border-b border-slate-800">
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-purple-500" />
-                  Order Status Breakdown
-                </h3>
-                <p className="text-sm text-slate-500">Status distribution of orders placed by each support agent this month</p>
-              </div>
-              <Table>
-                <TableHeader className="bg-slate-900/50">
-                  <TableRow className="border-slate-800">
-                    <TableHead className="text-slate-400">Agent</TableHead>
-                    <TableHead className="text-slate-400 text-center">New</TableHead>
-                    <TableHead className="text-slate-400 text-center">Working</TableHead>
-                    <TableHead className="text-slate-400 text-center">Ready</TableHead>
-                    <TableHead className="text-slate-400 text-center">Delivered</TableHead>
-                    <TableHead className="text-slate-400 text-center">Canceled</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {supportAgents.map((agent) => {
-                    const metrics = getSupportAgentMetrics(agent.id);
-                    return (
-                      <TableRow key={agent.id} className="border-slate-800" data-testid={`row-support-status-${agent.id}`}>
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-sm text-slate-300">
-                              {agent.username.charAt(0)}
-                            </div>
-                            <span className="text-white font-medium">{agent.username}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="outline" className={cn("border-0", metrics.statusBreakdown.new > 0 ? "text-blue-400" : "text-slate-500")}>
-                            {metrics.statusBreakdown.new}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="outline" className={cn("border-0", metrics.statusBreakdown.working > 0 ? "text-yellow-400" : "text-slate-500")}>
-                            {metrics.statusBreakdown.working}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="outline" className={cn("border-0", metrics.statusBreakdown.ready > 0 ? "text-purple-400" : "text-slate-500")}>
-                            {metrics.statusBreakdown.ready}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="outline" className={cn("border-0", metrics.statusBreakdown.delivered > 0 ? "text-green-400" : "text-slate-500")}>
-                            {metrics.statusBreakdown.delivered}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="outline" className={cn("border-0", metrics.statusBreakdown.canceled > 0 ? "text-red-400" : "text-slate-500")}>
-                            {metrics.statusBreakdown.canceled}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {supportAgents.length === 0 && (
-                    <TableRow className="border-slate-800">
-                      <TableCell colSpan={6} className="text-center text-slate-500 py-8">
+                      <TableCell colSpan={7} className="text-center text-slate-500 py-8">
                         No support agents found
                       </TableCell>
                     </TableRow>
