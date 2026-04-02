@@ -628,10 +628,14 @@ export async function registerRoutes(
         await storage.createNotification(order.intendedDesignerId, "assignment", `New order assigned: ${orderNumber}`, order.id, "order");
       }
     } else if (verification.paymentType === 'remaining') {
+      const newRemaining = Math.max(0, currentRemaining - verification.amount);
+      const isFullyPaid = newRemaining <= 0;
+
       await storage.updateOrder(order.id, {
         advanceAmount: currentAdvance + verification.amount,
-        remainingAmount: Math.max(0, currentRemaining - verification.amount),
-        paymentStatus: (currentRemaining - verification.amount) <= 0 ? "paid" : "pending",
+        remainingAmount: newRemaining,
+        paymentStatus: isFullyPaid ? "paid" : "pending",
+        ...(isFullyPaid ? { status: "delivered" } : {}),
       });
     }
     
