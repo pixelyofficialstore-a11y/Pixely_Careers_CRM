@@ -34,7 +34,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   const isAdmin = user?.role === "admin";
   const { data: pendingPaymentData } = useQuery<{ count: number }>({
     queryKey: ["/api/payment-verifications/pending-count"],
-    refetchInterval: 30000,
+    refetchInterval: 5000,
     enabled: isAdmin,
     retry: false,
   });
