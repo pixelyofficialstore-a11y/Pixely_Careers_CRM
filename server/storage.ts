@@ -1,12 +1,13 @@
 import { 
   users, orders, notifications, orderServices, paymentVerifications, supportDesignerAssignments,
-  servicesCatalog, packageConfigs,
+  servicesCatalog, packageConfigs, platformsCatalog,
   type User, type InsertUser, type Order, type InsertOrder,
   type OrderService, type InsertOrderService, type OrderWithServices,
   type PaymentVerification, type InsertPaymentVerification, type PaymentVerificationWithUsers,
   type Notification, type SupportDesignerAssignment,
   type ServiceCatalogItem, type InsertServiceCatalogItem,
   type PackageConfig, type InsertPackageConfig,
+  type PlatformCatalogItem, type InsertPlatformCatalogItem,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, ne, desc, sql, and, isNotNull, inArray, asc } from "drizzle-orm";
@@ -51,6 +52,11 @@ export interface IStorage {
   createPackageConfig(pkg: InsertPackageConfig): Promise<PackageConfig>;
   updatePackageConfig(id: number, updates: Partial<InsertPackageConfig>): Promise<PackageConfig>;
   deletePackageConfig(id: number): Promise<void>;
+
+  getPlatformsCatalog(): Promise<PlatformCatalogItem[]>;
+  createPlatformCatalogItem(item: InsertPlatformCatalogItem): Promise<PlatformCatalogItem>;
+  updatePlatformCatalogItem(id: number, updates: Partial<InsertPlatformCatalogItem>): Promise<PlatformCatalogItem>;
+  deletePlatformCatalogItem(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -305,6 +311,24 @@ export class DatabaseStorage implements IStorage {
 
   async deletePackageConfig(id: number): Promise<void> {
     await db.delete(packageConfigs).where(eq(packageConfigs.id, id));
+  }
+
+  async getPlatformsCatalog(): Promise<PlatformCatalogItem[]> {
+    return await db.select().from(platformsCatalog).orderBy(asc(platformsCatalog.sortOrder), asc(platformsCatalog.id));
+  }
+
+  async createPlatformCatalogItem(item: InsertPlatformCatalogItem): Promise<PlatformCatalogItem> {
+    const [newItem] = await db.insert(platformsCatalog).values(item).returning();
+    return newItem;
+  }
+
+  async updatePlatformCatalogItem(id: number, updates: Partial<InsertPlatformCatalogItem>): Promise<PlatformCatalogItem> {
+    const [updated] = await db.update(platformsCatalog).set(updates).where(eq(platformsCatalog.id, id)).returning();
+    return updated;
+  }
+
+  async deletePlatformCatalogItem(id: number): Promise<void> {
+    await db.delete(platformsCatalog).where(eq(platformsCatalog.id, id));
   }
 }
 

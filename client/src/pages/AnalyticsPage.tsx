@@ -231,6 +231,54 @@ export default function AnalyticsPage() {
            readyDate.getFullYear().toString() === performanceYear;
   }) || [];
 
+  // Platform Analytics Calculations
+  const getPlatformMetrics = () => {
+    const platforms = new Map<string, {
+      total: number;
+      campaigns: Map<string, {
+        total: number;
+        adSets: Map<string, {
+          total: number;
+          creatives: Map<string, { total: number }>;
+        }>;
+      }>;
+    }>();
+
+    marketingOrders.forEach(order => {
+      const platformName = (order as any).platform || "Unknown";
+      if (!platforms.has(platformName)) {
+        platforms.set(platformName, { total: 0, campaigns: new Map() });
+      }
+      const plat = platforms.get(platformName)!;
+      plat.total++;
+
+      if (order.campaign) {
+        const campaignName = order.campaign;
+        const adSetName = order.adSet || "No Ad Set";
+        const creativeName = order.creative || "No Creative";
+
+        if (!plat.campaigns.has(campaignName)) {
+          plat.campaigns.set(campaignName, { total: 0, adSets: new Map() });
+        }
+        const campaign = plat.campaigns.get(campaignName)!;
+        campaign.total++;
+
+        if (!campaign.adSets.has(adSetName)) {
+          campaign.adSets.set(adSetName, { total: 0, creatives: new Map() });
+        }
+        const adSet = campaign.adSets.get(adSetName)!;
+        adSet.total++;
+
+        if (!adSet.creatives.has(creativeName)) {
+          adSet.creatives.set(creativeName, { total: 0 });
+        }
+        adSet.creatives.get(creativeName)!.total++;
+      }
+    });
+
+    return platforms;
+  };
+
   // Marketing Analytics Calculations - simplified to show just order counts
   const getCampaignMetrics = () => {
     const campaigns = new Map<string, {
@@ -271,6 +319,7 @@ export default function AnalyticsPage() {
     return campaigns;
   };
 
+  const platformMetrics = getPlatformMetrics();
   const campaignMetrics = getCampaignMetrics();
 
   // Get designer metrics for specific month/year
@@ -302,6 +351,12 @@ export default function AnalyticsPage() {
     .map(([name, data]) => ({ name, ...data }))
     .sort((a, b) => b.total - a.total);
   const bestCampaign = campaignArray[0];
+
+  // Platform array sorted by order count
+  const platformArray = Array.from(platformMetrics.entries())
+    .map(([name, data]) => ({ name, ...data }))
+    .sort((a, b) => b.total - a.total);
+  const bestPlatform = platformArray[0];
 
   const supportAgents = teamMembers?.filter(u => u.role === "support") || [];
   
@@ -418,23 +473,41 @@ export default function AnalyticsPage() {
     doc.setFontSize(11);
     doc.text(`Generated: ${format(new Date(), "MMM dd, yyyy h:mm a")}`, 14, 32);
     
-    const tableData: (string | number)[][] = [];
-    campaignMetrics.forEach((campaign, campaignName) => {
-      tableData.push([campaignName, "", "", campaign.total]);
-      campaign.adSets.forEach((adSet, adSetName) => {
-        tableData.push(["", adSetName, "", adSet.total]);
-        adSet.creatives.forEach((creative, creativeName) => {
-          tableData.push(["", "", creativeName, creative.total]);
-        });
-      });
-    });
+    const platformTableData: (string | number)[][] = platformArray.map(p => [p.name, p.total]);
 
     autoTable(doc, {
       startY: 40,
-      head: [["Campaign", "Ad Set", "Creative", "Orders"]],
-      body: tableData,
-      headStyles: { fillColor: [37, 99, 235] }
+      head: [["Platform", "Orders"]],
+      body: platformTableData,
+      headStyles: { fillColor: [37, 99, 235] },
     });
+
+    const campaignTableData: (string | number)[][] = [];
+    platformMetrics.forEach((plat, platName) => {
+      if (plat.campaigns.size > 0) {
+        plat.campaigns.forEach((campaign, campaignName) => {
+          campaignTableData.push([platName, campaignName, "", "", campaign.total]);
+          campaign.adSets.forEach((adSet, adSetName) => {
+            campaignTableData.push(["", "", adSetName, "", adSet.total]);
+            adSet.creatives.forEach((creative, creativeName) => {
+              campaignTableData.push(["", "", "", creativeName, creative.total]);
+            });
+          });
+        });
+      }
+    });
+
+    if (campaignTableData.length > 0) {
+      const currentY = (doc as any).lastAutoTable?.finalY || 80;
+      doc.setFontSize(14);
+      doc.text("Campaign Tracking", 14, currentY + 14);
+      autoTable(doc, {
+        startY: currentY + 20,
+        head: [["Platform", "Campaign", "Ad Set", "Creative", "Orders"]],
+        body: campaignTableData,
+        headStyles: { fillColor: [124, 58, 237] },
+      });
+    }
 
     doc.save(`marketing-analytics-${monthName.replace(" ", "-")}.pdf`);
   };
@@ -470,8 +543,8 @@ export default function AnalyticsPage() {
           testId="stat-best-designer"
         />
         <StatCard 
-          title="Best Campaign" 
-          value={bestCampaign?.name || "N/A"} 
+          title="Best Platform" 
+          value={bestPlatform?.name || "N/A"} 
           icon={Megaphone}
           color="orange"
           testId="stat-best-campaign"
@@ -683,72 +756,88 @@ export default function AnalyticsPage() {
               </Button>
             </div>
 
-            {/* Campaign Performance */}
+            {/* Platform Breakdown */}
             <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
               <div className="p-6 border-b border-slate-800">
                 <h3 className="text-lg font-bold text-white flex items-center gap-2">
                   <Megaphone className="w-5 h-5 text-orange-500" />
-                  Campaign Performance
+                  Platform Breakdown
                 </h3>
-                <p className="text-sm text-slate-500">Monthly orders grouped by Campaign → Ad Set → Creative</p>
+                <p className="text-sm text-slate-500">Where clients are coming from this month</p>
               </div>
-              
-              <div className="divide-y divide-slate-800">
-                {campaignArray.map((campaign) => (
-                  <div key={campaign.name} className="p-4" data-testid={`campaign-${campaign.name}`}>
-                    {/* Campaign Level */}
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-orange-500/10 rounded-lg">
-                          <Megaphone className="w-4 h-4 text-orange-500" />
-                        </div>
-                        <div>
-                          <p className="text-white font-medium">{campaign.name}</p>
-                          <p className="text-xs text-slate-500">Campaign</p>
-                        </div>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-2xl font-bold text-white">{campaign.total}</p>
-                        <p className="text-xs text-slate-500">Orders</p>
-                      </div>
-                    </div>
-                    
-                    {/* Ad Sets */}
-                    <div className="ml-8 space-y-2">
-                      {Array.from(campaign.adSets.entries()).map(([adSetName, adSet]) => (
-                        <div key={adSetName} className="bg-slate-900/50 rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <Layers className="w-4 h-4 text-blue-500" />
-                              <span className="text-slate-300">{adSetName}</span>
-                            </div>
-                            <Badge variant="secondary" className="text-white">{adSet.total} orders</Badge>
+
+              {platformArray.length === 0 ? (
+                <div className="p-8 text-center text-slate-500">
+                  No platform data yet. Orders will show here once clients are tagged with a platform.
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-800">
+                  {platformArray.map((plat) => (
+                    <div key={plat.name} className="p-4" data-testid={`platform-${plat.name}`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-orange-500/10 rounded-lg">
+                            <Megaphone className="w-4 h-4 text-orange-500" />
                           </div>
-                          
-                          {/* Creatives */}
-                          <div className="ml-6 mt-2 space-y-1">
-                            {Array.from(adSet.creatives.entries()).map(([creativeName, creative]) => (
-                              <div key={creativeName} className="flex items-center justify-between text-sm py-1">
+                          <div>
+                            <p className="text-white font-medium">{plat.name}</p>
+                            <p className="text-xs text-slate-500">Platform</p>
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-2xl font-bold text-white">{plat.total}</p>
+                          <p className="text-xs text-slate-500">Orders</p>
+                        </div>
+                      </div>
+
+                      {/* Campaign Tracking (only for platforms with campaign data) */}
+                      {plat.campaigns.size > 0 && (
+                        <div className="ml-8 space-y-2">
+                          {Array.from(plat.campaigns.entries()).map(([campaignName, campaign]) => (
+                            <div key={campaignName} className="bg-slate-900/50 rounded-lg p-3">
+                              <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-2">
-                                  <Palette className="w-3 h-3 text-purple-500" />
-                                  <span className="text-slate-400">{creativeName}</span>
+                                  <Layers className="w-4 h-4 text-blue-500" />
+                                  <span className="text-slate-300 font-medium">{campaignName}</span>
+                                  <span className="text-xs text-slate-500">Campaign</span>
                                 </div>
-                                <span className="text-slate-300">{creative.total}</span>
+                                <Badge variant="secondary" className="text-white">{campaign.total} orders</Badge>
                               </div>
-                            ))}
-                          </div>
+                              {/* Ad Sets */}
+                              <div className="ml-6 mt-2 space-y-1">
+                                {Array.from(campaign.adSets.entries()).map(([adSetName, adSet]) => (
+                                  <div key={adSetName} className="mb-2">
+                                    <div className="flex items-center justify-between text-sm py-1">
+                                      <div className="flex items-center gap-2">
+                                        <Layers className="w-3 h-3 text-indigo-400" />
+                                        <span className="text-slate-400">{adSetName}</span>
+                                        <span className="text-xs text-slate-600">Ad Set</span>
+                                      </div>
+                                      <span className="text-slate-300">{adSet.total}</span>
+                                    </div>
+                                    {/* Creatives */}
+                                    <div className="ml-5 space-y-0.5">
+                                      {Array.from(adSet.creatives.entries()).map(([creativeName, creative]) => (
+                                        <div key={creativeName} className="flex items-center justify-between text-xs py-0.5">
+                                          <div className="flex items-center gap-1.5">
+                                            <Palette className="w-3 h-3 text-purple-400" />
+                                            <span className="text-slate-500">{creativeName}</span>
+                                          </div>
+                                          <span className="text-slate-400">{creative.total}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      )}
                     </div>
-                  </div>
-                ))}
-                
-                {campaignArray.length === 0 && (
-                  <div className="p-8 text-center text-slate-500">
-                    No campaign data available for this month. Tag orders with campaigns to see analytics.
-                  </div>
-                )}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </TabsContent>

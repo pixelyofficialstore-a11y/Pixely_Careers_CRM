@@ -77,7 +77,7 @@ import {
 } from "@/components/ui/tooltip";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { OrderWithServices, User, SupportDesignerAssignment, ServiceCatalogItem, PackageConfig } from "@shared/schema";
+import type { OrderWithServices, User, SupportDesignerAssignment, ServiceCatalogItem, PackageConfig, PlatformCatalogItem } from "@shared/schema";
 
 const FALLBACK_SERVICE_TYPES = [
   "ATS CV",
@@ -1046,14 +1046,21 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
     staleTime: 5 * 60 * 1000,
   });
 
+  const { data: platformsCatalogData = [] } = useQuery<PlatformCatalogItem[]>({
+    queryKey: ["/api/platforms-catalog"],
+    staleTime: 5 * 60 * 1000,
+  });
+
   const activeFormServiceTypes = servicesCatalogData.filter(s => s.isActive).map(s => s.name);
   const formServiceTypes = activeFormServiceTypes.length > 0 ? activeFormServiceTypes : FALLBACK_SERVICE_TYPES;
   const activeFormPackages = packageConfigsData.filter(p => p.isActive);
+  const activePlatforms = platformsCatalogData.filter(p => p.isActive);
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
   const [assignedToId, setAssignedToId] = useState("");
   const [totalBill, setTotalBill] = useState("");
   const [advanceAmount, setAdvanceAmount] = useState("");
+  const [platform, setPlatform] = useState("");
   const [campaign, setCampaign] = useState("");
   const [adSet, setAdSet] = useState("");
   const [creative, setCreative] = useState("");
@@ -1142,6 +1149,7 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
         advanceAmount: 0,
         remainingAmount: totalPriceValue,
         packageType: packageType || null,
+        platform: platform.trim() || null,
         campaign: campaign.trim() || null,
         adSet: adSet.trim() || null,
         creative: creative.trim() || null,
@@ -1401,38 +1409,67 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
 
       <div className="space-y-4">
         <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Marketing</h4>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="space-y-2">
-            <Label className="text-slate-300">Campaign</Label>
-            <Input 
-              value={campaign} 
-              onChange={(e) => setCampaign(e.target.value)} 
-              className="bg-slate-950 border-slate-800 text-white"
-              placeholder="Campaign name..."
-              data-testid="input-campaign"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-slate-300">Ad Set</Label>
-            <Input 
-              value={adSet} 
-              onChange={(e) => setAdSet(e.target.value)} 
-              className="bg-slate-950 border-slate-800 text-white"
-              placeholder="Ad set name..."
-              data-testid="input-ad-set"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-slate-300">Creative</Label>
-            <Input 
-              value={creative} 
-              onChange={(e) => setCreative(e.target.value)} 
-              className="bg-slate-950 border-slate-800 text-white"
-              placeholder="Creative name..."
-              data-testid="input-creative"
-            />
-          </div>
+        <div className="space-y-2">
+          <Label className="text-slate-300">How did the client find us?</Label>
+          <Select value={platform} onValueChange={(val) => {
+            setPlatform(val);
+            const found = platformsCatalogData.find(p => p.name === val);
+            if (!found?.hasCampaignFields) {
+              setCampaign("");
+              setAdSet("");
+              setCreative("");
+            }
+          }}>
+            <SelectTrigger className="bg-slate-950 border-slate-800 text-white" data-testid="select-platform">
+              <SelectValue placeholder="Select platform..." />
+            </SelectTrigger>
+            <SelectContent className="bg-slate-900 border-slate-700">
+              {activePlatforms.length > 0 ? activePlatforms.map(p => (
+                <SelectItem key={p.id} value={p.name} className="text-white hover:bg-slate-800">{p.name}</SelectItem>
+              )) : (
+                <SelectItem value="Other" className="text-white hover:bg-slate-800">Other</SelectItem>
+              )}
+            </SelectContent>
+          </Select>
         </div>
+        {(() => {
+          const selectedPlatform = platformsCatalogData.find(p => p.name === platform);
+          if (!selectedPlatform?.hasCampaignFields) return null;
+          return (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label className="text-slate-300">Campaign</Label>
+                <Input 
+                  value={campaign} 
+                  onChange={(e) => setCampaign(e.target.value)} 
+                  className="bg-slate-950 border-slate-800 text-white"
+                  placeholder="Campaign name..."
+                  data-testid="input-campaign"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-slate-300">Ad Set</Label>
+                <Input 
+                  value={adSet} 
+                  onChange={(e) => setAdSet(e.target.value)} 
+                  className="bg-slate-950 border-slate-800 text-white"
+                  placeholder="Ad set name..."
+                  data-testid="input-ad-set"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-slate-300">Creative</Label>
+                <Input 
+                  value={creative} 
+                  onChange={(e) => setCreative(e.target.value)} 
+                  className="bg-slate-950 border-slate-800 text-white"
+                  placeholder="Creative name..."
+                  data-testid="input-creative"
+                />
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       <div className="space-y-2">

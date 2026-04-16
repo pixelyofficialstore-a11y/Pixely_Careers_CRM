@@ -36,8 +36,9 @@ import {
   Wrench,
   Eye,
   EyeOff,
+  Globe,
 } from "lucide-react";
-import type { ServiceCatalogItem, PackageConfig } from "@shared/schema";
+import type { ServiceCatalogItem, PackageConfig, PlatformCatalogItem } from "@shared/schema";
 
 export default function AdminSettingsPage() {
   const { user } = useAuth();
@@ -55,7 +56,7 @@ export default function AdminSettingsPage() {
         <Settings className="w-7 h-7 text-blue-400" />
         <div>
           <h1 className="text-2xl font-bold text-white">Admin Settings</h1>
-          <p className="text-sm text-slate-400">Manage services and package configurations</p>
+          <p className="text-sm text-slate-400">Manage services, packages, and marketing platforms</p>
         </div>
       </div>
 
@@ -69,6 +70,10 @@ export default function AdminSettingsPage() {
             <Package className="w-4 h-4" />
             Packages
           </TabsTrigger>
+          <TabsTrigger value="platforms" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white gap-2">
+            <Globe className="w-4 h-4" />
+            Platforms
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="services">
@@ -77,6 +82,10 @@ export default function AdminSettingsPage() {
 
         <TabsContent value="packages">
           <PackagesSection />
+        </TabsContent>
+
+        <TabsContent value="platforms">
+          <PlatformsSection />
         </TabsContent>
       </Tabs>
     </div>
@@ -566,6 +575,222 @@ function PackagesSection() {
             <AlertDialogTitle>Delete Package</AlertDialogTitle>
             <AlertDialogDescription className="text-slate-400">
               Are you sure you want to delete <span className="text-white font-medium">"{deleteItem?.label}"</span>? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteItem && deleteMutation.mutate(deleteItem.id)}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function PlatformsSection() {
+  const { toast } = useToast();
+  const [addOpen, setAddOpen] = useState(false);
+  const [editItem, setEditItem] = useState<PlatformCatalogItem | null>(null);
+  const [deleteItem, setDeleteItem] = useState<PlatformCatalogItem | null>(null);
+  const [newName, setNewName] = useState("");
+  const [newHasCampaign, setNewHasCampaign] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editHasCampaign, setEditHasCampaign] = useState(false);
+
+  const { data: platforms = [], isLoading } = useQuery<PlatformCatalogItem[]>({
+    queryKey: ["/api/platforms-catalog"],
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (data: { name: string; hasCampaignFields: boolean }) => {
+      const res = await apiRequest("POST", "/api/platforms-catalog", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/platforms-catalog"] });
+      setAddOpen(false);
+      setNewName("");
+      setNewHasCampaign(false);
+      toast({ title: "Success", description: "Platform added successfully" });
+    },
+    onError: async (err: any) => {
+      const body = err?.response ? await err.response.json().catch(() => ({})) : {};
+      toast({ title: "Error", description: body.message || "Failed to add platform", variant: "destructive" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async (data: { id: number; name?: string; isActive?: boolean; hasCampaignFields?: boolean }) => {
+      const { id, ...rest } = data;
+      const res = await apiRequest("PATCH", `/api/platforms-catalog/${id}`, rest);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/platforms-catalog"] });
+      setEditItem(null);
+      toast({ title: "Success", description: "Platform updated" });
+    },
+    onError: async (err: any) => {
+      const body = err?.response ? await err.response.json().catch(() => ({})) : {};
+      toast({ title: "Error", description: body.message || "Failed to update platform", variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/platforms-catalog/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/platforms-catalog"] });
+      setDeleteItem(null);
+      toast({ title: "Success", description: "Platform deleted" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete platform", variant: "destructive" });
+    },
+  });
+
+  const openEdit = (item: PlatformCatalogItem) => {
+    setEditItem(item);
+    setEditName(item.name);
+    setEditHasCampaign(item.hasCampaignFields);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Marketing Platforms</h2>
+          <p className="text-sm text-slate-400">Configure where clients come from. Enable "Campaign Fields" for platforms that use Facebook-style ad tracking.</p>
+        </div>
+        <Button onClick={() => setAddOpen(true)} className="bg-blue-600 hover:bg-blue-700 gap-2">
+          <Plus className="w-4 h-4" /> Add Platform
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <p className="text-slate-400 text-sm">Loading...</p>
+      ) : platforms.length === 0 ? (
+        <p className="text-slate-400 text-sm">No platforms configured yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {platforms.map((item) => (
+            <div key={item.id} className="flex items-center justify-between p-3 bg-slate-900 border border-slate-800 rounded-lg">
+              <div className="flex items-center gap-3">
+                <Globe className="w-4 h-4 text-blue-400" />
+                <span className="text-white font-medium">{item.name}</span>
+                {item.hasCampaignFields && (
+                  <Badge variant="outline" className="border-purple-500 text-purple-400 text-xs">Campaign Fields</Badge>
+                )}
+                {!item.isActive && (
+                  <Badge variant="outline" className="border-slate-600 text-slate-500 text-xs">Inactive</Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => updateMutation.mutate({ id: item.id, isActive: !item.isActive })}
+                  className="text-slate-400 hover:text-white"
+                  title={item.isActive ? "Deactivate" : "Activate"}
+                >
+                  {item.isActive ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => openEdit(item)} className="text-slate-400 hover:text-white">
+                  <Pencil className="w-4 h-4" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setDeleteItem(item)} className="text-slate-400 hover:text-red-400">
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+          <DialogHeader>
+            <DialogTitle>Add Platform</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label>Platform Name</Label>
+              <Input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="e.g. Facebook, TikTok, Referral..."
+                className="bg-slate-800 border-slate-700 text-white"
+                onKeyDown={(e) => e.key === "Enter" && newName.trim() && createMutation.mutate({ name: newName.trim(), hasCampaignFields: newHasCampaign })}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-sm font-medium text-white">Campaign Fields</Label>
+                <p className="text-xs text-slate-400 mt-0.5">Show Campaign / Ad Set / Creative inputs for this platform</p>
+              </div>
+              <Switch checked={newHasCampaign} onCheckedChange={setNewHasCampaign} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => { setAddOpen(false); setNewName(""); setNewHasCampaign(false); }} className="text-slate-300 hover:text-white">Cancel</Button>
+            <Button
+              onClick={() => createMutation.mutate({ name: newName.trim(), hasCampaignFields: newHasCampaign })}
+              disabled={!newName.trim() || createMutation.isPending}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {createMutation.isPending ? "Adding..." : "Add Platform"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editItem} onOpenChange={(o) => { if (!o) setEditItem(null); }}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+          <DialogHeader>
+            <DialogTitle>Edit Platform</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label>Platform Name</Label>
+              <Input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="bg-slate-800 border-slate-700 text-white"
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-sm font-medium text-white">Campaign Fields</Label>
+                <p className="text-xs text-slate-400 mt-0.5">Show Campaign / Ad Set / Creative inputs for this platform</p>
+              </div>
+              <Switch checked={editHasCampaign} onCheckedChange={setEditHasCampaign} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditItem(null)} className="text-slate-300 hover:text-white">Cancel</Button>
+            <Button
+              onClick={() => editItem && updateMutation.mutate({ id: editItem.id, name: editName.trim(), hasCampaignFields: editHasCampaign })}
+              disabled={!editName.trim() || updateMutation.isPending}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {updateMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deleteItem} onOpenChange={(o) => { if (!o) setDeleteItem(null); }}>
+        <AlertDialogContent className="bg-slate-900 border-slate-800 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Platform</AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-400">
+              Are you sure you want to delete <span className="text-white font-medium">"{deleteItem?.name}"</span>? This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

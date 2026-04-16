@@ -290,6 +290,7 @@ export async function registerRoutes(
         totalPrice: z.number().int().optional(),
         amountPaid: z.number().int().optional(),
         packageType: z.enum(["starter", "professional", "executive", "custom"]).optional().nullable(),
+        platform: z.string().optional().nullable(),
         campaign: z.string().optional().nullable(),
         adSet: z.string().optional().nullable(),
         creative: z.string().optional().nullable(),
@@ -724,6 +725,51 @@ export async function registerRoutes(
   });
 
   registerObjectStorageRoutes(app);
+
+  app.get("/api/platforms-catalog", requireAuth, async (req, res) => {
+    const items = await storage.getPlatformsCatalog();
+    res.json(items);
+  });
+
+  app.post("/api/platforms-catalog", requireRole(["admin"]), async (req, res) => {
+    try {
+      const { name, isActive, hasCampaignFields, sortOrder } = req.body;
+      if (!name || typeof name !== "string" || !name.trim()) {
+        return res.status(400).json({ message: "Platform name is required" });
+      }
+      const item = await storage.createPlatformCatalogItem({
+        name: name.trim(),
+        isActive: isActive !== false,
+        hasCampaignFields: !!hasCampaignFields,
+        sortOrder: sortOrder || 0,
+      });
+      res.status(201).json(item);
+    } catch (err: any) {
+      if (err?.code === "23505") {
+        return res.status(400).json({ message: "A platform with that name already exists" });
+      }
+      throw err;
+    }
+  });
+
+  app.patch("/api/platforms-catalog/:id", requireRole(["admin"]), async (req, res) => {
+    const id = Number(req.params.id);
+    try {
+      const updated = await storage.updatePlatformCatalogItem(id, req.body);
+      res.json(updated);
+    } catch (err: any) {
+      if (err?.code === "23505") {
+        return res.status(400).json({ message: "A platform with that name already exists" });
+      }
+      throw err;
+    }
+  });
+
+  app.delete("/api/platforms-catalog/:id", requireRole(["admin"]), async (req, res) => {
+    const id = Number(req.params.id);
+    await storage.deletePlatformCatalogItem(id);
+    res.json({ success: true });
+  });
 
   app.get("/api/services-catalog", requireAuth, async (req, res) => {
     const items = await storage.getServicesCatalog();

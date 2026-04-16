@@ -3,6 +3,15 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
 
+export const platformsCatalog = pgTable("platforms_catalog", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  isActive: boolean("is_active").default(true).notNull(),
+  hasCampaignFields: boolean("has_campaign_fields").default(false).notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const servicesCatalog = pgTable("services_catalog", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
@@ -57,6 +66,7 @@ export const orders = pgTable("orders", {
   totalPrice: integer("total_price").notNull().default(0),
   advanceAmount: integer("advance_amount").default(0),
   remainingAmount: integer("remaining_amount").default(0),
+  platform: text("platform"),
   campaign: text("campaign"),
   adSet: text("ad_set"),
   creative: text("creative"),
@@ -191,6 +201,7 @@ export const insertPaymentVerificationSchema = createInsertSchema(paymentVerific
 export const insertSupportDesignerAssignmentSchema = createInsertSchema(supportDesignerAssignments).omit({ id: true, assignedAt: true });
 export const insertServicesCatalogSchema = createInsertSchema(servicesCatalog).omit({ id: true, createdAt: true });
 export const insertPackageConfigSchema = createInsertSchema(packageConfigs).omit({ id: true, createdAt: true });
+export const insertPlatformsCatalogSchema = createInsertSchema(platformsCatalog).omit({ id: true, createdAt: true });
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -226,3 +237,5 @@ export type ServiceCatalogItem = typeof servicesCatalog.$inferSelect;
 export type InsertServiceCatalogItem = z.infer<typeof insertServicesCatalogSchema>;
 export type PackageConfig = typeof packageConfigs.$inferSelect;
 export type InsertPackageConfig = z.infer<typeof insertPackageConfigSchema>;
+export type PlatformCatalogItem = typeof platformsCatalog.$inferSelect;
+export type InsertPlatformCatalogItem = z.infer<typeof insertPlatformsCatalogSchema>;
