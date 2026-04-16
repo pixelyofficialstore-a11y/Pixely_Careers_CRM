@@ -318,6 +318,17 @@ export async function registerRoutes(
         status: "pending_payment",
       }, services || []);
 
+      const admins = await storage.getAdmins();
+      for (const admin of admins) {
+        await storage.createNotification(
+          admin.id,
+          "order",
+          `New order placed by ${orderData.clientName}`,
+          order.id,
+          "order"
+        );
+      }
+
       res.status(201).json(order);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -405,6 +416,16 @@ export async function registerRoutes(
   app.get(api.notifications.list.path, requireAuth, async (req, res) => {
     const notifs = await storage.getNotifications((req.user as User).id);
     res.json(notifs);
+  });
+
+  app.get("/api/notifications/unread-count", requireAuth, async (req, res) => {
+    const count = await storage.getUnreadNotificationCount((req.user as User).id);
+    res.json({ count });
+  });
+
+  app.patch("/api/notifications/mark-all-read", requireAuth, async (req, res) => {
+    await storage.markAllNotificationsRead((req.user as User).id);
+    res.json({ success: true });
   });
 
   app.patch(api.notifications.markRead.path, requireAuth, async (req, res) => {
@@ -560,6 +581,18 @@ export async function registerRoutes(
         submittedById: user.id,
         status: "pending_confirmation",
       });
+
+      const admins = await storage.getAdmins();
+      const paymentLabel = paymentType === "advance" ? "advance" : paymentType === "remaining" ? "remaining" : "full";
+      for (const admin of admins) {
+        await storage.createNotification(
+          admin.id,
+          "payment",
+          `Payment verification request: ${order.clientName} — ${paymentLabel} payment`,
+          verification.id,
+          "payment_verification"
+        );
+      }
       
       res.status(201).json(verification);
     } catch (err: any) {

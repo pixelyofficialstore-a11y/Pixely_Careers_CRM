@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { NotificationBell } from "./NotificationBell";
 
 import logoUrl from "@assets/rr__1500_x_500_px_-removebg-preview_1769451275347.png";
 
@@ -94,7 +95,8 @@ export function Sidebar({ onNavigate }: SidebarProps) {
       <div className="p-6">
         <div className="flex items-center gap-3 mb-8">
           <img src={logoUrl} alt="PixelCRM" className="h-8 w-auto" />
-          <h1 className="text-xl font-bold font-display tracking-tight text-white">Pixely_CRM</h1>
+          <h1 className="text-xl font-bold font-display tracking-tight text-white flex-1">Pixely_CRM</h1>
+          <NotificationBell />
         </div>
 
         <div className="flex flex-col gap-6">

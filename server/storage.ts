@@ -57,6 +57,10 @@ export interface IStorage {
   createPlatformCatalogItem(item: InsertPlatformCatalogItem): Promise<PlatformCatalogItem>;
   updatePlatformCatalogItem(id: number, updates: Partial<InsertPlatformCatalogItem>): Promise<PlatformCatalogItem>;
   deletePlatformCatalogItem(id: number): Promise<void>;
+
+  getAdmins(): Promise<User[]>;
+  getUnreadNotificationCount(userId: number): Promise<number>;
+  markAllNotificationsRead(userId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -329,6 +333,25 @@ export class DatabaseStorage implements IStorage {
 
   async deletePlatformCatalogItem(id: number): Promise<void> {
     await db.delete(platformsCatalog).where(eq(platformsCatalog.id, id));
+  }
+
+  async getAdmins(): Promise<User[]> {
+    return await db.select().from(users).where(eq(users.role, "admin"));
+  }
+
+  async getUnreadNotificationCount(userId: number): Promise<number> {
+    const result = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(notifications)
+      .where(and(eq(notifications.userId, userId), eq(notifications.read, false)));
+    return result[0]?.count || 0;
+  }
+
+  async markAllNotificationsRead(userId: number): Promise<void> {
+    await db
+      .update(notifications)
+      .set({ read: true })
+      .where(eq(notifications.userId, userId));
   }
 }
 
