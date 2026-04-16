@@ -196,12 +196,10 @@ export default function OrdersPage() {
     return matchesSearch;
   });
 
-  // Only count orders with approved payment status in all views
-  // Admin can see all orders (including non-approved), others only see approved
-  const visibleOrders = isAdmin 
-    ? (filteredOrders || [])
-    : (filteredOrders?.filter(order => order.advancePaymentStatus === 'approved') || []);
-  const approvedOrders = filteredOrders?.filter(order => order.advancePaymentStatus === 'approved') || [];
+  // All roles only see approved orders in the Orders Page
+  // Unapproved orders are reviewed exclusively in the Payments page
+  const visibleOrders = filteredOrders?.filter(order => order.advancePaymentStatus === 'approved') || [];
+  const approvedOrders = visibleOrders;
   
   const todayOrders = visibleOrders.filter(order => {
     const createdDate = new Date(order.createdAt!);
@@ -290,6 +288,25 @@ export default function OrdersPage() {
   
   const canDelete = isAdmin || isSupport;
 
+  const getMobileStatusOptions = (order: OrderWithServices) => {
+    if (isDesigner) {
+      if (order.status === 'ready') return [{ value: "ready", label: "Ready" }];
+      if (order.status === 'delivered') return [{ value: "delivered", label: "Delivered" }];
+      return [
+        { value: "new", label: "New" },
+        { value: "working", label: "Working" },
+        { value: "ready", label: "Ready" },
+      ];
+    }
+    return [
+      { value: "new", label: "New" },
+      { value: "working", label: "Working" },
+      { value: "ready", label: "Ready" },
+      { value: "delivered", label: "Delivered" },
+      { value: "canceled", label: "Canceled" },
+    ];
+  };
+
   const exportOrdersPDF = () => {
     const doc = new jsPDF();
     const monthName = format(new Date(parseInt(selectedYear), parseInt(selectedMonth), 1), "MMMM yyyy");
@@ -324,7 +341,7 @@ export default function OrdersPage() {
   };
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-4 md:p-8 space-y-4 md:space-y-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold font-display text-white mb-2">Orders Management</h1>
@@ -416,7 +433,64 @@ export default function OrdersPage() {
               <h3 className="text-lg font-bold text-white">Today's Orders</h3>
               <p className="text-sm text-slate-500">Orders created today</p>
             </div>
-            <div className="table-scroll-wrapper">
+            {/* Mobile card view – Today */}
+            <div className="md:hidden divide-y divide-slate-800">
+              {todayOrders?.map((order) => (
+                <div key={order.id} className="p-4 hover:bg-slate-900/30 active:bg-slate-900/50 transition-colors">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="min-w-0">
+                      <p className="text-white font-semibold text-sm truncate">{order.clientName}</p>
+                      <p className="text-blue-400 font-mono text-xs">{order.orderNumber}</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      {getStatusBadge(order.status)}
+                      <span className="text-slate-500 text-xs">{format(new Date(order.createdAt!), "h:mm a")}</span>
+                    </div>
+                  </div>
+                  <div className="mb-2 text-sm">{getServicesDisplay(order)}</div>
+                  {!isDesigner && (order.clientPhone || order.assignee?.name) && (
+                    <p className="text-slate-400 text-xs mb-2">
+                      {[order.clientPhone, order.assignee?.name ? `👤 ${order.assignee.name}` : null].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
+                  {canSeeAmounts && (
+                    <div className="flex gap-3 text-xs mb-3">
+                      <span className="text-green-400">Adv: ₨{((order.advanceAmount || 0) / 100).toLocaleString()}</span>
+                      <span className="text-red-400">Rem: ₨{((order.remainingAmount || 0) / 100).toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between gap-2">
+                    <Select
+                      defaultValue={order.status}
+                      onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { status: val } })}
+                    >
+                      <SelectTrigger className="h-7 text-xs bg-slate-800 border-slate-700 w-auto min-w-[80px]">
+                        <SelectValue>{getStatusBadge(order.status)}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent className="bg-slate-900 border-slate-800">
+                        {getMobileStatusOptions(order).map(opt => (
+                          <SelectItem key={opt.value} value={opt.value} className="text-sm">{opt.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-blue-400 hover:text-blue-300 px-2"
+                      onClick={() => openOrderDetails(order)}
+                    >
+                      <Eye className="w-3 h-3 mr-1" />
+                      Details
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              {(!todayOrders || todayOrders.length === 0) && (
+                <div className="p-8 text-center text-slate-500 text-sm">No orders for today</div>
+              )}
+            </div>
+            {/* Desktop table view – Today */}
+            <div className="table-scroll-wrapper hidden md:block">
             <Table>
               <TableHeader className="bg-slate-900/50">
                 <TableRow className="border-slate-800 hover:bg-transparent">
@@ -677,7 +751,64 @@ export default function OrdersPage() {
               </div>
             </div>
             
-            <div className="table-scroll-wrapper">
+            {/* Mobile card view – Monthly */}
+            <div className="md:hidden divide-y divide-slate-800">
+              {monthlyOrders?.map((order) => (
+                <div key={order.id} className="p-4 hover:bg-slate-900/30 active:bg-slate-900/50 transition-colors">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="min-w-0">
+                      <p className="text-white font-semibold text-sm truncate">{order.clientName}</p>
+                      <p className="text-blue-400 font-mono text-xs">{order.orderNumber}</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      {getStatusBadge(order.status)}
+                      <span className="text-slate-500 text-xs">{format(new Date(order.createdAt!), "MMM dd")}</span>
+                    </div>
+                  </div>
+                  <div className="mb-2 text-sm">{getServicesDisplay(order)}</div>
+                  {!isDesigner && (order.clientPhone || order.assignee?.name) && (
+                    <p className="text-slate-400 text-xs mb-2">
+                      {[order.clientPhone, order.assignee?.name ? `👤 ${order.assignee.name}` : null].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
+                  {canSeeAmounts && (
+                    <div className="flex gap-3 text-xs mb-3">
+                      <span className="text-green-400">Adv: ₨{((order.advanceAmount || 0) / 100).toLocaleString()}</span>
+                      <span className="text-red-400">Rem: ₨{((order.remainingAmount || 0) / 100).toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between gap-2">
+                    <Select
+                      defaultValue={order.status}
+                      onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { status: val } })}
+                    >
+                      <SelectTrigger className="h-7 text-xs bg-slate-800 border-slate-700 w-auto min-w-[80px]">
+                        <SelectValue>{getStatusBadge(order.status)}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent className="bg-slate-900 border-slate-800">
+                        {getMobileStatusOptions(order).map(opt => (
+                          <SelectItem key={opt.value} value={opt.value} className="text-sm">{opt.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-blue-400 hover:text-blue-300 px-2"
+                      onClick={() => openOrderDetails(order)}
+                    >
+                      <Eye className="w-3 h-3 mr-1" />
+                      Details
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              {(!monthlyOrders || monthlyOrders.length === 0) && (
+                <div className="p-8 text-center text-slate-500 text-sm">No orders for this month</div>
+              )}
+            </div>
+            {/* Desktop table view – Monthly */}
+            <div className="table-scroll-wrapper hidden md:block">
             <Table>
               <TableHeader className="bg-slate-900/50">
                 <TableRow className="border-slate-800">
@@ -875,8 +1006,8 @@ export default function OrdersPage() {
           {selectedOrder && (
             <div className="mt-6 space-y-6">
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  {!isDesigner && <span className="text-2xl font-bold text-blue-400 font-mono">{selectedOrder.orderNumber}</span>}
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <span className="text-2xl font-bold text-blue-400 font-mono">{selectedOrder.orderNumber}</span>
                   {getStatusBadge(selectedOrder.status)}
                 </div>
                 <p className="text-slate-400 text-sm">Created {format(new Date(selectedOrder.createdAt!), "MMMM dd, yyyy 'at' h:mm a")}</p>
@@ -911,6 +1042,12 @@ export default function OrdersPage() {
                     <div className="col-span-2">
                       <p className="text-xs text-slate-500">Email</p>
                       <p className="text-white">{selectedOrder.clientEmail}</p>
+                    </div>
+                  )}
+                  {selectedOrder.platform && (
+                    <div className="col-span-2">
+                      <p className="text-xs text-slate-500">Client Source</p>
+                      <p className="text-white capitalize">{selectedOrder.platform}</p>
                     </div>
                   )}
                 </div>
