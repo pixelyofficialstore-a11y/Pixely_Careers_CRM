@@ -77,9 +77,9 @@ import {
 } from "@/components/ui/tooltip";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { OrderWithServices, User, SupportDesignerAssignment } from "@shared/schema";
+import type { OrderWithServices, User, SupportDesignerAssignment, ServiceCatalogItem, PackageConfig } from "@shared/schema";
 
-const SERVICE_TYPES = [
+const FALLBACK_SERVICE_TYPES = [
   "ATS CV",
   "Professional CV", 
   "Europass CV",
@@ -88,7 +88,7 @@ const SERVICE_TYPES = [
   "Cover Letter (Europass)",
 ];
 
-const PACKAGE_LABELS: Record<string, string> = {
+const FALLBACK_PACKAGE_LABELS: Record<string, string> = {
   starter: "Starter",
   professional: "Professional",
   executive: "Executive",
@@ -123,6 +123,26 @@ export default function OrdersPage() {
     enabled: user?.role === "support",
     staleTime: 5 * 60 * 1000,
   });
+
+  const { data: servicesCatalog = [] } = useQuery<ServiceCatalogItem[]>({
+    queryKey: ["/api/services-catalog"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: packageConfigs = [] } = useQuery<PackageConfig[]>({
+    queryKey: ["/api/package-configs"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const activeServiceTypes = servicesCatalog.filter(s => s.isActive).map(s => s.name);
+  const serviceTypes = activeServiceTypes.length > 0 ? activeServiceTypes : FALLBACK_SERVICE_TYPES;
+
+  const activePackageConfigs = packageConfigs.filter(p => p.isActive);
+  const packageLabels: Record<string, string> = {
+    ...FALLBACK_PACKAGE_LABELS,
+    ...Object.fromEntries(activePackageConfigs.map(p => [p.key, p.label])),
+    custom: "Custom Order",
+  };
 
   const updateOrderMutation = useMutation({
     mutationFn: async ({ id, updates }: { id: number; updates: any }) => {
@@ -237,7 +257,7 @@ export default function OrdersPage() {
 
   const getServicesDisplay = (order: OrderWithServices) => {
     if (order.packageType && order.packageType !== "custom") {
-      const label = PACKAGE_LABELS[order.packageType] || order.packageType;
+      const label = packageLabels[order.packageType] || order.packageType;
       return (
         <Badge variant="secondary" className="bg-blue-500/10 text-blue-400 border-blue-500/20">
           {label}
@@ -285,7 +305,7 @@ export default function OrdersPage() {
       order.clientName,
       order.clientPhone || "-",
       (order.packageType && order.packageType !== "custom") 
-        ? PACKAGE_LABELS[order.packageType] || order.packageType
+        ? packageLabels[order.packageType] || order.packageType
         : (order.services?.map(s => `${s.quantity}x ${s.serviceType}`).join(", ") || "-"),
       order.assignee?.name || "Unassigned",
       order.status.charAt(0).toUpperCase() + order.status.slice(1),
@@ -902,7 +922,7 @@ export default function OrdersPage() {
                 </h4>
                 {selectedOrder.packageType && selectedOrder.packageType !== "custom" ? (
                   <Badge variant="secondary" className="bg-blue-500/10 text-blue-400 border-blue-500/20 text-sm px-3 py-1">
-                    {PACKAGE_LABELS[selectedOrder.packageType] || selectedOrder.packageType}
+                    {packageLabels[selectedOrder.packageType] || selectedOrder.packageType}
                   </Badge>
                 ) : (
                   <div className="space-y-2">
@@ -1015,6 +1035,20 @@ export default function OrdersPage() {
 
 function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSuccess: () => void }) {
   const { toast } = useToast();
+
+  const { data: servicesCatalogData = [] } = useQuery<ServiceCatalogItem[]>({
+    queryKey: ["/api/services-catalog"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: packageConfigsData = [] } = useQuery<PackageConfig[]>({
+    queryKey: ["/api/package-configs"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const activeFormServiceTypes = servicesCatalogData.filter(s => s.isActive).map(s => s.name);
+  const formServiceTypes = activeFormServiceTypes.length > 0 ? activeFormServiceTypes : FALLBACK_SERVICE_TYPES;
+  const activeFormPackages = packageConfigsData.filter(p => p.isActive);
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
   const [assignedToId, setAssignedToId] = useState("");
@@ -1201,9 +1235,11 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
         <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Select Package *</h4>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { value: "starter", label: "Starter", Icon: Package },
-            { value: "professional", label: "Professional", Icon: Star },
-            { value: "executive", label: "Executive", Icon: Crown },
+            ...activeFormPackages.map((p, i) => {
+              const icons = [Package, Star, Crown, Package];
+              const Icon = icons[i % icons.length];
+              return { value: p.key, label: p.label, Icon };
+            }),
             { value: "custom", label: "Custom Order", Icon: Wrench },
           ].map((pkg) => (
             <button
@@ -1259,7 +1295,7 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
                       <SelectValue placeholder="Select service type" />
                     </SelectTrigger>
                     <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                      {SERVICE_TYPES.map(type => (
+                      {formServiceTypes.map(type => (
                         <SelectItem key={type} value={type}>{type}</SelectItem>
                       ))}
                     </SelectContent>

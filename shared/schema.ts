@@ -3,6 +3,23 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
 
+export const servicesCatalog = pgTable("services_catalog", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  isActive: boolean("is_active").default(true).notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const packageConfigs = pgTable("package_configs", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  label: text("label").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const userRoles = ["admin", "support", "designer"] as const;
 export const orderStatuses = ["pending_payment", "new", "working", "ready", "delivered", "canceled"] as const;
 export const priorities = ["normal", "high", "urgent"] as const;
@@ -172,6 +189,8 @@ export const insertOrderServiceSchema = createInsertSchema(orderServices).omit({
 export const insertActivityLogSchema = createInsertSchema(activityLogs).omit({ id: true, createdAt: true });
 export const insertPaymentVerificationSchema = createInsertSchema(paymentVerifications).omit({ id: true, createdAt: true });
 export const insertSupportDesignerAssignmentSchema = createInsertSchema(supportDesignerAssignments).omit({ id: true, assignedAt: true });
+export const insertServicesCatalogSchema = createInsertSchema(servicesCatalog).omit({ id: true, createdAt: true });
+export const insertPackageConfigSchema = createInsertSchema(packageConfigs).omit({ id: true, createdAt: true });
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -203,3 +222,7 @@ export type PaymentVerificationWithUsers = PaymentVerification & {
 
 export type SupportDesignerAssignment = typeof supportDesignerAssignments.$inferSelect;
 export type InsertSupportDesignerAssignment = z.infer<typeof insertSupportDesignerAssignmentSchema>;
+export type ServiceCatalogItem = typeof servicesCatalog.$inferSelect;
+export type InsertServiceCatalogItem = z.infer<typeof insertServicesCatalogSchema>;
+export type PackageConfig = typeof packageConfigs.$inferSelect;
+export type InsertPackageConfig = z.infer<typeof insertPackageConfigSchema>;

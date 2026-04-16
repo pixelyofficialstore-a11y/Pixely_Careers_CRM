@@ -725,12 +725,136 @@ export async function registerRoutes(
 
   registerObjectStorageRoutes(app);
 
+  app.get("/api/services-catalog", requireAuth, async (req, res) => {
+    const items = await storage.getServicesCatalog();
+    res.json(items);
+  });
+
+  app.post("/api/services-catalog", requireRole(["admin"]), async (req, res) => {
+    try {
+      const { name, isActive, sortOrder } = req.body;
+      if (!name || typeof name !== "string" || !name.trim()) {
+        return res.status(400).json({ message: "Service name is required" });
+      }
+      const item = await storage.createServiceCatalogItem({
+        name: name.trim(),
+        isActive: isActive !== false,
+        sortOrder: sortOrder || 0,
+      });
+      res.status(201).json(item);
+    } catch (err: any) {
+      if (err?.code === "23505") {
+        return res.status(400).json({ message: "A service with that name already exists" });
+      }
+      throw err;
+    }
+  });
+
+  app.patch("/api/services-catalog/:id", requireRole(["admin"]), async (req, res) => {
+    const id = Number(req.params.id);
+    try {
+      const updated = await storage.updateServiceCatalogItem(id, req.body);
+      res.json(updated);
+    } catch (err: any) {
+      if (err?.code === "23505") {
+        return res.status(400).json({ message: "A service with that name already exists" });
+      }
+      throw err;
+    }
+  });
+
+  app.delete("/api/services-catalog/:id", requireRole(["admin"]), async (req, res) => {
+    const id = Number(req.params.id);
+    await storage.deleteServiceCatalogItem(id);
+    res.json({ success: true });
+  });
+
+  app.get("/api/package-configs", requireAuth, async (req, res) => {
+    const pkgs = await storage.getPackageConfigs();
+    res.json(pkgs);
+  });
+
+  app.post("/api/package-configs", requireRole(["admin"]), async (req, res) => {
+    try {
+      const { key, label, isActive, sortOrder } = req.body;
+      if (!key || typeof key !== "string" || !key.trim()) {
+        return res.status(400).json({ message: "Package key is required" });
+      }
+      if (!label || typeof label !== "string" || !label.trim()) {
+        return res.status(400).json({ message: "Package label is required" });
+      }
+      const slugKey = key.trim().toLowerCase().replace(/\s+/g, "_");
+      const pkg = await storage.createPackageConfig({
+        key: slugKey,
+        label: label.trim(),
+        isActive: isActive !== false,
+        sortOrder: sortOrder || 0,
+      });
+      res.status(201).json(pkg);
+    } catch (err: any) {
+      if (err?.code === "23505") {
+        return res.status(400).json({ message: "A package with that key already exists" });
+      }
+      throw err;
+    }
+  });
+
+  app.patch("/api/package-configs/:id", requireRole(["admin"]), async (req, res) => {
+    const id = Number(req.params.id);
+    try {
+      const updates = { ...req.body };
+      if (updates.key) {
+        updates.key = updates.key.trim().toLowerCase().replace(/\s+/g, "_");
+      }
+      const updated = await storage.updatePackageConfig(id, updates);
+      res.json(updated);
+    } catch (err: any) {
+      if (err?.code === "23505") {
+        return res.status(400).json({ message: "A package with that key already exists" });
+      }
+      throw err;
+    }
+  });
+
+  app.delete("/api/package-configs/:id", requireRole(["admin"]), async (req, res) => {
+    const id = Number(req.params.id);
+    await storage.deletePackageConfig(id);
+    res.json({ success: true });
+  });
+
   await seedDatabase();
 
   return httpServer;
 }
 
 async function seedDatabase() {
+  const existingServices = await storage.getServicesCatalog();
+  if (existingServices.length === 0) {
+    const defaultServices = [
+      "ATS CV",
+      "Professional CV",
+      "Europass CV",
+      "LinkedIn Profile",
+      "Cover Letter (Professional)",
+      "Cover Letter (Europass)",
+    ];
+    for (let i = 0; i < defaultServices.length; i++) {
+      await storage.createServiceCatalogItem({ name: defaultServices[i], isActive: true, sortOrder: i });
+    }
+  }
+
+  const existingPackages = await storage.getPackageConfigs();
+  if (existingPackages.length === 0) {
+    const defaultPackages = [
+      { key: "starter", label: "Starter", sortOrder: 0 },
+      { key: "professional", label: "Professional", sortOrder: 1 },
+      { key: "executive", label: "Executive", sortOrder: 2 },
+    ];
+    for (const pkg of defaultPackages) {
+      await storage.createPackageConfig({ key: pkg.key, label: pkg.label, isActive: true, sortOrder: pkg.sortOrder });
+    }
+  }
+
   const existingUsers = await storage.getUsers();
   if (existingUsers.length > 0) return;
 

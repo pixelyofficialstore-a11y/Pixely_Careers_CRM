@@ -1,12 +1,15 @@
 import { 
   users, orders, notifications, orderServices, paymentVerifications, supportDesignerAssignments,
+  servicesCatalog, packageConfigs,
   type User, type InsertUser, type Order, type InsertOrder,
   type OrderService, type InsertOrderService, type OrderWithServices,
   type PaymentVerification, type InsertPaymentVerification, type PaymentVerificationWithUsers,
-  type Notification, type SupportDesignerAssignment
+  type Notification, type SupportDesignerAssignment,
+  type ServiceCatalogItem, type InsertServiceCatalogItem,
+  type PackageConfig, type InsertPackageConfig,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, ne, desc, sql, and, isNotNull, inArray } from "drizzle-orm";
+import { eq, ne, desc, sql, and, isNotNull, inArray, asc } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -38,6 +41,16 @@ export interface IStorage {
   getDesignerAssignments(supportUserId: number): Promise<SupportDesignerAssignment[]>;
   getAllDesignerAssignments(): Promise<SupportDesignerAssignment[]>;
   setDesignerAssignments(supportUserId: number, designerIds: number[]): Promise<void>;
+
+  getServicesCatalog(): Promise<ServiceCatalogItem[]>;
+  createServiceCatalogItem(item: InsertServiceCatalogItem): Promise<ServiceCatalogItem>;
+  updateServiceCatalogItem(id: number, updates: Partial<InsertServiceCatalogItem>): Promise<ServiceCatalogItem>;
+  deleteServiceCatalogItem(id: number): Promise<void>;
+
+  getPackageConfigs(): Promise<PackageConfig[]>;
+  createPackageConfig(pkg: InsertPackageConfig): Promise<PackageConfig>;
+  updatePackageConfig(id: number, updates: Partial<InsertPackageConfig>): Promise<PackageConfig>;
+  deletePackageConfig(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -256,6 +269,42 @@ export class DatabaseStorage implements IStorage {
         }))
       );
     }
+  }
+
+  async getServicesCatalog(): Promise<ServiceCatalogItem[]> {
+    return await db.select().from(servicesCatalog).orderBy(asc(servicesCatalog.sortOrder), asc(servicesCatalog.id));
+  }
+
+  async createServiceCatalogItem(item: InsertServiceCatalogItem): Promise<ServiceCatalogItem> {
+    const [newItem] = await db.insert(servicesCatalog).values(item).returning();
+    return newItem;
+  }
+
+  async updateServiceCatalogItem(id: number, updates: Partial<InsertServiceCatalogItem>): Promise<ServiceCatalogItem> {
+    const [updated] = await db.update(servicesCatalog).set(updates).where(eq(servicesCatalog.id, id)).returning();
+    return updated;
+  }
+
+  async deleteServiceCatalogItem(id: number): Promise<void> {
+    await db.delete(servicesCatalog).where(eq(servicesCatalog.id, id));
+  }
+
+  async getPackageConfigs(): Promise<PackageConfig[]> {
+    return await db.select().from(packageConfigs).orderBy(asc(packageConfigs.sortOrder), asc(packageConfigs.id));
+  }
+
+  async createPackageConfig(pkg: InsertPackageConfig): Promise<PackageConfig> {
+    const [newPkg] = await db.insert(packageConfigs).values(pkg).returning();
+    return newPkg;
+  }
+
+  async updatePackageConfig(id: number, updates: Partial<InsertPackageConfig>): Promise<PackageConfig> {
+    const [updated] = await db.update(packageConfigs).set(updates).where(eq(packageConfigs.id, id)).returning();
+    return updated;
+  }
+
+  async deletePackageConfig(id: number): Promise<void> {
+    await db.delete(packageConfigs).where(eq(packageConfigs.id, id));
   }
 }
 

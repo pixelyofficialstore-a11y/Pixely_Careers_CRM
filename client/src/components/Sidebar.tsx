@@ -9,7 +9,8 @@ import {
   BarChart3, 
   LogOut,
   CreditCard,
-  Camera
+  Camera,
+  Settings
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -79,6 +80,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
     { href: "/payments", label: "Payments", icon: CreditCard, roles: ["admin", "support", "designer"] },
     { href: "/users", label: "Team", icon: Users, roles: ["admin"] },
     { href: "/stats", label: "Analytics", icon: BarChart3, roles: ["admin"] },
+    { href: "/admin-settings", label: "Settings", icon: Settings, roles: ["admin"] },
   ];
 
   const allowedLinks = links.filter(link => link.roles.includes(user.role));

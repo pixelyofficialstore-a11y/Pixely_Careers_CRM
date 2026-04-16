@@ -1,0 +1,584 @@
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useLocation } from "wouter";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Settings,
+  Plus,
+  Pencil,
+  Trash2,
+  Package,
+  Wrench,
+  Eye,
+  EyeOff,
+} from "lucide-react";
+import type { ServiceCatalogItem, PackageConfig } from "@shared/schema";
+
+export default function AdminSettingsPage() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [, navigate] = useLocation();
+
+  if (user?.role !== "admin") {
+    navigate("/");
+    return null;
+  }
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex items-center gap-3">
+        <Settings className="w-7 h-7 text-blue-400" />
+        <div>
+          <h1 className="text-2xl font-bold text-white">Admin Settings</h1>
+          <p className="text-sm text-slate-400">Manage services and package configurations</p>
+        </div>
+      </div>
+
+      <Tabs defaultValue="services" className="space-y-4">
+        <TabsList className="bg-slate-900 border border-slate-800">
+          <TabsTrigger value="services" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white gap-2">
+            <Wrench className="w-4 h-4" />
+            Services
+          </TabsTrigger>
+          <TabsTrigger value="packages" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white gap-2">
+            <Package className="w-4 h-4" />
+            Packages
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="services">
+          <ServicesSection />
+        </TabsContent>
+
+        <TabsContent value="packages">
+          <PackagesSection />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function ServicesSection() {
+  const { toast } = useToast();
+  const [addOpen, setAddOpen] = useState(false);
+  const [editItem, setEditItem] = useState<ServiceCatalogItem | null>(null);
+  const [deleteItem, setDeleteItem] = useState<ServiceCatalogItem | null>(null);
+  const [newName, setNewName] = useState("");
+  const [editName, setEditName] = useState("");
+
+  const { data: services = [], isLoading } = useQuery<ServiceCatalogItem[]>({
+    queryKey: ["/api/services-catalog"],
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiRequest("POST", "/api/services-catalog", { name });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/services-catalog"] });
+      setAddOpen(false);
+      setNewName("");
+      toast({ title: "Success", description: "Service added successfully" });
+    },
+    onError: async (err: any) => {
+      const body = err?.response ? await err.response.json().catch(() => ({})) : {};
+      toast({ title: "Error", description: body.message || "Failed to add service", variant: "destructive" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, name, isActive }: { id: number; name?: string; isActive?: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/services-catalog/${id}`, { name, isActive });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/services-catalog"] });
+      setEditItem(null);
+      toast({ title: "Success", description: "Service updated" });
+    },
+    onError: async (err: any) => {
+      const body = err?.response ? await err.response.json().catch(() => ({})) : {};
+      toast({ title: "Error", description: body.message || "Failed to update service", variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/services-catalog/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/services-catalog"] });
+      setDeleteItem(null);
+      toast({ title: "Success", description: "Service deleted" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete service", variant: "destructive" });
+    },
+  });
+
+  const openEdit = (item: ServiceCatalogItem) => {
+    setEditItem(item);
+    setEditName(item.name);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Services Catalog</h2>
+          <p className="text-sm text-slate-400">
+            These services will be available when creating a Custom Package order.
+          </p>
+        </div>
+        <Button
+          onClick={() => { setAddOpen(true); setNewName(""); }}
+          className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
+        >
+          <Plus className="w-4 h-4" />
+          Add Service
+        </Button>
+      </div>
+
+      <div className="rounded-xl border border-slate-800 bg-slate-900/50 overflow-hidden">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : services.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+            <Wrench className="w-10 h-10 mb-3 opacity-40" />
+            <p className="font-medium">No services yet</p>
+            <p className="text-sm">Add your first service to get started</p>
+          </div>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-slate-800">
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Service Name</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</th>
+                <th className="text-right px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800">
+              {services.map((svc) => (
+                <tr key={svc.id} className="hover:bg-slate-800/30 transition-colors">
+                  <td className="px-5 py-3.5 text-sm font-medium text-white">{svc.name}</td>
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={svc.isActive}
+                        onCheckedChange={(checked) =>
+                          updateMutation.mutate({ id: svc.id, isActive: checked })
+                        }
+                        disabled={updateMutation.isPending}
+                      />
+                      <span className="text-xs text-slate-400">{svc.isActive ? "Active" : "Inactive"}</span>
+                    </div>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-slate-400 hover:text-white hover:bg-slate-700 h-8 w-8 p-0"
+                        onClick={() => openEdit(svc)}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-red-400 hover:text-red-300 hover:bg-red-950/30 h-8 w-8 p-0"
+                        onClick={() => setDeleteItem(svc)}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+          <DialogHeader>
+            <DialogTitle>Add New Service</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label className="text-slate-300">Service Name</Label>
+            <Input
+              placeholder="e.g. LinkedIn Banner"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+              onKeyDown={(e) => { if (e.key === "Enter" && newName.trim()) createMutation.mutate(newName.trim()); }}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => createMutation.mutate(newName.trim())}
+              disabled={!newName.trim() || createMutation.isPending}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {createMutation.isPending ? "Adding..." : "Add Service"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editItem} onOpenChange={(o) => { if (!o) setEditItem(null); }}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+          <DialogHeader>
+            <DialogTitle>Edit Service</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label className="text-slate-300">Service Name</Label>
+            <Input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && editItem && editName.trim()) {
+                  updateMutation.mutate({ id: editItem.id, name: editName.trim() });
+                }
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditItem(null)} className="border-slate-700 text-slate-300 hover:bg-slate-800">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => editItem && updateMutation.mutate({ id: editItem.id, name: editName.trim() })}
+              disabled={!editName.trim() || updateMutation.isPending}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {updateMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deleteItem} onOpenChange={(o) => { if (!o) setDeleteItem(null); }}>
+        <AlertDialogContent className="bg-slate-900 border-slate-800 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Service</AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-400">
+              Are you sure you want to delete <span className="text-white font-medium">"{deleteItem?.name}"</span>? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteItem && deleteMutation.mutate(deleteItem.id)}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function PackagesSection() {
+  const { toast } = useToast();
+  const [addOpen, setAddOpen] = useState(false);
+  const [editItem, setEditItem] = useState<PackageConfig | null>(null);
+  const [deleteItem, setDeleteItem] = useState<PackageConfig | null>(null);
+  const [newLabel, setNewLabel] = useState("");
+  const [newKey, setNewKey] = useState("");
+  const [editLabel, setEditLabel] = useState("");
+
+  const PROTECTED_KEYS = ["custom"];
+
+  const { data: packages = [], isLoading } = useQuery<PackageConfig[]>({
+    queryKey: ["/api/package-configs"],
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async ({ key, label }: { key: string; label: string }) => {
+      const res = await apiRequest("POST", "/api/package-configs", { key, label });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/package-configs"] });
+      setAddOpen(false);
+      setNewLabel("");
+      setNewKey("");
+      toast({ title: "Success", description: "Package added successfully" });
+    },
+    onError: async (err: any) => {
+      const body = err?.response ? await err.response.json().catch(() => ({})) : {};
+      toast({ title: "Error", description: body.message || "Failed to add package", variant: "destructive" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, label, isActive }: { id: number; label?: string; isActive?: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/package-configs/${id}`, { label, isActive });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/package-configs"] });
+      setEditItem(null);
+      toast({ title: "Success", description: "Package updated" });
+    },
+    onError: async (err: any) => {
+      const body = err?.response ? await err.response.json().catch(() => ({})) : {};
+      toast({ title: "Error", description: body.message || "Failed to update package", variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/package-configs/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/package-configs"] });
+      setDeleteItem(null);
+      toast({ title: "Success", description: "Package deleted" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete package", variant: "destructive" });
+    },
+  });
+
+  const openEdit = (item: PackageConfig) => {
+    setEditItem(item);
+    setEditLabel(item.label);
+  };
+
+  const handleLabelChange = (val: string) => {
+    setNewLabel(val);
+    setNewKey(val.trim().toLowerCase().replace(/\s+/g, "_"));
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Package Configuration</h2>
+          <p className="text-sm text-slate-400">
+            Manage package names and add custom packages available when creating orders.
+            The <span className="text-blue-400 font-medium">Custom Order</span> type is always available.
+          </p>
+        </div>
+        <Button
+          onClick={() => { setAddOpen(true); setNewLabel(""); setNewKey(""); }}
+          className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
+        >
+          <Plus className="w-4 h-4" />
+          Add Package
+        </Button>
+      </div>
+
+      <div className="rounded-xl border border-slate-800 bg-slate-900/50 overflow-hidden">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-slate-800">
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Label</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Key</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</th>
+                <th className="text-right px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800">
+              {packages.map((pkg) => (
+                <tr key={pkg.id} className="hover:bg-slate-800/30 transition-colors">
+                  <td className="px-5 py-3.5 text-sm font-medium text-white">{pkg.label}</td>
+                  <td className="px-5 py-3.5">
+                    <code className="text-xs bg-slate-800 text-blue-300 px-2 py-0.5 rounded">{pkg.key}</code>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={pkg.isActive}
+                        onCheckedChange={(checked) =>
+                          updateMutation.mutate({ id: pkg.id, isActive: checked })
+                        }
+                        disabled={updateMutation.isPending}
+                      />
+                      <span className="text-xs text-slate-400">{pkg.isActive ? "Active" : "Inactive"}</span>
+                    </div>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-slate-400 hover:text-white hover:bg-slate-700 h-8 w-8 p-0"
+                        onClick={() => openEdit(pkg)}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                      {!PROTECTED_KEYS.includes(pkg.key) && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-400 hover:text-red-300 hover:bg-red-950/30 h-8 w-8 p-0"
+                          onClick={() => setDeleteItem(pkg)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              <tr className="hover:bg-slate-800/30 transition-colors opacity-60">
+                <td className="px-5 py-3.5 text-sm font-medium text-white">Custom Order</td>
+                <td className="px-5 py-3.5">
+                  <code className="text-xs bg-slate-800 text-blue-300 px-2 py-0.5 rounded">custom</code>
+                </td>
+                <td className="px-5 py-3.5">
+                  <Badge variant="outline" className="text-xs border-slate-600 text-slate-400">System</Badge>
+                </td>
+                <td className="px-5 py-3.5 text-right">
+                  <span className="text-xs text-slate-500">Built-in</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+          <DialogHeader>
+            <DialogTitle>Add New Package</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-slate-300">Package Label <span className="text-slate-500 text-xs">(shown to users)</span></Label>
+              <Input
+                placeholder="e.g. Premium Bundle"
+                value={newLabel}
+                onChange={(e) => handleLabelChange(e.target.value)}
+                className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-slate-300">Package Key <span className="text-slate-500 text-xs">(auto-generated, must be unique)</span></Label>
+              <Input
+                placeholder="e.g. premium_bundle"
+                value={newKey}
+                onChange={(e) => setNewKey(e.target.value.toLowerCase().replace(/\s+/g, "_"))}
+                className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 font-mono text-sm"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => createMutation.mutate({ key: newKey, label: newLabel })}
+              disabled={!newLabel.trim() || !newKey.trim() || createMutation.isPending}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {createMutation.isPending ? "Adding..." : "Add Package"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editItem} onOpenChange={(o) => { if (!o) setEditItem(null); }}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+          <DialogHeader>
+            <DialogTitle>Edit Package</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-slate-300">Package Label</Label>
+              <Input
+                value={editLabel}
+                onChange={(e) => setEditLabel(e.target.value)}
+                className="bg-slate-800 border-slate-700 text-white"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && editItem && editLabel.trim()) {
+                    updateMutation.mutate({ id: editItem.id, label: editLabel.trim() });
+                  }
+                }}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-slate-400 text-xs">Package Key (cannot be changed)</Label>
+              <code className="block text-xs bg-slate-800 text-blue-300 px-3 py-2 rounded border border-slate-700">{editItem?.key}</code>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditItem(null)} className="border-slate-700 text-slate-300 hover:bg-slate-800">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => editItem && updateMutation.mutate({ id: editItem.id, label: editLabel.trim() })}
+              disabled={!editLabel.trim() || updateMutation.isPending}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {updateMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deleteItem} onOpenChange={(o) => { if (!o) setDeleteItem(null); }}>
+        <AlertDialogContent className="bg-slate-900 border-slate-800 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Package</AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-400">
+              Are you sure you want to delete <span className="text-white font-medium">"{deleteItem?.label}"</span>? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteItem && deleteMutation.mutate(deleteItem.id)}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}

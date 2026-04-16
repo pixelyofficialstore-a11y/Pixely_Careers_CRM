@@ -14,6 +14,7 @@ import OrdersPage from "@/pages/OrdersPage";
 import TeamPage from "@/pages/TeamPage";
 import AnalyticsPage from "@/pages/AnalyticsPage";
 import PaymentsPage from "@/pages/PaymentsPage";
+import AdminSettingsPage from "@/pages/AdminSettingsPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -71,6 +72,13 @@ function Router() {
         <ProtectedRoute>
           <Layout>
             <AnalyticsPage />
+          </Layout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/admin-settings">
+        <ProtectedRoute>
+          <Layout>
+            <AdminSettingsPage />
           </Layout>
         </ProtectedRoute>
       </Route>
