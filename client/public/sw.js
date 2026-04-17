@@ -1,3 +1,9 @@
+// Take control of all pages immediately without waiting for a full reload
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => {
+  event.waitUntil(clients.claim());
+});
+
 self.addEventListener('message', (event) => {
   const data = event.data;
   if (!data || data.type !== 'SHOW_NOTIFICATION') return;

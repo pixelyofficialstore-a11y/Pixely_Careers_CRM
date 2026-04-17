@@ -43,22 +43,16 @@ function playNotificationSound() {
 
 function sendPushNotification(title: string, body: string, priority: string) {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
-  try {
-    if (navigator.serviceWorker?.controller) {
-      navigator.serviceWorker.controller.postMessage({
-        type: "SHOW_NOTIFICATION",
-        title,
-        body,
-        priority,
-      });
-    } else {
-      new Notification(title, {
-        body,
-        icon: "/favicon.png",
-        tag: "pixelcrm-" + Date.now(),
-      });
-    }
-  } catch (_) {}
+  // Use serviceWorker.ready so messaging works even before the first full reload
+  if (navigator.serviceWorker) {
+    navigator.serviceWorker.ready
+      .then(reg => {
+        if (reg.active) {
+          reg.active.postMessage({ type: "SHOW_NOTIFICATION", title, body, priority });
+        }
+      })
+      .catch(() => {});
+  }
 }
 
 function notifIcon(type: string) {
