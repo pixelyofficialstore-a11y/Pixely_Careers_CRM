@@ -4,7 +4,14 @@ import * as schema from "@shared/schema";
 
 const { Pool } = pg;
 
-const databaseUrl = (process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL || "").trim().replace(/\s+/g, '') || undefined;
+// In production use SUPABASE_DATABASE_URL if set; in dev always use local DATABASE_URL so
+// dev data (orders, etc.) is not lost when the Supabase secret is present.
+const databaseUrl = (
+  process.env.NODE_ENV === "production"
+    ? (process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL)
+    : (process.env.DATABASE_URL || process.env.SUPABASE_DATABASE_URL)
+  || ""
+).trim().replace(/\s+/g, '') || undefined;
 
 if (!databaseUrl) {
   throw new Error(
