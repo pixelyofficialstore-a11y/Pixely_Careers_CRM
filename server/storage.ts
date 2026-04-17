@@ -142,9 +142,19 @@ export class DatabaseStorage implements IStorage {
   async generateOrderNumber(): Promise<string> {
     const year = new Date().getFullYear().toString().slice(-2);
     const month = (new Date().getMonth() + 1).toString().padStart(2, '0');
-    const approvedOrders = await db.select().from(orders).where(isNotNull(orders.orderNumber));
-    const count = approvedOrders.length + 1;
-    return `PX-${year}${month}-${count.toString().padStart(3, '0')}`;
+    const existing = await db.select({ orderNumber: orders.orderNumber }).from(orders).where(isNotNull(orders.orderNumber));
+    
+    // Find the highest sequence number across ALL existing order numbers (not count-based — avoids duplicates on gaps/deletions)
+    let maxSeq = 0;
+    for (const o of existing) {
+      const match = o.orderNumber?.match(/PX-\d{4}-(\d+)/);
+      if (match) {
+        const seq = parseInt(match[1], 10);
+        if (seq > maxSeq) maxSeq = seq;
+      }
+    }
+    
+    return `PX-${year}${month}-${(maxSeq + 1).toString().padStart(3, '0')}`;
   }
 
   async getNotifications(userId: number): Promise<Notification[]> {
