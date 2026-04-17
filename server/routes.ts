@@ -365,7 +365,7 @@ export async function registerRoutes(
       }, services || []);
 
       // Notify admins of a new payment request (not "order placed" — no order exists yet)
-      const totalRs = Math.round(totalPrice / 100);
+      const totalRs = Math.floor(totalPrice / 100);
       const admins = await storage.getAdmins();
       for (const admin of admins) {
         await storage.createNotification(
@@ -634,7 +634,7 @@ export async function registerRoutes(
       // Never notify the submitter of their own action.
       if (order.status !== 'pending_payment') {
         const admins = await storage.getAdmins();
-        const amountRs = Math.round(parsedAmount / 100);
+        const amountRs = Math.floor(parsedAmount / 100);
         for (const admin of admins) {
           if (admin.id !== user.id) {
             await storage.createNotification(
@@ -709,7 +709,7 @@ export async function registerRoutes(
       }
 
       // Notify all other admins (not the one who approved)
-      const advanceRs = Math.round(verification.amount / 100);
+      const advanceRs = Math.floor(verification.amount / 100);
       const approvalAdmins = await storage.getAdmins();
       for (const admin of approvalAdmins) {
         if (admin.id !== user.id) {
@@ -735,7 +735,7 @@ export async function registerRoutes(
         status: "new",
       });
       
-      const fullRs = Math.round(verification.amount / 100);
+      const fullRs = Math.floor(verification.amount / 100);
       if (order.intendedDesignerId) {
         await storage.createNotification(
           order.intendedDesignerId, "assignment",

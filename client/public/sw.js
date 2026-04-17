@@ -6,8 +6,8 @@ self.addEventListener('message', (event) => {
 
   const options = {
     body: body || '',
-    icon: '/favicon.png',
-    badge: '/favicon.png',
+    icon: '/favicon.ico',
+    badge: '/favicon.ico',
     tag: 'pixelcrm-' + Date.now(),
     requireInteraction: priority === 'action_required',
     vibrate: priority === 'action_required' ? [200, 100, 200] : undefined,
