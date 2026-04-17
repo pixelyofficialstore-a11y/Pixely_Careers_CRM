@@ -422,7 +422,7 @@ export default function PaymentsPage() {
                 <TableCell>
                   <div>
                     <p className="text-white font-medium font-mono">
-                      {payment.order?.orderNumber || <span className="text-yellow-400">REQ-#{payment.id}</span>}
+                      {payment.order?.orderNumber || <span className="text-yellow-400">#{payment.id}</span>}
                     </p>
                     <p className="text-sm text-slate-300">{payment.order?.clientName}</p>
                   </div>
@@ -511,8 +511,8 @@ export default function PaymentsPage() {
           <div className="space-y-4">
             {selectedPayment && (
               <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-2">
-                <p className="text-sm text-slate-400">Request: <span className="text-white font-mono">{selectedPayment.order?.orderNumber || `REQ-#${selectedPayment.id}`}</span></p>
-                <p className="text-sm text-slate-400">Client: <span className="text-white">{selectedPayment.order?.clientName}</span></p>
+                <p className="text-sm text-slate-400">Request: <span className="text-white font-mono">{selectedPayment.order?.orderNumber || `#${selectedPayment.id}`}</span></p>
+                <p className="text-sm text-slate-400">Client: <span className="text-white">{selectedPayment.order?.clientName || "—"}</span></p>
                 <p className="text-sm text-slate-400">Amount: <span className="text-green-400 font-bold">₨{Math.round((selectedPayment.amount || 0) / 100).toLocaleString()}</span></p>
                 <p className="text-sm text-slate-400">Type: <span className="text-white capitalize">{selectedPayment.paymentType}</span></p>
               </div>
@@ -550,8 +550,8 @@ export default function PaymentsPage() {
           <div className="space-y-4">
             {selectedPayment && (
               <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-2">
-                <p className="text-sm text-slate-400">Request: <span className="text-white font-mono">{selectedPayment.order?.orderNumber || `REQ-#${selectedPayment.id}`}</span></p>
-                <p className="text-sm text-slate-400">Client: <span className="text-white">{selectedPayment.order?.clientName}</span></p>
+                <p className="text-sm text-slate-400">Request: <span className="text-white font-mono">{selectedPayment.order?.orderNumber || `#${selectedPayment.id}`}</span></p>
+                <p className="text-sm text-slate-400">Client: <span className="text-white">{selectedPayment.order?.clientName || "—"}</span></p>
                 <p className="text-sm text-slate-400">Amount: <span className="text-red-400 font-bold">₨{Math.round((selectedPayment.amount || 0) / 100).toLocaleString()}</span></p>
               </div>
             )}

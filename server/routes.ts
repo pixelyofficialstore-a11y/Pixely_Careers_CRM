@@ -495,22 +495,16 @@ export async function registerRoutes(
     const user = req.user as User;
     const verifications = await storage.getPaymentVerifications(user.role, user.id);
     
-    const orders = await storage.getOrders(user.role, user.id);
-    const result = verifications.map(v => {
-      const order = orders.find(o => o.id === v.orderId);
-      const sanitizedOrder = order ? (user.role === 'admin' ? {
+    // Use getOrder() per verification to include pending_payment orders (filtered out by getOrders)
+    const result = await Promise.all(verifications.map(async v => {
+      const order = await storage.getOrder(v.orderId);
+      const sanitizedOrder = order ? {
         orderNumber: order.orderNumber,
         clientName: order.clientName,
-        totalPrice: order.totalPrice,
-      } : {
-        orderNumber: order.orderNumber,
-        clientName: order.clientName,
-      }) : null;
-      return {
-        ...v,
-        order: sanitizedOrder,
-      };
-    });
+        totalPrice: user.role === 'admin' ? order.totalPrice : undefined,
+      } : null;
+      return { ...v, order: sanitizedOrder };
+    }));
     
     res.json(result);
   });
