@@ -540,6 +540,11 @@ export async function registerRoutes(
       const order = await storage.getOrder(Number(orderId));
       if (!order) return res.status(400).json({ error: "Order not found" });
       
+      // Admin orders are auto-approved — admin should never need to submit advance/full payment verifications
+      if (user.role === 'admin' && (paymentType === 'advance' || paymentType === 'full')) {
+        return res.status(403).json({ error: "Admin orders are auto-approved. No payment verification needed." });
+      }
+
       if (user.role === 'designer' && order.assignedToId !== user.id) {
         return res.status(403).json({ error: "You can only submit payment requests for assigned orders" });
       }
@@ -613,17 +618,20 @@ export async function registerRoutes(
 
       // Only send screenshot notification for EXISTING approved orders (remaining payments).
       // For initial pending_payment orders, the order creation already notified all admins.
+      // Never notify the submitter of their own action.
       if (order.status !== 'pending_payment') {
         const admins = await storage.getAdmins();
-        const paymentLabel = paymentType === "advance" ? "advance" : paymentType === "remaining" ? "remaining" : "full";
+        const paymentLabel = paymentType === "remaining" ? "remaining" : paymentType === "full" ? "full" : "advance";
         for (const admin of admins) {
-          await storage.createNotification(
-            admin.id,
-            "payment",
-            `Payment verification: ${order.clientName} — ${paymentLabel} payment`,
-            verification.id,
-            "payment_verification"
-          );
+          if (admin.id !== user.id) {
+            await storage.createNotification(
+              admin.id,
+              "payment",
+              `Payment verification: ${order.clientName} — ${paymentLabel} payment`,
+              verification.id,
+              "payment_verification"
+            );
+          }
         }
       }
       

@@ -170,8 +170,11 @@ export default function PaymentsPage() {
     },
   });
 
-  // Filter verifications
+  // Filter verifications — exclude admin-submitted advance/full (admin orders are auto-approved, those are erroneous records)
   const filteredVerifications = verifications?.filter(v => {
+    // Never show advance/full verifications submitted by admin (they shouldn't exist after server-side block)
+    if (v.submittedBy?.role === 'admin' && (v.paymentType === 'advance' || v.paymentType === 'full')) return false;
+
     if (statusFilter !== "all" && v.status !== statusFilter) return false;
     if (typeFilter !== "all" && v.paymentType !== typeFilter) return false;
     if (roleFilter !== "all" && v.submittedBy?.role !== roleFilter) return false;
