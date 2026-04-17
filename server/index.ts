@@ -4,6 +4,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seedDatabase } from "./seed";
 import { startCleanupJob } from "./cleanup";
+import { pool } from "./db";
 
 process.on("uncaughtException", (err) => {
   console.error("[uncaughtException]", err);
@@ -68,16 +69,39 @@ app.use((req, res, next) => {
   next();
 });
 
-(async () => {
-  // Health check — must be first so Railway probe gets a fast 200
-  app.get("/health", (_req, res) => {
-    res.status(200).json({ status: "ok" });
-  });
+// Health check registered before anything else
+app.get("/health", (_req, res) => {
+  res.status(200).json({ status: "ok" });
+});
 
-  // Seed database with production data if needed
+// Start listening immediately so Railway's healthcheck passes right away
+// All async setup (routes, DB, seed) continues after the port is open
+const port = parseInt(process.env.PORT || "5000", 10);
+httpServer.listen(
+  { port, host: "0.0.0.0", reusePort: true },
+  () => { log(`serving on port ${port}`); },
+);
+
+(async () => {
+  // Ensure any tables added outside migrations exist in production
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        endpoint TEXT NOT NULL UNIQUE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+  } catch (err) {
+    console.warn("[startup] Could not ensure push_subscriptions table:", err);
+  }
+
   await seedDatabase();
   startCleanupJob();
-  
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
@@ -93,29 +117,10 @@ app.use((req, res, next) => {
     return res.status(status).json({ message });
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
   } else {
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
   }
-
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      log(`serving on port ${port}`);
-    },
-  );
 })();
