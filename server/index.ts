@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seedDatabase } from "./seed";
+import { startCleanupJob } from "./cleanup";
 
 process.on("uncaughtException", (err) => {
   console.error("[uncaughtException]", err);
@@ -75,6 +76,7 @@ app.use((req, res, next) => {
 
   // Seed database with production data if needed
   await seedDatabase();
+  startCleanupJob();
   
   await registerRoutes(httpServer, app);
 
