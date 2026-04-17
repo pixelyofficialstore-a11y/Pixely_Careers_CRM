@@ -405,17 +405,17 @@ export default function OrdersPage() {
           </div>
           <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
             <div className="p-2 bg-green-500/10 rounded-lg text-green-500"><TrendingUp className="w-5 h-5" /></div>
-            <div><p className="text-xs text-slate-500">Collected</p><p className="font-bold text-white">₨{(approvedMonthlyOrders.reduce((acc, o) => acc + (o.advanceAmount || 0), 0) / 100).toLocaleString()}</p></div>
+            <div><p className="text-xs text-slate-500">Collected</p><p className="font-bold text-white">₨{Math.round(approvedMonthlyOrders.reduce((acc, o) => acc + (o.advanceAmount || 0), 0) / 100).toLocaleString()}</p></div>
           </div>
           <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
             <div className="p-2 bg-red-500/10 rounded-lg text-red-500"><AlertCircle className="w-5 h-5" /></div>
-            <div><p className="text-xs text-slate-500">Remaining</p><p className="font-bold text-white">₨{(approvedMonthlyOrders.filter(o => o.status !== 'canceled').reduce((acc, o) => acc + (o.remainingAmount || 0), 0) / 100).toLocaleString()}</p></div>
+            <div><p className="text-xs text-slate-500">Remaining</p><p className="font-bold text-white">₨{Math.round(approvedMonthlyOrders.filter(o => o.status !== 'canceled').reduce((acc, o) => acc + (o.remainingAmount || 0), 0) / 100).toLocaleString()}</p></div>
           </div>
           <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
             <div className="p-2 bg-purple-500/10 rounded-lg text-purple-500"><CalendarIcon className="w-5 h-5" /></div>
             <div>
               <p className="text-xs text-slate-500">Today's Revenue</p>
-              <p className="font-bold text-white">₨{(approvedTodayOrders.reduce((acc, o) => acc + (o.advanceAmount || 0) + (o.remainingAmount || 0), 0) / 100).toLocaleString()}</p>
+              <p className="font-bold text-white">₨{Math.round(approvedTodayOrders.reduce((acc, o) => acc + (o.advanceAmount || 0) + (o.remainingAmount || 0), 0) / 100).toLocaleString()}</p>
             </div>
           </div>
         </div>
@@ -436,46 +436,36 @@ export default function OrdersPage() {
             {/* Mobile card view – Today */}
             <div className="md:hidden p-3 space-y-2">
               {todayOrders?.map((order) => (
-                <div key={order.id} className="rounded-xl border border-slate-700/50 bg-slate-900/60 overflow-hidden hover:border-slate-600/60 transition-all">
-                  <div className="flex items-start justify-between p-3 gap-2">
-                    <div className="min-w-0">
+                <div key={order.id} className="rounded-xl border border-slate-700/40 bg-slate-900/50 overflow-hidden hover:border-slate-600/50 transition-all">
+                  <div className="p-3">
+                    <div className="flex items-start justify-between gap-2 mb-1">
                       <p className="text-white font-semibold text-sm leading-tight truncate">{order.clientName}</p>
-                      <p className="text-blue-400 font-mono text-xs mt-0.5">{order.orderNumber}</p>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {getStatusBadge(order.status)}
+                        <span className="text-slate-500 text-[10px]">{format(new Date(order.createdAt!), "h:mm a")}</span>
+                      </div>
                     </div>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      {getStatusBadge(order.status)}
-                      <span className="text-slate-500 text-[10px]">{format(new Date(order.createdAt!), "h:mm a")}</span>
-                    </div>
-                  </div>
-                  <div className="px-3 pb-2 border-t border-slate-800/60 pt-2 space-y-1.5">
-                    <div className="text-sm">{getServicesDisplay(order)}</div>
+                    <p className="text-blue-400 font-mono text-xs mb-2">{order.orderNumber}</p>
+                    <div className="text-sm mb-1.5">{getServicesDisplay(order)}</div>
                     {!isDesigner && (order.clientPhone || order.assignee?.name) && (
-                      <div className="flex items-center gap-3 flex-wrap">
+                      <div className="flex items-center gap-3 flex-wrap mb-1.5">
                         {order.clientPhone && <span className="text-slate-400 text-xs">{order.clientPhone}</span>}
                         {order.assignee?.name && (
                           <div className="flex items-center gap-1.5">
-                            <div className="w-4 h-4 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-[9px] font-bold shrink-0">
-                              {order.assignee.name.charAt(0)}
-                            </div>
+                            <div className="w-4 h-4 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-[9px] font-bold shrink-0">{order.assignee.name.charAt(0)}</div>
                             <span className="text-slate-400 text-xs">{order.assignee.name}</span>
                           </div>
                         )}
                       </div>
                     )}
+                    {canSeeAmounts && (
+                      <div className="flex gap-4">
+                        <span className="text-green-400 text-xs">Adv ₨{Math.round((order.advanceAmount || 0) / 100).toLocaleString()}</span>
+                        <span className="text-red-400 text-xs">Rem ₨{Math.round((order.remainingAmount || 0) / 100).toLocaleString()}</span>
+                      </div>
+                    )}
                   </div>
-                  {canSeeAmounts && (
-                    <div className="flex gap-5 px-3 py-2 border-t border-slate-800/60 bg-slate-950/40">
-                      <div>
-                        <p className="text-[9px] text-slate-500 uppercase tracking-wide mb-0.5">Advance</p>
-                        <p className="text-green-400 text-xs font-semibold">₨{((order.advanceAmount || 0) / 100).toLocaleString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-[9px] text-slate-500 uppercase tracking-wide mb-0.5">Remaining</p>
-                        <p className="text-red-400 text-xs font-semibold">₨{((order.remainingAmount || 0) / 100).toLocaleString()}</p>
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex items-center border-t border-slate-800/60">
+                  <div className="flex items-center border-t border-slate-800/50">
                     <div className="flex-1 px-3 py-2">
                       <Select
                         defaultValue={order.status}
@@ -491,7 +481,7 @@ export default function OrdersPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="border-l border-slate-800/60">
+                    <div className="border-l border-slate-800/50">
                       <Button
                         variant="ghost"
                         size="sm"
@@ -661,12 +651,12 @@ export default function OrdersPage() {
                       </TableCell>
                       {canSeeAmounts && (
                         <TableCell className="text-green-400 font-medium text-right">
-                          ₨{((order.advanceAmount || 0) / 100).toLocaleString()}
+                          ₨{Math.round((order.advanceAmount || 0) / 100).toLocaleString()}
                         </TableCell>
                       )}
                       {canSeeAmounts && (
                         <TableCell className="text-red-400 font-medium text-right">
-                          ₨{((order.remainingAmount || 0) / 100).toLocaleString()}
+                          ₨{Math.round((order.remainingAmount || 0) / 100).toLocaleString()}
                         </TableCell>
                       )}
                       <TableCell className="text-right">
@@ -774,46 +764,36 @@ export default function OrdersPage() {
             {/* Mobile card view – Monthly */}
             <div className="md:hidden p-3 space-y-2">
               {monthlyOrders?.map((order) => (
-                <div key={order.id} className="rounded-xl border border-slate-700/50 bg-slate-900/60 overflow-hidden hover:border-slate-600/60 transition-all">
-                  <div className="flex items-start justify-between p-3 gap-2">
-                    <div className="min-w-0">
+                <div key={order.id} className="rounded-xl border border-slate-700/40 bg-slate-900/50 overflow-hidden hover:border-slate-600/50 transition-all">
+                  <div className="p-3">
+                    <div className="flex items-start justify-between gap-2 mb-1">
                       <p className="text-white font-semibold text-sm leading-tight truncate">{order.clientName}</p>
-                      <p className="text-blue-400 font-mono text-xs mt-0.5">{order.orderNumber}</p>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {getStatusBadge(order.status)}
+                        <span className="text-slate-500 text-[10px]">{format(new Date(order.createdAt!), "MMM dd")}</span>
+                      </div>
                     </div>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      {getStatusBadge(order.status)}
-                      <span className="text-slate-500 text-[10px]">{format(new Date(order.createdAt!), "MMM dd")}</span>
-                    </div>
-                  </div>
-                  <div className="px-3 pb-2 border-t border-slate-800/60 pt-2 space-y-1.5">
-                    <div className="text-sm">{getServicesDisplay(order)}</div>
+                    <p className="text-blue-400 font-mono text-xs mb-2">{order.orderNumber}</p>
+                    <div className="text-sm mb-1.5">{getServicesDisplay(order)}</div>
                     {!isDesigner && (order.clientPhone || order.assignee?.name) && (
-                      <div className="flex items-center gap-3 flex-wrap">
+                      <div className="flex items-center gap-3 flex-wrap mb-1.5">
                         {order.clientPhone && <span className="text-slate-400 text-xs">{order.clientPhone}</span>}
                         {order.assignee?.name && (
                           <div className="flex items-center gap-1.5">
-                            <div className="w-4 h-4 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-[9px] font-bold shrink-0">
-                              {order.assignee.name.charAt(0)}
-                            </div>
+                            <div className="w-4 h-4 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-[9px] font-bold shrink-0">{order.assignee.name.charAt(0)}</div>
                             <span className="text-slate-400 text-xs">{order.assignee.name}</span>
                           </div>
                         )}
                       </div>
                     )}
+                    {canSeeAmounts && (
+                      <div className="flex gap-4">
+                        <span className="text-green-400 text-xs">Adv ₨{Math.round((order.advanceAmount || 0) / 100).toLocaleString()}</span>
+                        <span className="text-red-400 text-xs">Rem ₨{Math.round((order.remainingAmount || 0) / 100).toLocaleString()}</span>
+                      </div>
+                    )}
                   </div>
-                  {canSeeAmounts && (
-                    <div className="flex gap-5 px-3 py-2 border-t border-slate-800/60 bg-slate-950/40">
-                      <div>
-                        <p className="text-[9px] text-slate-500 uppercase tracking-wide mb-0.5">Advance</p>
-                        <p className="text-green-400 text-xs font-semibold">₨{((order.advanceAmount || 0) / 100).toLocaleString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-[9px] text-slate-500 uppercase tracking-wide mb-0.5">Remaining</p>
-                        <p className="text-red-400 text-xs font-semibold">₨{((order.remainingAmount || 0) / 100).toLocaleString()}</p>
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex items-center border-t border-slate-800/60">
+                  <div className="flex items-center border-t border-slate-800/50">
                     <div className="flex-1 px-3 py-2">
                       <Select
                         defaultValue={order.status}
@@ -829,7 +809,7 @@ export default function OrdersPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="border-l border-slate-800/60">
+                    <div className="border-l border-slate-800/50">
                       <Button
                         variant="ghost"
                         size="sm"
@@ -983,12 +963,12 @@ export default function OrdersPage() {
                     </TableCell>
                     {canSeeAmounts && (
                       <TableCell className="text-green-400 font-medium text-right">
-                        ₨{((order.advanceAmount || 0) / 100).toLocaleString()}
+                        ₨{Math.round((order.advanceAmount || 0) / 100).toLocaleString()}
                       </TableCell>
                     )}
                     {canSeeAmounts && (
                       <TableCell className="text-red-400 font-medium text-right">
-                        ₨{((order.remainingAmount || 0) / 100).toLocaleString()}
+                        ₨{Math.round((order.remainingAmount || 0) / 100).toLocaleString()}
                       </TableCell>
                     )}
                     <TableCell className="text-right">
@@ -1136,16 +1116,16 @@ export default function OrdersPage() {
                     {canSeeFinance && (
                       <div>
                         <p className="text-xs text-slate-500">Total</p>
-                        <p className="text-white font-medium">₨{((selectedOrder.totalPrice || 0) / 100).toLocaleString()}</p>
+                        <p className="text-white font-medium">₨{Math.round((selectedOrder.totalPrice || 0) / 100).toLocaleString()}</p>
                       </div>
                     )}
                     <div>
                       <p className="text-xs text-slate-500">Advance</p>
-                      <p className="text-green-400 font-medium">₨{((selectedOrder.advanceAmount || 0) / 100).toLocaleString()}</p>
+                      <p className="text-green-400 font-medium">₨{Math.round((selectedOrder.advanceAmount || 0) / 100).toLocaleString()}</p>
                     </div>
                     <div>
                       <p className="text-xs text-slate-500">Remaining</p>
-                      <p className="text-red-400 font-medium">₨{((selectedOrder.remainingAmount || 0) / 100).toLocaleString()}</p>
+                      <p className="text-red-400 font-medium">₨{Math.round((selectedOrder.remainingAmount || 0) / 100).toLocaleString()}</p>
                     </div>
                   </div>
                   <div className="pt-2 border-t border-slate-800">
@@ -1212,6 +1192,7 @@ export default function OrdersPage() {
 
 function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSuccess: () => void }) {
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
 
   const { data: servicesCatalogData = [] } = useQuery<ServiceCatalogItem[]>({
     queryKey: ["/api/services-catalog"],
@@ -1358,7 +1339,13 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
       
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/payment-verifications"] });
-      toast({ title: "Success", description: "Order created with payment request" });
+      if (currentUser?.role === 'admin') {
+        toast({ title: "Order placed", description: "Order created and approved automatically" });
+      } else if (paymentScreenshot) {
+        toast({ title: "Order placed", description: "Payment screenshot submitted — awaiting admin approval" });
+      } else {
+        toast({ title: "Order placed", description: "Order created successfully" });
+      }
       onSuccess();
     } catch (error: any) {
       toast({ 

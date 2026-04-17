@@ -424,9 +424,9 @@ export default function AnalyticsPage() {
         metrics.totalOrders,
         metrics.totalMonthOrders,
         metrics.totalDayOrders,
-        `Rs ${(metrics.totalRevenue / 100).toLocaleString()}`,
-        `Rs ${(metrics.collectedAmount / 100).toLocaleString()}`,
-        `Rs ${(metrics.pendingAmount / 100).toLocaleString()}`,
+        `Rs ${Math.round(metrics.totalRevenue / 100).toLocaleString()}`,
+        `Rs ${Math.round(metrics.collectedAmount / 100).toLocaleString()}`,
+        `Rs ${Math.round(metrics.pendingAmount / 100).toLocaleString()}`,
       ];
     });
 
@@ -906,7 +906,7 @@ export default function AnalyticsPage() {
                   <span className="text-sm text-slate-400">Monthly Revenue</span>
                 </div>
                 <p className="text-2xl font-bold text-white" data-testid="text-support-month-revenue">
-                  ₨{(supportMonthOrders.reduce((s, o) => s + (o.advanceAmount || 0) + (o.remainingAmount || 0), 0) / 100).toLocaleString()}
+                  ₨{Math.round(supportMonthOrders.reduce((s, o) => s + (o.advanceAmount || 0) + (o.remainingAmount || 0), 0) / 100).toLocaleString()}
                 </p>
                 <p className="text-xs text-slate-500 mt-1">Collected + remaining of approved</p>
               </div>
@@ -968,13 +968,13 @@ export default function AnalyticsPage() {
                           <span className="text-lg font-bold text-green-400">{metrics.totalDayOrders}</span>
                         </TableCell>
                         <TableCell className="text-center text-slate-300">
-                          ₨{(metrics.totalRevenue / 100).toLocaleString()}
+                          ₨{Math.round(metrics.totalRevenue / 100).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-center text-green-400">
-                          ₨{(metrics.collectedAmount / 100).toLocaleString()}
+                          ₨{Math.round(metrics.collectedAmount / 100).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-center text-yellow-400">
-                          ₨{(metrics.pendingAmount / 100).toLocaleString()}
+                          ₨{Math.round(metrics.pendingAmount / 100).toLocaleString()}
                         </TableCell>
                       </TableRow>
                     );
@@ -1038,7 +1038,7 @@ export default function AnalyticsPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right text-slate-300">
-                          {"\u20A8"} {((order.totalPrice || 0) / 100).toLocaleString()}
+                          {"\u20A8"} {Math.round((order.totalPrice || 0) / 100).toLocaleString()}
                         </TableCell>
                       </TableRow>
                     );

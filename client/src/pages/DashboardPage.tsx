@@ -349,7 +349,7 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <p className="text-xs text-slate-400">Total Collected</p>
-                  <p className="font-bold text-white" data-testid="stat-total-collected">₨{(totalCollected / 100).toLocaleString()}</p>
+                  <p className="font-bold text-white" data-testid="stat-total-collected">₨{Math.round(totalCollected / 100).toLocaleString()}</p>
                 </div>
               </div>
             </div>
@@ -360,7 +360,7 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <p className="text-xs text-slate-400">Monthly Collection</p>
-                  <p className="font-bold text-white" data-testid="stat-monthly-collected">₨{(monthlyCollected / 100).toLocaleString()}</p>
+                  <p className="font-bold text-white" data-testid="stat-monthly-collected">₨{Math.round(monthlyCollected / 100).toLocaleString()}</p>
                 </div>
               </div>
             </div>
@@ -371,7 +371,7 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <p className="text-xs text-slate-400">Monthly Remaining</p>
-                  <p className="font-bold text-red-400" data-testid="stat-monthly-remaining">₨{(monthlyRemaining / 100).toLocaleString()}</p>
+                  <p className="font-bold text-red-400" data-testid="stat-monthly-remaining">₨{Math.round(monthlyRemaining / 100).toLocaleString()}</p>
                 </div>
               </div>
             </div>
@@ -382,7 +382,7 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <p className="text-xs text-slate-400">Total Outstanding</p>
-                  <p className="font-bold text-white" data-testid="stat-outstanding">₨{(outstandingBalance / 100).toLocaleString()}</p>
+                  <p className="font-bold text-white" data-testid="stat-outstanding">₨{Math.round(outstandingBalance / 100).toLocaleString()}</p>
                 </div>
               </div>
             </div>

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Bell, ShoppingCart, CreditCard, User, CheckCheck, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatDistanceToNow } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
 interface Notification {
   id: number;
@@ -71,9 +73,12 @@ interface NotificationBellProps {
 
 export function NotificationBell({ align = 'right' }: NotificationBellProps = {}) {
   const [open, setOpen] = useState(false);
+  const [dropPos, setDropPos] = useState<{ top: number; left?: number; right?: number }>({ top: 0 });
   const prevCount = useRef<number>(0);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const firstLoad = useRef(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     requestNotificationPermission();
@@ -81,7 +86,10 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const inButton = buttonRef.current?.contains(target);
+      const inDropdown = dropdownRef.current?.contains(target);
+      if (!inButton && !inDropdown) {
         setOpen(false);
       }
     }
@@ -132,27 +140,130 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
     }
     if (unreadCount > prevCount.current) {
       playNotificationSound();
-      const newNotifications = notifsList.filter(n => !n.read);
-      const newest = newNotifications[0];
-      if (newest) {
-        showBrowserNotification("PixelCRM", newest.message);
-      } else {
-        showBrowserNotification("PixelCRM", "You have a new notification");
-      }
+      const unreadNotifs = notifsList.filter(n => !n.read);
+      const newest = unreadNotifs[0];
+      const msg = newest?.message ?? "You have a new notification";
+      showBrowserNotification("PixelCRM", msg);
+      toast({
+        title: "New Notification",
+        description: msg,
+      });
     }
     prevCount.current = unreadCount;
   }, [unreadCount, notifsList]);
 
   const handleOpen = () => {
-    setOpen(o => !o);
-    if (!open) {
+    if (!open && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      if (align === 'sidebar') {
+        setDropPos({ top: rect.top, left: 264 });
+      } else if (align === 'right') {
+        setDropPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
+      } else {
+        setDropPos({ top: rect.bottom + 8, left: rect.left });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
     }
+    setOpen(o => !o);
   };
 
+  const dropdownContent = open ? (
+    <div
+      ref={dropdownRef}
+      style={{
+        position: 'fixed',
+        top: dropPos.top,
+        ...(dropPos.left !== undefined ? { left: dropPos.left } : {}),
+        ...(dropPos.right !== undefined ? { right: dropPos.right } : {}),
+        zIndex: 9999,
+        width: 320,
+      }}
+      className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden"
+    >
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+        <div className="flex items-center gap-2">
+          <Bell className="w-4 h-4 text-blue-400" />
+          <span className="text-sm font-semibold text-white">Notifications</span>
+          {unreadCount > 0 && (
+            <span className="text-xs bg-red-500 text-white px-1.5 py-0.5 rounded-full font-bold">
+              {unreadCount}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
+          {unreadCount > 0 && (
+            <button
+              onClick={() => markAllMutation.mutate()}
+              disabled={markAllMutation.isPending}
+              className="flex items-center gap-1 text-xs text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-slate-800 transition-colors"
+              title="Mark all as read"
+            >
+              <CheckCheck className="w-3.5 h-3.5" />
+              All read
+            </button>
+          )}
+          <button
+            onClick={() => setOpen(false)}
+            className="text-slate-500 hover:text-white p-1 rounded hover:bg-slate-800 transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      <div className="max-h-80 overflow-y-auto">
+        {notifsList.length === 0 ? (
+          <div className="py-10 text-center text-slate-500 text-sm">
+            <Bell className="w-8 h-8 mx-auto mb-2 opacity-30" />
+            No notifications yet
+          </div>
+        ) : (
+          notifsList.slice(0, 20).map((notif) => {
+            const Icon = notifIcon(notif.type);
+            const colorCls = notifColor(notif.type);
+            return (
+              <div
+                key={notif.id}
+                className={cn(
+                  "flex items-start gap-3 px-4 py-3 border-b border-slate-800/50 transition-colors cursor-pointer hover:bg-slate-800/40",
+                  !notif.read && "bg-blue-500/5"
+                )}
+                onClick={() => !notif.read && markOneMutation.mutate(notif.id)}
+              >
+                <div className={cn("p-1.5 rounded-lg flex-shrink-0 mt-0.5", colorCls)}>
+                  <Icon className="w-3.5 h-3.5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={cn("text-xs leading-snug", notif.read ? "text-slate-400" : "text-slate-200 font-medium")}>
+                    {notif.message}
+                  </p>
+                  <p className="text-[10px] text-slate-600 mt-1">
+                    {notif.createdAt
+                      ? formatDistanceToNow(new Date(notif.createdAt), { addSuffix: true })
+                      : ""}
+                  </p>
+                </div>
+                {!notif.read && (
+                  <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 mt-1.5" />
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {notifsList.length > 0 && (
+        <div className="px-4 py-2 border-t border-slate-800 text-center">
+          <p className="text-[10px] text-slate-600">Showing last {Math.min(notifsList.length, 20)} notifications</p>
+        </div>
+      )}
+    </div>
+  ) : null;
+
   return (
-    <div ref={dropdownRef} className="relative">
+    <div className="relative">
       <button
+        ref={buttonRef}
         onClick={handleOpen}
         className="relative flex items-center justify-center w-9 h-9 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
         title="Notifications"
@@ -168,93 +279,7 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
           </span>
         )}
       </button>
-
-      {open && (
-        <div className={cn(
-          "absolute w-80 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden",
-          align === 'sidebar' ? "left-full ml-2 top-0" :
-          align === 'right'   ? "right-0 top-full mt-2" :
-                                "left-0 top-full mt-2"
-        )}>
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <Bell className="w-4 h-4 text-blue-400" />
-              <span className="text-sm font-semibold text-white">Notifications</span>
-              {unreadCount > 0 && (
-                <span className="text-xs bg-red-500 text-white px-1.5 py-0.5 rounded-full font-bold">
-                  {unreadCount}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-1">
-              {unreadCount > 0 && (
-                <button
-                  onClick={() => markAllMutation.mutate()}
-                  disabled={markAllMutation.isPending}
-                  className="flex items-center gap-1 text-xs text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-slate-800 transition-colors"
-                  title="Mark all as read"
-                >
-                  <CheckCheck className="w-3.5 h-3.5" />
-                  All read
-                </button>
-              )}
-              <button
-                onClick={() => setOpen(false)}
-                className="text-slate-500 hover:text-white p-1 rounded hover:bg-slate-800 transition-colors"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-
-          <div className="max-h-80 overflow-y-auto">
-            {notifsList.length === 0 ? (
-              <div className="py-10 text-center text-slate-500 text-sm">
-                <Bell className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                No notifications yet
-              </div>
-            ) : (
-              notifsList.slice(0, 20).map((notif) => {
-                const Icon = notifIcon(notif.type);
-                const colorCls = notifColor(notif.type);
-                return (
-                  <div
-                    key={notif.id}
-                    className={cn(
-                      "flex items-start gap-3 px-4 py-3 border-b border-slate-800/50 transition-colors cursor-pointer hover:bg-slate-800/40",
-                      !notif.read && "bg-blue-500/5"
-                    )}
-                    onClick={() => !notif.read && markOneMutation.mutate(notif.id)}
-                  >
-                    <div className={cn("p-1.5 rounded-lg flex-shrink-0 mt-0.5", colorCls)}>
-                      <Icon className="w-3.5 h-3.5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={cn("text-xs leading-snug", notif.read ? "text-slate-400" : "text-slate-200 font-medium")}>
-                        {notif.message}
-                      </p>
-                      <p className="text-[10px] text-slate-600 mt-1">
-                        {notif.createdAt
-                          ? formatDistanceToNow(new Date(notif.createdAt), { addSuffix: true })
-                          : ""}
-                      </p>
-                    </div>
-                    {!notif.read && (
-                      <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 mt-1.5" />
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          {notifsList.length > 0 && (
-            <div className="px-4 py-2 border-t border-slate-800 text-center">
-              <p className="text-[10px] text-slate-600">Showing last {Math.min(notifsList.length, 20)} notifications</p>
-            </div>
-          )}
-        </div>
-      )}
+      {createPortal(dropdownContent, document.body)}
     </div>
   );
 }

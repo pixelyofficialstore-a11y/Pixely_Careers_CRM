@@ -283,7 +283,7 @@ export default function PaymentsPage() {
                     <SelectContent className="bg-slate-900 border-slate-800 text-white">
                       {ordersWithRemaining.map(o => (
                         <SelectItem key={o.id} value={o.id.toString()}>
-                          {o.orderNumber} - {o.clientName} (₨{((o.remainingAmount || 0) / 100).toLocaleString()} remaining)
+                          {o.orderNumber} - {o.clientName} (₨{Math.round((o.remainingAmount || 0) / 100).toLocaleString()} remaining)
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -430,7 +430,7 @@ export default function PaymentsPage() {
                 </TableCell>
                 <TableCell>{getTypeBadge(payment.paymentType)}</TableCell>
                 <TableCell className="text-white font-medium">
-                  ₨{((payment.amount || 0) / 100).toLocaleString()}
+                  ₨{Math.round((payment.amount || 0) / 100).toLocaleString()}
                 </TableCell>
                 <TableCell>
                   {payment.screenshotUrl ? (
@@ -507,7 +507,7 @@ export default function PaymentsPage() {
             {selectedPayment && (
               <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-2">
                 <p className="text-sm text-slate-400">Order: <span className="text-white">{selectedPayment.order?.orderNumber}</span></p>
-                <p className="text-sm text-slate-400">Amount: <span className="text-green-400 font-bold">₨{((selectedPayment.amount || 0) / 100).toLocaleString()}</span></p>
+                <p className="text-sm text-slate-400">Amount: <span className="text-green-400 font-bold">₨{Math.round((selectedPayment.amount || 0) / 100).toLocaleString()}</span></p>
                 <p className="text-sm text-slate-400">Type: <span className="text-white capitalize">{selectedPayment.paymentType}</span></p>
               </div>
             )}
@@ -545,7 +545,7 @@ export default function PaymentsPage() {
             {selectedPayment && (
               <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-2">
                 <p className="text-sm text-slate-400">Order: <span className="text-white">{selectedPayment.order?.orderNumber}</span></p>
-                <p className="text-sm text-slate-400">Amount: <span className="text-red-400 font-bold">₨{((selectedPayment.amount || 0) / 100).toLocaleString()}</span></p>
+                <p className="text-sm text-slate-400">Amount: <span className="text-red-400 font-bold">₨{Math.round((selectedPayment.amount || 0) / 100).toLocaleString()}</span></p>
               </div>
             )}
             <div className="space-y-2">
