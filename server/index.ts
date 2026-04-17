@@ -4,6 +4,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seedDatabase } from "./seed";
 import { startCleanupJob } from "./cleanup";
+import { runMigrations } from "./migrate";
 import { pool } from "./db";
 import path from "path";
 import fs from "fs";
@@ -99,22 +100,8 @@ httpServer.listen(
 );
 
 (async () => {
-  // Ensure any tables added outside migrations exist in production
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS push_subscriptions (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        endpoint TEXT NOT NULL UNIQUE,
-        p256dh TEXT NOT NULL,
-        auth TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT NOW()
-      )
-    `);
-  } catch (err) {
-    console.warn("[startup] Could not ensure push_subscriptions table:", err);
-  }
-
+  // Run schema migrations before anything else touches the DB
+  await runMigrations();
   await seedDatabase();
   startCleanupJob();
 
