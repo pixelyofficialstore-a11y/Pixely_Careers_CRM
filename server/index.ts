@@ -5,6 +5,8 @@ import { createServer } from "http";
 import { seedDatabase } from "./seed";
 import { startCleanupJob } from "./cleanup";
 import { pool } from "./db";
+import path from "path";
+import fs from "fs";
 
 process.on("uncaughtException", (err) => {
   console.error("[uncaughtException]", err);
@@ -45,7 +47,7 @@ export function log(message: string, source = "express") {
 
 app.use((req, res, next) => {
   const start = Date.now();
-  const path = req.path;
+  const reqPath = req.path;
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
 
   const originalResJson = res.json;
@@ -56,8 +58,8 @@ app.use((req, res, next) => {
 
   res.on("finish", () => {
     const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
+    if (reqPath.startsWith("/api")) {
+      let logLine = `${req.method} ${reqPath} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
@@ -69,14 +71,28 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check registered before anything else
+// Health check — always responds immediately
 app.get("/health", (_req, res) => {
   res.status(200).json({ status: "ok" });
 });
 
-// Start listening immediately so Railway's healthcheck passes right away
-// All async setup (routes, DB, seed) continues after the port is open
 const port = parseInt(process.env.PORT || "5000", 10);
+
+if (process.env.NODE_ENV === "production") {
+  // In production: serve static assets right away (CSS/JS/images).
+  // express.static only serves actual files, so /api/* is unaffected.
+  // The SPA catch-all (/*.html) is registered AFTER API routes below.
+  const distPath = path.resolve(__dirname, "public");
+  if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    log("static assets registered");
+  } else {
+    console.warn("[startup] dist/public not found — frontend will not be served");
+  }
+}
+
+// Start listening immediately so Railway's healthcheck gets a fast 200.
+// API routes and SPA catch-all are registered asynchronously below.
 httpServer.listen(
   { port, host: "0.0.0.0", reusePort: true },
   () => { log(`serving on port ${port}`); },
@@ -102,6 +118,7 @@ httpServer.listen(
   await seedDatabase();
   startCleanupJob();
 
+  // Register all API routes
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
@@ -118,7 +135,13 @@ httpServer.listen(
   });
 
   if (process.env.NODE_ENV === "production") {
-    serveStatic(app);
+    // Register SPA catch-all AFTER API routes so /api/* isn't intercepted
+    const distPath = path.resolve(__dirname, "public");
+    if (fs.existsSync(distPath)) {
+      app.use("/{*path}", (_req, res) => {
+        res.sendFile(path.resolve(distPath, "index.html"));
+      });
+    }
   } else {
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
