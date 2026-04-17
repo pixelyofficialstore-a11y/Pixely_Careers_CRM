@@ -1,6 +1,6 @@
 import { 
   users, orders, notifications, orderServices, paymentVerifications, supportDesignerAssignments,
-  servicesCatalog, packageConfigs, platformsCatalog,
+  servicesCatalog, packageConfigs, platformsCatalog, pushSubscriptions,
   type User, type InsertUser, type Order, type InsertOrder,
   type OrderService, type InsertOrderService, type OrderWithServices,
   type PaymentVerification, type InsertPaymentVerification, type PaymentVerificationWithUsers,
@@ -8,6 +8,7 @@ import {
   type ServiceCatalogItem, type InsertServiceCatalogItem,
   type PackageConfig, type InsertPackageConfig,
   type PlatformCatalogItem, type InsertPlatformCatalogItem,
+  type PushSubscription,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, ne, desc, sql, and, isNotNull, inArray, asc } from "drizzle-orm";
@@ -61,6 +62,10 @@ export interface IStorage {
   getAdmins(): Promise<User[]>;
   getUnreadNotificationCount(userId: number): Promise<number>;
   markAllNotificationsRead(userId: number): Promise<void>;
+
+  savePushSubscription(userId: number, endpoint: string, p256dh: string, auth: string): Promise<PushSubscription>;
+  deletePushSubscription(endpoint: string): Promise<void>;
+  getPushSubscriptionsForUser(userId: number): Promise<PushSubscription[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -364,6 +369,20 @@ export class DatabaseStorage implements IStorage {
       .update(notifications)
       .set({ read: true })
       .where(eq(notifications.userId, userId));
+  }
+
+  async savePushSubscription(userId: number, endpoint: string, p256dh: string, auth: string): Promise<PushSubscription> {
+    await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
+    const [sub] = await db.insert(pushSubscriptions).values({ userId, endpoint, p256dh, auth }).returning();
+    return sub;
+  }
+
+  async deletePushSubscription(endpoint: string): Promise<void> {
+    await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
+  }
+
+  async getPushSubscriptionsForUser(userId: number): Promise<PushSubscription[]> {
+    return await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, userId));
   }
 }
 

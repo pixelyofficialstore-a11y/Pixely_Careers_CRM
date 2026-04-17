@@ -1,7 +1,31 @@
-// Take control of all pages immediately without waiting for a full reload
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => {
   event.waitUntil(clients.claim());
+});
+
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (_) {}
+
+  const title = data.title || 'PixelCRM';
+  const body = data.body || '';
+  const priority = data.priority || 'update';
+
+  const options = {
+    body,
+    icon: '/favicon.ico',
+    badge: '/favicon.ico',
+    tag: 'pixelcrm-' + Date.now(),
+    requireInteraction: priority === 'action_required',
+    vibrate: priority === 'action_required' ? [200, 100, 200] : undefined,
+    data: { url: '/orders' },
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(title, options)
+  );
 });
 
 self.addEventListener('message', (event) => {

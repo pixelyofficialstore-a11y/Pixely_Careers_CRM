@@ -17,6 +17,63 @@ import fs from "fs";
 import { ObjectStorageService, registerObjectStorageRoutes, objectStorageServiceInstance } from "./replit_integrations/object_storage";
 import sharp from "sharp";
 import { isCloudinaryConfigured, uploadToCloudinary } from "./cloudinary";
+import webpush from "web-push";
+
+if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    process.env.VAPID_SUBJECT || "mailto:admin@pixelcrm.app",
+    process.env.VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  );
+} else {
+  console.warn("[push] VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY env vars are not set — background web push is disabled");
+}
+
+const KNOWN_PUSH_HOSTS = [
+  "fcm.googleapis.com",
+  "updates.push.services.mozilla.com",
+  "notify.windows.com",
+  "push.apple.com",
+  "web.push.apple.com",
+];
+
+function isValidPushEndpoint(endpoint: string): boolean {
+  try {
+    const url = new URL(endpoint);
+    if (url.protocol !== "https:") return false;
+    return KNOWN_PUSH_HOSTS.some(host => url.hostname === host || url.hostname.endsWith("." + host));
+  } catch {
+    return false;
+  }
+}
+
+async function sendWebPushToUser(userId: number, title: string, body: string, priority: string) {
+  try {
+    const subs = await storage.getPushSubscriptionsForUser(userId);
+    const payload = JSON.stringify({ title, body, priority });
+    for (const sub of subs) {
+      try {
+        await webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          payload
+        );
+      } catch (err: any) {
+        if (err.statusCode === 410 || err.statusCode === 404) {
+          await storage.deletePushSubscription(sub.endpoint);
+        }
+      }
+    }
+  } catch (_) {}
+}
+
+async function notifyUser(
+  userId: number, type: string, title: string, message: string,
+  priority: string, relatedId?: number, relatedType?: string
+) {
+  const notification = await storage.createNotification(userId, type, title, message, priority, relatedId, relatedType);
+  sendWebPushToUser(userId, title, message, priority).catch(() => {});
+  return notification;
+}
 
 const PgSession = connectPgSimple(session);
 
@@ -325,7 +382,7 @@ export async function registerRoutes(
         const admins = await storage.getAdmins();
         for (const admin of admins) {
           if (admin.id !== user.id) {
-            await storage.createNotification(
+            await notifyUser(
               admin.id, "order",
               "New Order Created",
               `#${orderNumber} · Client: ${orderData.clientName} · Awaiting assignment`,
@@ -337,7 +394,7 @@ export async function registerRoutes(
 
         // Notify assigned designer
         if (intendedDesignerId) {
-          await storage.createNotification(
+          await notifyUser(
             intendedDesignerId, "assignment",
             "New Order Assigned",
             `#${orderNumber} · ${orderData.clientName} · Start processing`,
@@ -368,7 +425,7 @@ export async function registerRoutes(
       const totalRs = Math.floor(totalPrice / 100);
       const admins = await storage.getAdmins();
       for (const admin of admins) {
-        await storage.createNotification(
+        await notifyUser(
           admin.id, "payment",
           "Payment Request Pending",
           `${orderData.clientName} · ₨${totalRs.toLocaleString()} · Awaiting approval`,
@@ -479,6 +536,31 @@ export async function registerRoutes(
   app.patch(api.notifications.markRead.path, requireAuth, async (req, res) => {
     const notif = await storage.markNotificationRead(Number(req.params.id));
     res.json(notif);
+  });
+
+  app.get("/api/push/vapid-public-key", (_req, res) => {
+    const key = process.env.VAPID_PUBLIC_KEY;
+    if (!key) return res.status(503).json({ error: "Push not configured" });
+    res.json({ publicKey: key });
+  });
+
+  app.post("/api/push/subscribe", requireAuth, async (req, res) => {
+    const user = req.user as User;
+    const { endpoint, keys } = req.body;
+    if (!endpoint || !keys?.p256dh || !keys?.auth) {
+      return res.status(400).json({ error: "Invalid subscription" });
+    }
+    if (!isValidPushEndpoint(endpoint)) {
+      return res.status(400).json({ error: "Endpoint must be an HTTPS push service URL" });
+    }
+    const sub = await storage.savePushSubscription(user.id, endpoint, keys.p256dh, keys.auth);
+    res.status(201).json(sub);
+  });
+
+  app.delete("/api/push/unsubscribe", requireAuth, async (req, res) => {
+    const { endpoint } = req.body;
+    if (endpoint) await storage.deletePushSubscription(endpoint);
+    res.json({ success: true });
   });
 
   app.get(api.stats.dashboard.path, requireAuth, async (req, res) => {
@@ -637,7 +719,7 @@ export async function registerRoutes(
         const amountRs = Math.floor(parsedAmount / 100);
         for (const admin of admins) {
           if (admin.id !== user.id) {
-            await storage.createNotification(
+            await notifyUser(
               admin.id,
               "payment",
               "Payment Verification Required",
@@ -699,7 +781,7 @@ export async function registerRoutes(
       });
       
       if (order.intendedDesignerId) {
-        await storage.createNotification(
+        await notifyUser(
           order.intendedDesignerId, "assignment",
           "Approved Order Assigned",
           `#${orderNumber} · ${order.clientName} · Begin work`,
@@ -713,7 +795,7 @@ export async function registerRoutes(
       const approvalAdmins = await storage.getAdmins();
       for (const admin of approvalAdmins) {
         if (admin.id !== user.id) {
-          await storage.createNotification(
+          await notifyUser(
             admin.id, "order",
             "Order Approved",
             `#${orderNumber} · ${order.clientName} · ₨${advanceRs.toLocaleString()} received`,
@@ -737,7 +819,7 @@ export async function registerRoutes(
       
       const fullRs = Math.floor(verification.amount / 100);
       if (order.intendedDesignerId) {
-        await storage.createNotification(
+        await notifyUser(
           order.intendedDesignerId, "assignment",
           "Approved Order Assigned",
           `#${orderNumber} · ${order.clientName} · Begin work`,
@@ -750,7 +832,7 @@ export async function registerRoutes(
       const fullApprovalAdmins = await storage.getAdmins();
       for (const admin of fullApprovalAdmins) {
         if (admin.id !== user.id) {
-          await storage.createNotification(
+          await notifyUser(
             admin.id, "order",
             "Order Approved",
             `#${orderNumber} · ${order.clientName} · ₨${fullRs.toLocaleString()} received`,

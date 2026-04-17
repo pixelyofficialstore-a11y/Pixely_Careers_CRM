@@ -195,6 +195,15 @@ export const orderServicesRelations = relations(orderServices, ({ one }) => ({
   }),
 }));
 
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  endpoint: text("endpoint").notNull(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertOrderSchema = createInsertSchema(orders).omit({ id: true, createdAt: true });
 export const insertOrderServiceSchema = createInsertSchema(orderServices).omit({ id: true });
@@ -241,3 +250,4 @@ export type PackageConfig = typeof packageConfigs.$inferSelect;
 export type InsertPackageConfig = z.infer<typeof insertPackageConfigSchema>;
 export type PlatformCatalogItem = typeof platformsCatalog.$inferSelect;
 export type InsertPlatformCatalogItem = z.infer<typeof insertPlatformsCatalogSchema>;
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
