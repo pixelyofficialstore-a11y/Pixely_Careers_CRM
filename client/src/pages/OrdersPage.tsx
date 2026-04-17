@@ -433,74 +433,8 @@ export default function OrdersPage() {
               <h3 className="text-lg font-bold text-white">Today's Orders</h3>
               <p className="text-sm text-slate-500">Orders created today</p>
             </div>
-            {/* Mobile card view – Today */}
-            <div className="md:hidden p-3 space-y-2">
-              {todayOrders?.map((order) => (
-                <div key={order.id} className="rounded-xl border border-slate-700/40 bg-slate-900/50 overflow-hidden hover:border-slate-600/50 transition-all">
-                  <div className="p-3">
-                    <div className="flex items-start justify-between gap-2 mb-1">
-                      <p className="text-white font-semibold text-sm leading-tight truncate">{order.clientName}</p>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {getStatusBadge(order.status)}
-                        <span className="text-slate-500 text-[10px]">{format(new Date(order.createdAt!), "h:mm a")}</span>
-                      </div>
-                    </div>
-                    <p className="text-blue-400 font-mono text-xs mb-2">{order.orderNumber}</p>
-                    <div className="text-sm mb-1.5">{getServicesDisplay(order)}</div>
-                    {!isDesigner && (order.clientPhone || order.assignee?.name) && (
-                      <div className="flex items-center gap-3 flex-wrap mb-1.5">
-                        {order.clientPhone && <span className="text-slate-400 text-xs">{order.clientPhone}</span>}
-                        {order.assignee?.name && (
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-4 h-4 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-[9px] font-bold shrink-0">{order.assignee.name.charAt(0)}</div>
-                            <span className="text-slate-400 text-xs">{order.assignee.name}</span>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {canSeeAmounts && (
-                      <div className="flex gap-4">
-                        <span className="text-green-400 text-xs">Adv ₨{Math.round((order.advanceAmount || 0) / 100).toLocaleString()}</span>
-                        <span className="text-red-400 text-xs">Rem ₨{Math.round((order.remainingAmount || 0) / 100).toLocaleString()}</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center border-t border-slate-800/50">
-                    <div className="flex-1 px-3 py-2">
-                      <Select
-                        defaultValue={order.status}
-                        onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { status: val } })}
-                      >
-                        <SelectTrigger className="h-7 text-xs bg-slate-800 border-slate-700 w-auto min-w-[80px]">
-                          <SelectValue>{getStatusBadge(order.status)}</SelectValue>
-                        </SelectTrigger>
-                        <SelectContent className="bg-slate-900 border-slate-800">
-                          {getMobileStatusOptions(order).map(opt => (
-                            <SelectItem key={opt.value} value={opt.value} className="text-sm">{opt.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="border-l border-slate-800/50">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-9 text-xs text-blue-400 hover:text-blue-300 rounded-none px-3"
-                        onClick={() => openOrderDetails(order)}
-                      >
-                        <Eye className="w-3 h-3 mr-1" />
-                        Details
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {(!todayOrders || todayOrders.length === 0) && (
-                <div className="py-8 text-center text-slate-500 text-sm">No orders for today</div>
-              )}
-            </div>
-            {/* Desktop table view – Today */}
-            <div className="table-scroll-wrapper hidden md:block">
+            {/* Table view – Today */}
+            <div className="table-scroll-wrapper">
             <Table>
               <TableHeader className="bg-slate-900/50">
                 <TableRow className="border-slate-800 hover:bg-transparent">
@@ -761,74 +695,8 @@ export default function OrdersPage() {
               </div>
             </div>
             
-            {/* Mobile card view – Monthly */}
-            <div className="md:hidden p-3 space-y-2">
-              {monthlyOrders?.map((order) => (
-                <div key={order.id} className="rounded-xl border border-slate-700/40 bg-slate-900/50 overflow-hidden hover:border-slate-600/50 transition-all">
-                  <div className="p-3">
-                    <div className="flex items-start justify-between gap-2 mb-1">
-                      <p className="text-white font-semibold text-sm leading-tight truncate">{order.clientName}</p>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {getStatusBadge(order.status)}
-                        <span className="text-slate-500 text-[10px]">{format(new Date(order.createdAt!), "MMM dd")}</span>
-                      </div>
-                    </div>
-                    <p className="text-blue-400 font-mono text-xs mb-2">{order.orderNumber}</p>
-                    <div className="text-sm mb-1.5">{getServicesDisplay(order)}</div>
-                    {!isDesigner && (order.clientPhone || order.assignee?.name) && (
-                      <div className="flex items-center gap-3 flex-wrap mb-1.5">
-                        {order.clientPhone && <span className="text-slate-400 text-xs">{order.clientPhone}</span>}
-                        {order.assignee?.name && (
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-4 h-4 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-[9px] font-bold shrink-0">{order.assignee.name.charAt(0)}</div>
-                            <span className="text-slate-400 text-xs">{order.assignee.name}</span>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {canSeeAmounts && (
-                      <div className="flex gap-4">
-                        <span className="text-green-400 text-xs">Adv ₨{Math.round((order.advanceAmount || 0) / 100).toLocaleString()}</span>
-                        <span className="text-red-400 text-xs">Rem ₨{Math.round((order.remainingAmount || 0) / 100).toLocaleString()}</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center border-t border-slate-800/50">
-                    <div className="flex-1 px-3 py-2">
-                      <Select
-                        defaultValue={order.status}
-                        onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { status: val } })}
-                      >
-                        <SelectTrigger className="h-7 text-xs bg-slate-800 border-slate-700 w-auto min-w-[80px]">
-                          <SelectValue>{getStatusBadge(order.status)}</SelectValue>
-                        </SelectTrigger>
-                        <SelectContent className="bg-slate-900 border-slate-800">
-                          {getMobileStatusOptions(order).map(opt => (
-                            <SelectItem key={opt.value} value={opt.value} className="text-sm">{opt.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="border-l border-slate-800/50">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-9 text-xs text-blue-400 hover:text-blue-300 rounded-none px-3"
-                        onClick={() => openOrderDetails(order)}
-                      >
-                        <Eye className="w-3 h-3 mr-1" />
-                        Details
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {(!monthlyOrders || monthlyOrders.length === 0) && (
-                <div className="py-8 text-center text-slate-500 text-sm">No orders for this month</div>
-              )}
-            </div>
-            {/* Desktop table view – Monthly */}
-            <div className="table-scroll-wrapper hidden md:block">
+            {/* Table view – Monthly */}
+            <div className="table-scroll-wrapper">
             <Table>
               <TableHeader className="bg-slate-900/50">
                 <TableRow className="border-slate-800">
