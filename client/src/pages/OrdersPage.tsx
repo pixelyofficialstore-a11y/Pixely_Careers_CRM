@@ -1506,11 +1506,11 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
             <Input 
               type="number"
               min="0"
-              step="0.01"
+              step="1"
               value={totalBill} 
-              onChange={(e) => setTotalBill(e.target.value)} 
+              onChange={(e) => setTotalBill(e.target.value.replace(/[^0-9]/g, ''))} 
               className="bg-slate-950 border-slate-800 text-white"
-              placeholder="0.00"
+              placeholder="0"
               data-testid="input-total-bill"
             />
           </div>
@@ -1519,18 +1519,18 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
             <Input 
               type="number"
               min="0"
-              step="0.01"
+              step="1"
               value={advanceAmount} 
-              onChange={(e) => setAdvanceAmount(e.target.value)} 
+              onChange={(e) => setAdvanceAmount(e.target.value.replace(/[^0-9]/g, ''))} 
               className="bg-slate-950 border-slate-800 text-white"
-              placeholder="0.00"
+              placeholder="0"
               data-testid="input-advance-amount"
             />
           </div>
           <div className="space-y-2">
             <Label className="text-slate-300">Remaining</Label>
             <div className="h-9 flex items-center px-3 bg-slate-950 border border-slate-800 rounded-md text-white">
-              ₨{((parseFloat(totalBill) || 0) - (parseFloat(advanceAmount) || 0)).toFixed(2)}
+              ₨{Math.max(0, (parseInt(totalBill) || 0) - (parseInt(advanceAmount) || 0)).toLocaleString()}
             </div>
           </div>
         </div>
