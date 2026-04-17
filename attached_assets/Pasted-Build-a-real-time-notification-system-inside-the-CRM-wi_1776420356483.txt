@@ -1,0 +1,166 @@
+Build a real-time notification system inside the CRM with browser push notifications (desktop + mobile when logged in).
+
+The system must support 6 core notifications with clear, action-driven messaging.
+
+---
+
+🎯 REQUIREMENTS
+
+1. Notifications must appear:
+
+* Inside CRM (notification panel)
+* As browser push notifications (desktop + mobile browsers)
+
+2. Use:
+
+* Service Workers for push notifications
+* Notification API (browser)
+* Permission request on login
+
+3. Notifications must trigger instantly (real-time preferred, fallback polling allowed)
+
+4. Each notification must include:
+
+* Title
+* Message
+* Type (action_required, update, confirmation)
+* Timestamp
+* Click action → opens related order
+
+5. Priority behavior:
+
+* action_required → high priority (vibration / sound if possible)
+* update → normal
+* confirmation → low
+
+---
+
+🔔 NOTIFICATION TYPES (IMPLEMENT EXACTLY)
+
+1. PAYMENT REQUEST (Support → Admin)
+   Type: action_required
+
+Title:
+"Payment Request Pending"
+
+Message:
+"{clientName} · ₨{totalAmount} · Awaiting approval"
+
+---
+
+2. ORDER CREATED (Admin → Other Admins)
+   Type: update
+
+Title:
+"New Order Created"
+
+Message:
+"#{orderNumber} · Client: {clientName} · Awaiting assignment"
+
+---
+
+3. ORDER ASSIGNED (Admin → Designer)
+   Type: action_required
+
+Title:
+"New Order Assigned"
+
+Message:
+"#{orderNumber} · {clientName} · Start processing"
+
+---
+
+4. ORDER APPROVED (Admin → Admins)
+   Type: confirmation
+
+Title:
+"Order Approved"
+
+Message:
+"#{orderNumber} · {clientName} · ₨{advance} received"
+
+---
+
+5. ORDER APPROVED + ASSIGNED (Admin → Designer)
+   Type: action_required
+
+Title:
+"Approved Order Assigned"
+
+Message:
+"#{orderNumber} · {clientName} · Begin work"
+
+---
+
+6. REMAINING PAYMENT SUBMITTED (Designer → Admins)
+   Type: action_required
+
+Title:
+"Payment Verification Required"
+
+Message:
+"{clientName} · Order #{orderNumber} · ₨{amount}"
+
+---
+
+🔧 TECH IMPLEMENTATION
+
+Frontend:
+
+* Request notification permission on login
+* Register service worker
+* Show toast inside app
+* Trigger browser notification using:
+  new Notification(title, { body, icon })
+
+Backend:
+
+* Store notifications in DB (user_id, type, title, message, read_status, created_at)
+* Emit real-time event (WebSocket / Firebase / Supabase / Pusher)
+
+---
+
+📱 MOBILE SUPPORT (IMPORTANT)
+
+Ensure:
+
+* Works on Chrome Android (PWA or browser)
+* Service worker handles background notifications
+* Notifications appear even when tab is not active
+
+---
+
+🧠 CLICK ACTION
+
+When user clicks notification:
+→ Redirect to:
+"/orders/{orderNumber}"
+
+---
+
+🔒 PERMISSIONS FLOW
+
+On login:
+
+* Ask for notification permission
+* If denied → show banner: "Enable notifications for real-time updates"
+
+---
+
+🎨 UX
+
+* Show unread count badge
+* Highlight action_required notifications
+* Mark as read on click
+
+---
+
+⚠️ IMPORTANT
+
+* Keep messages short, clean, professional
+* No long sentences
+* Focus on clarity and action
+
+---
+
+END
