@@ -611,16 +611,20 @@ export async function registerRoutes(
         status: "pending_confirmation",
       });
 
-      const admins = await storage.getAdmins();
-      const paymentLabel = paymentType === "advance" ? "advance" : paymentType === "remaining" ? "remaining" : "full";
-      for (const admin of admins) {
-        await storage.createNotification(
-          admin.id,
-          "payment",
-          `Payment verification request: ${order.clientName} — ${paymentLabel} payment`,
-          verification.id,
-          "payment_verification"
-        );
+      // Only send screenshot notification for EXISTING approved orders (remaining payments).
+      // For initial pending_payment orders, the order creation already notified all admins.
+      if (order.status !== 'pending_payment') {
+        const admins = await storage.getAdmins();
+        const paymentLabel = paymentType === "advance" ? "advance" : paymentType === "remaining" ? "remaining" : "full";
+        for (const admin of admins) {
+          await storage.createNotification(
+            admin.id,
+            "payment",
+            `Payment verification: ${order.clientName} — ${paymentLabel} payment`,
+            verification.id,
+            "payment_verification"
+          );
+        }
       }
       
       res.status(201).json(verification);
@@ -745,9 +749,10 @@ export async function registerRoutes(
     if (verification.paymentType !== 'remaining') {
       const order = await storage.getOrder(verification.orderId);
       if (order) {
+        // Keep as pending_payment (not canceled) so it stays hidden from Orders page
         await storage.updateOrder(order.id, {
           advancePaymentStatus: "disapproved",
-          status: "canceled",
+          status: "pending_payment",
         });
       }
     }

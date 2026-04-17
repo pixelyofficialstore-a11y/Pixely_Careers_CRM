@@ -1137,6 +1137,7 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
     if (!clientPhone.trim()) missingFields.push("Phone Number");
     if (!packageType) missingFields.push("Package");
     if (packageType === "custom" && services.every(s => !s.serviceType)) missingFields.push("At least one service");
+    if (currentUser?.role !== 'admin' && !paymentScreenshot) missingFields.push("Payment Screenshot");
     
     if (missingFields.length > 0) {
       toast({ 
@@ -1404,40 +1405,44 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
         </div>
       </div>
 
-      <div className="space-y-4">
-        <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Payment Verification</h4>
-        <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-slate-300">Payment Type *</Label>
-              <Select value={paymentType} onValueChange={(val: "advance" | "full") => setPaymentType(val)}>
-                <SelectTrigger className="bg-slate-900 border-slate-700 text-white" data-testid="select-payment-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                  <SelectItem value="advance">Advance (Partial)</SelectItem>
-                  <SelectItem value="full">Full Payment</SelectItem>
-                </SelectContent>
-              </Select>
+      {currentUser?.role !== 'admin' && (
+        <div className="space-y-4">
+          <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Payment Request <span className="text-red-400 normal-case font-normal">(Required)</span></h4>
+          <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-slate-300">Payment Type *</Label>
+                <Select value={paymentType} onValueChange={(val: "advance" | "full") => setPaymentType(val)}>
+                  <SelectTrigger className="bg-slate-900 border-slate-700 text-white" data-testid="select-payment-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                    <SelectItem value="advance">Advance (Partial)</SelectItem>
+                    <SelectItem value="full">Full Payment</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className={paymentScreenshot ? "text-slate-300" : "text-red-400"}>
+                  Payment Screenshot *
+                </Label>
+                <Input 
+                  type="file" 
+                  accept="image/*"
+                  onChange={(e) => setPaymentScreenshot(e.target.files?.[0] || null)}
+                  className={`bg-slate-900 border-slate-700 text-white file:bg-slate-800 file:text-slate-300 file:border-0 file:mr-3 ${!paymentScreenshot ? "border-red-500/50" : ""}`}
+                  data-testid="input-payment-screenshot"
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label className="text-slate-300">Payment Screenshot *</Label>
-              <Input 
-                type="file" 
-                accept="image/*"
-                onChange={(e) => setPaymentScreenshot(e.target.files?.[0] || null)}
-                className="bg-slate-900 border-slate-700 text-white file:bg-slate-800 file:text-slate-300 file:border-0 file:mr-3"
-                data-testid="input-payment-screenshot"
-              />
-            </div>
+            <p className="text-xs text-slate-500">
+              {paymentType === "advance" 
+                ? "Upload screenshot of advance payment. Order will be pending until admin approves this request."
+                : "Upload screenshot of full payment. Order will be marked as paid after admin approval."}
+            </p>
           </div>
-          <p className="text-xs text-slate-500">
-            {paymentType === "advance" 
-              ? "Upload screenshot of advance payment. Remaining will be collected later."
-              : "Upload screenshot of full payment. Order will be marked as paid after admin approval."}
-          </p>
         </div>
-      </div>
+      )}
 
       <div className="space-y-4">
         <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Marketing</h4>
