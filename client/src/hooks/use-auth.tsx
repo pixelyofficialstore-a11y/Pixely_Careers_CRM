@@ -41,7 +41,10 @@ function useAuthMutation() {
     onSuccess: (user) => {
       queryClient.setQueryData([api.auth.me.path], user);
       toast({ title: "Welcome back", description: `Signed in as ${user.name}` });
-      // Redirect based on role
+      // Request browser notification permission after login
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => {});
+      }
       setLocation("/");
     },
     onError: (error: Error) => {

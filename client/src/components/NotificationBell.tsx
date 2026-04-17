@@ -1,17 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Bell, ShoppingCart, CreditCard, User, CheckCheck, X } from "lucide-react";
+import { Bell, ShoppingCart, CreditCard, User, CheckCheck, X, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 
 interface Notification {
   id: number;
   userId: number;
   type: string;
+  title: string;
   message: string;
+  priority: string;
   read: boolean;
   relatedId: number | null;
   relatedType: string | null;
@@ -38,19 +41,24 @@ function playNotificationSound() {
   } catch (_) {}
 }
 
-function showBrowserNotification(title: string, body: string) {
-  if (!("Notification" in window)) return;
-  if (Notification.permission !== "granted") return;
+function sendPushNotification(title: string, body: string, priority: string) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
   try {
-    new Notification(title, { body, icon: "/favicon.ico", tag: "pixelcrm-notification" });
+    if (navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: "SHOW_NOTIFICATION",
+        title,
+        body,
+        priority,
+      });
+    } else {
+      new Notification(title, {
+        body,
+        icon: "/favicon.png",
+        tag: "pixelcrm-" + Date.now(),
+      });
+    }
   } catch (_) {}
-}
-
-function requestNotificationPermission() {
-  if (!("Notification" in window)) return;
-  if (Notification.permission === "default") {
-    Notification.requestPermission().catch(() => {});
-  }
 }
 
 function notifIcon(type: string) {
@@ -60,7 +68,8 @@ function notifIcon(type: string) {
   return Bell;
 }
 
-function notifColor(type: string) {
+function notifColor(type: string, priority: string) {
+  if (priority === "action_required") return "text-red-400 bg-red-500/10";
   if (type === "order") return "text-blue-400 bg-blue-500/10";
   if (type === "payment") return "text-yellow-400 bg-yellow-500/10";
   if (type === "assignment") return "text-purple-400 bg-purple-500/10";
@@ -74,14 +83,18 @@ interface NotificationBellProps {
 export function NotificationBell({ align = 'right' }: NotificationBellProps = {}) {
   const [open, setOpen] = useState(false);
   const [dropPos, setDropPos] = useState<{ top: number; left?: number; right?: number }>({ top: 0 });
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | null>(null);
   const prevCount = useRef<number>(0);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const firstLoad = useRef(true);
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   useEffect(() => {
-    requestNotificationPermission();
+    if ("Notification" in window) {
+      setNotifPermission(Notification.permission);
+    }
   }, []);
 
   useEffect(() => {
@@ -142,11 +155,13 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
       playNotificationSound();
       const unreadNotifs = notifsList.filter(n => !n.read);
       const newest = unreadNotifs[0];
-      const msg = newest?.message ?? "You have a new notification";
-      showBrowserNotification("PixelCRM", msg);
+      const notifTitle = newest?.title || "New Notification";
+      const notifMsg = newest?.message ?? "You have a new notification";
+      const priority = newest?.priority ?? "update";
+      sendPushNotification(notifTitle, notifMsg, priority);
       toast({
-        title: "New Notification",
-        description: msg,
+        title: notifTitle,
+        description: notifMsg,
       });
     }
     prevCount.current = unreadCount;
@@ -167,6 +182,12 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
     setOpen(o => !o);
   };
 
+  const handleNotifClick = (notif: Notification) => {
+    if (!notif.read) markOneMutation.mutate(notif.id);
+    setOpen(false);
+    setLocation("/orders");
+  };
+
   const dropdownContent = open ? (
     <div
       ref={dropdownRef}
@@ -176,7 +197,7 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
         ...(dropPos.left !== undefined ? { left: dropPos.left } : {}),
         ...(dropPos.right !== undefined ? { right: dropPos.right } : {}),
         zIndex: 9999,
-        width: 320,
+        width: 340,
       }}
       className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden"
     >
@@ -211,6 +232,13 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
         </div>
       </div>
 
+      {notifPermission === "denied" && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-yellow-500/10 border-b border-yellow-500/20">
+          <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 flex-shrink-0" />
+          <p className="text-xs text-yellow-300">Enable notifications for real-time updates</p>
+        </div>
+      )}
+
       <div className="max-h-80 overflow-y-auto">
         {notifsList.length === 0 ? (
           <div className="py-10 text-center text-slate-500 text-sm">
@@ -220,21 +248,28 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
         ) : (
           notifsList.slice(0, 20).map((notif) => {
             const Icon = notifIcon(notif.type);
-            const colorCls = notifColor(notif.type);
+            const colorCls = notifColor(notif.type, notif.priority);
+            const isActionRequired = notif.priority === "action_required";
             return (
               <div
                 key={notif.id}
                 className={cn(
                   "flex items-start gap-3 px-4 py-3 border-b border-slate-800/50 transition-colors cursor-pointer hover:bg-slate-800/40",
-                  !notif.read && "bg-blue-500/5"
+                  !notif.read && "bg-blue-500/5",
+                  isActionRequired && !notif.read && "border-l-2 border-l-red-500"
                 )}
-                onClick={() => !notif.read && markOneMutation.mutate(notif.id)}
+                onClick={() => handleNotifClick(notif)}
               >
                 <div className={cn("p-1.5 rounded-lg flex-shrink-0 mt-0.5", colorCls)}>
                   <Icon className="w-3.5 h-3.5" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className={cn("text-xs leading-snug", notif.read ? "text-slate-400" : "text-slate-200 font-medium")}>
+                  {notif.title ? (
+                    <p className={cn("text-xs font-semibold leading-snug", notif.read ? "text-slate-400" : "text-white")}>
+                      {notif.title}
+                    </p>
+                  ) : null}
+                  <p className={cn("text-xs leading-snug mt-0.5", notif.read ? "text-slate-500" : "text-slate-300")}>
                     {notif.message}
                   </p>
                   <p className="text-[10px] text-slate-600 mt-1">
@@ -244,7 +279,10 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
                   </p>
                 </div>
                 {!notif.read && (
-                  <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 mt-1.5" />
+                  <div className={cn(
+                    "w-2 h-2 rounded-full flex-shrink-0 mt-1.5",
+                    isActionRequired ? "bg-red-500" : "bg-blue-500"
+                  )} />
                 )}
               </div>
             );

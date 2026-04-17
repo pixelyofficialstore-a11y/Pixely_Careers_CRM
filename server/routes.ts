@@ -325,13 +325,25 @@ export async function registerRoutes(
         const admins = await storage.getAdmins();
         for (const admin of admins) {
           if (admin.id !== user.id) {
-            await storage.createNotification(admin.id, "order", `New order: ${orderData.clientName} — #${orderNumber}`, order.id, "order");
+            await storage.createNotification(
+              admin.id, "order",
+              "New Order Created",
+              `#${orderNumber} · Client: ${orderData.clientName} · Awaiting assignment`,
+              "update",
+              order.id, "order"
+            );
           }
         }
 
         // Notify assigned designer
         if (intendedDesignerId) {
-          await storage.createNotification(intendedDesignerId, "assignment", `New order assigned: ${orderNumber}`, order.id, "order");
+          await storage.createNotification(
+            intendedDesignerId, "assignment",
+            "New Order Assigned",
+            `#${orderNumber} · ${orderData.clientName} · Start processing`,
+            "action_required",
+            order.id, "order"
+          );
         }
 
         return res.status(201).json(order);
@@ -353,9 +365,16 @@ export async function registerRoutes(
       }, services || []);
 
       // Notify admins of a new payment request (not "order placed" — no order exists yet)
+      const totalRs = Math.round(totalPrice / 100);
       const admins = await storage.getAdmins();
       for (const admin of admins) {
-        await storage.createNotification(admin.id, "payment", `Payment request: ${orderData.clientName}`, order.id, "order");
+        await storage.createNotification(
+          admin.id, "payment",
+          "Payment Request Pending",
+          `${orderData.clientName} · ₨${totalRs.toLocaleString()} · Awaiting approval`,
+          "action_required",
+          order.id, "order"
+        );
       }
 
       res.status(201).json(order);
@@ -615,13 +634,15 @@ export async function registerRoutes(
       // Never notify the submitter of their own action.
       if (order.status !== 'pending_payment') {
         const admins = await storage.getAdmins();
-        const paymentLabel = paymentType === "remaining" ? "remaining" : paymentType === "full" ? "full" : "advance";
+        const amountRs = Math.round(parsedAmount / 100);
         for (const admin of admins) {
           if (admin.id !== user.id) {
             await storage.createNotification(
               admin.id,
               "payment",
-              `Payment verification: ${order.clientName} — ${paymentLabel} payment`,
+              "Payment Verification Required",
+              `${order.clientName} · Order #${order.orderNumber || `REQ-${verification.id}`} · ₨${amountRs.toLocaleString()}`,
+              "action_required",
               verification.id,
               "payment_verification"
             );
@@ -678,14 +699,27 @@ export async function registerRoutes(
       });
       
       if (order.intendedDesignerId) {
-        await storage.createNotification(order.intendedDesignerId, "assignment", `New order assigned: ${orderNumber}`, order.id, "order");
+        await storage.createNotification(
+          order.intendedDesignerId, "assignment",
+          "Approved Order Assigned",
+          `#${orderNumber} · ${order.clientName} · Begin work`,
+          "action_required",
+          order.id, "order"
+        );
       }
 
       // Notify all other admins (not the one who approved)
+      const advanceRs = Math.round(verification.amount / 100);
       const approvalAdmins = await storage.getAdmins();
       for (const admin of approvalAdmins) {
         if (admin.id !== user.id) {
-          await storage.createNotification(admin.id, "order", `Order approved: ${order.clientName} — #${orderNumber}`, order.id, "order");
+          await storage.createNotification(
+            admin.id, "order",
+            "Order Approved",
+            `#${orderNumber} · ${order.clientName} · ₨${advanceRs.toLocaleString()} received`,
+            "confirmation",
+            order.id, "order"
+          );
         }
       }
     } else if (verification.paymentType === 'full') {
@@ -701,15 +735,28 @@ export async function registerRoutes(
         status: "new",
       });
       
+      const fullRs = Math.round(verification.amount / 100);
       if (order.intendedDesignerId) {
-        await storage.createNotification(order.intendedDesignerId, "assignment", `New order assigned: ${orderNumber}`, order.id, "order");
+        await storage.createNotification(
+          order.intendedDesignerId, "assignment",
+          "Approved Order Assigned",
+          `#${orderNumber} · ${order.clientName} · Begin work`,
+          "action_required",
+          order.id, "order"
+        );
       }
 
       // Notify all other admins (not the one who approved)
-      const approvalAdmins = await storage.getAdmins();
-      for (const admin of approvalAdmins) {
+      const fullApprovalAdmins = await storage.getAdmins();
+      for (const admin of fullApprovalAdmins) {
         if (admin.id !== user.id) {
-          await storage.createNotification(admin.id, "order", `Order approved: ${order.clientName} — #${orderNumber}`, order.id, "order");
+          await storage.createNotification(
+            admin.id, "order",
+            "Order Approved",
+            `#${orderNumber} · ${order.clientName} · ₨${fullRs.toLocaleString()} received`,
+            "confirmation",
+            order.id, "order"
+          );
         }
       }
     } else if (verification.paymentType === 'remaining') {

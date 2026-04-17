@@ -29,7 +29,7 @@ export interface IStorage {
 
   getNotifications(userId: number): Promise<Notification[]>;
   markNotificationRead(id: number): Promise<Notification>;
-  createNotification(userId: number, type: string, message: string, relatedId?: number, relatedType?: string): Promise<Notification>;
+  createNotification(userId: number, type: string, title: string, message: string, priority: string, relatedId?: number, relatedType?: string): Promise<Notification>;
 
   getStats(): Promise<any>;
 
@@ -171,13 +171,15 @@ export class DatabaseStorage implements IStorage {
     return notification;
   }
 
-  async createNotification(userId: number, type: string, message: string, relatedId?: number, relatedType?: string): Promise<Notification> {
+  async createNotification(userId: number, type: string, title: string, message: string, priority: string, relatedId?: number, relatedType?: string): Promise<Notification> {
     const [notification] = await db.insert(notifications).values({
       userId,
       type,
+      title,
       message,
+      priority,
       relatedId,
-      relatedType
+      relatedType,
     }).returning();
     return notification;
   }
