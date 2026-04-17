@@ -158,6 +158,41 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
+  // SSE: connect to server-sent events for instant notification delivery
+  useEffect(() => {
+    let es: EventSource | null = null;
+    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+    let reconnecting = false;
+
+    function connect() {
+      reconnecting = false;
+      es = new EventSource("/api/notifications/stream", { withCredentials: true });
+
+      es.onmessage = () => {
+        // A notification arrived — immediately refresh the unread count and list
+        queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+      };
+
+      es.onerror = () => {
+        if (reconnecting) return;
+        reconnecting = true;
+        es?.close();
+        es = null;
+        // Reconnect after 5 s on error (guard ensures only one timer is active)
+        if (retryTimeout) clearTimeout(retryTimeout);
+        retryTimeout = setTimeout(connect, 5000);
+      };
+    }
+
+    connect();
+
+    return () => {
+      es?.close();
+      if (retryTimeout) clearTimeout(retryTimeout);
+    };
+  }, []);
+
   const { data: unreadData } = useQuery<{ count: number }>({
     queryKey: ["/api/notifications/unread-count"],
     refetchInterval: 6000,

@@ -18,6 +18,7 @@ import { ObjectStorageService, registerObjectStorageRoutes, objectStorageService
 import sharp from "sharp";
 import { isCloudinaryConfigured, uploadToCloudinary } from "./cloudinary";
 import webpush from "web-push";
+import { addSseClient, removeSseClient, emitNotification } from "./sse";
 
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
   webpush.setVapidDetails(
@@ -72,6 +73,7 @@ async function notifyUser(
 ) {
   const notification = await storage.createNotification(userId, type, title, message, priority, relatedId, relatedType);
   sendWebPushToUser(userId, title, message, priority).catch(() => {});
+  emitNotification(userId, { event: "notification", id: notification.id, count: 1 });
   return notification;
 }
 
@@ -171,6 +173,34 @@ export async function registerRoutes(
     if (!roles.includes((req.user as User).role)) return res.sendStatus(403);
     next();
   };
+
+  // SSE stream: authenticated users connect here to receive real-time notification events
+  app.get("/api/notifications/stream", requireAuth, (req: any, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+
+    const userId = (req.user as User).id;
+    addSseClient(userId, res);
+
+    // Send an initial heartbeat so the client knows the connection is live
+    res.write(`: connected\n\n`);
+
+    const keepAlive = setInterval(() => {
+      try {
+        res.write(`: ping\n\n`);
+      } catch (_) {
+        clearInterval(keepAlive);
+      }
+    }, 25000);
+
+    req.on("close", () => {
+      clearInterval(keepAlive);
+      removeSseClient(userId, res);
+    });
+  });
 
   app.get(api.users.list.path, requireAuth, async (req, res) => {
     const users = await storage.getUsers();
