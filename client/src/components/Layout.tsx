@@ -40,7 +40,7 @@ export function Layout({ children }: { children: ReactNode }) {
           </Button>
           <span className="text-lg font-bold text-white">Pixely CRM</span>
         </div>
-        <NotificationBell />
+        <NotificationBell align="right" />
       </div>
 
       {/* Mobile Sidebar Overlay */}

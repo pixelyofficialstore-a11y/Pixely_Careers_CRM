@@ -65,7 +65,11 @@ function notifColor(type: string) {
   return "text-slate-400 bg-slate-500/10";
 }
 
-export function NotificationBell() {
+interface NotificationBellProps {
+  align?: 'left' | 'right' | 'sidebar';
+}
+
+export function NotificationBell({ align = 'right' }: NotificationBellProps = {}) {
   const [open, setOpen] = useState(false);
   const prevCount = useRef<number>(0);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -166,7 +170,12 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full mt-2 w-80 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+        <div className={cn(
+          "absolute w-80 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden",
+          align === 'sidebar' ? "left-full ml-2 top-0" :
+          align === 'right'   ? "right-0 top-full mt-2" :
+                                "left-0 top-full mt-2"
+        )}>
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
             <div className="flex items-center gap-2">
               <Bell className="w-4 h-4 text-blue-400" />

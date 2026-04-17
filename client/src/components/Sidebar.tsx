@@ -96,7 +96,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         <div className="flex items-center gap-3 mb-8">
           <img src={logoUrl} alt="PixelCRM" className="h-8 w-auto" />
           <h1 className="text-xl font-bold font-display tracking-tight text-white flex-1">Pixely_CRM</h1>
-          <NotificationBell />
+          <NotificationBell align="sidebar" />
         </div>
 
         <div className="flex flex-col gap-6">

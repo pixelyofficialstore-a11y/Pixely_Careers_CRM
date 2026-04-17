@@ -434,59 +434,79 @@ export default function OrdersPage() {
               <p className="text-sm text-slate-500">Orders created today</p>
             </div>
             {/* Mobile card view – Today */}
-            <div className="md:hidden divide-y divide-slate-800">
+            <div className="md:hidden p-3 space-y-2">
               {todayOrders?.map((order) => (
-                <div key={order.id} className="p-4 hover:bg-slate-900/30 active:bg-slate-900/50 transition-colors">
-                  <div className="flex items-start justify-between gap-2 mb-2">
+                <div key={order.id} className="rounded-xl border border-slate-700/50 bg-slate-900/60 overflow-hidden hover:border-slate-600/60 transition-all">
+                  <div className="flex items-start justify-between p-3 gap-2">
                     <div className="min-w-0">
-                      <p className="text-white font-semibold text-sm truncate">{order.clientName}</p>
-                      <p className="text-blue-400 font-mono text-xs">{order.orderNumber}</p>
+                      <p className="text-white font-semibold text-sm leading-tight truncate">{order.clientName}</p>
+                      <p className="text-blue-400 font-mono text-xs mt-0.5">{order.orderNumber}</p>
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
                       {getStatusBadge(order.status)}
-                      <span className="text-slate-500 text-xs">{format(new Date(order.createdAt!), "h:mm a")}</span>
+                      <span className="text-slate-500 text-[10px]">{format(new Date(order.createdAt!), "h:mm a")}</span>
                     </div>
                   </div>
-                  <div className="mb-2 text-sm">{getServicesDisplay(order)}</div>
-                  {!isDesigner && (order.clientPhone || order.assignee?.name) && (
-                    <p className="text-slate-400 text-xs mb-2">
-                      {[order.clientPhone, order.assignee?.name ? `👤 ${order.assignee.name}` : null].filter(Boolean).join(" · ")}
-                    </p>
-                  )}
+                  <div className="px-3 pb-2 border-t border-slate-800/60 pt-2 space-y-1.5">
+                    <div className="text-sm">{getServicesDisplay(order)}</div>
+                    {!isDesigner && (order.clientPhone || order.assignee?.name) && (
+                      <div className="flex items-center gap-3 flex-wrap">
+                        {order.clientPhone && <span className="text-slate-400 text-xs">{order.clientPhone}</span>}
+                        {order.assignee?.name && (
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-4 h-4 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-[9px] font-bold shrink-0">
+                              {order.assignee.name.charAt(0)}
+                            </div>
+                            <span className="text-slate-400 text-xs">{order.assignee.name}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   {canSeeAmounts && (
-                    <div className="flex gap-3 text-xs mb-3">
-                      <span className="text-green-400">Adv: ₨{((order.advanceAmount || 0) / 100).toLocaleString()}</span>
-                      <span className="text-red-400">Rem: ₨{((order.remainingAmount || 0) / 100).toLocaleString()}</span>
+                    <div className="flex gap-5 px-3 py-2 border-t border-slate-800/60 bg-slate-950/40">
+                      <div>
+                        <p className="text-[9px] text-slate-500 uppercase tracking-wide mb-0.5">Advance</p>
+                        <p className="text-green-400 text-xs font-semibold">₨{((order.advanceAmount || 0) / 100).toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] text-slate-500 uppercase tracking-wide mb-0.5">Remaining</p>
+                        <p className="text-red-400 text-xs font-semibold">₨{((order.remainingAmount || 0) / 100).toLocaleString()}</p>
+                      </div>
                     </div>
                   )}
-                  <div className="flex items-center justify-between gap-2">
-                    <Select
-                      defaultValue={order.status}
-                      onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { status: val } })}
-                    >
-                      <SelectTrigger className="h-7 text-xs bg-slate-800 border-slate-700 w-auto min-w-[80px]">
-                        <SelectValue>{getStatusBadge(order.status)}</SelectValue>
-                      </SelectTrigger>
-                      <SelectContent className="bg-slate-900 border-slate-800">
-                        {getMobileStatusOptions(order).map(opt => (
-                          <SelectItem key={opt.value} value={opt.value} className="text-sm">{opt.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs text-blue-400 hover:text-blue-300 px-2"
-                      onClick={() => openOrderDetails(order)}
-                    >
-                      <Eye className="w-3 h-3 mr-1" />
-                      Details
-                    </Button>
+                  <div className="flex items-center border-t border-slate-800/60">
+                    <div className="flex-1 px-3 py-2">
+                      <Select
+                        defaultValue={order.status}
+                        onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { status: val } })}
+                      >
+                        <SelectTrigger className="h-7 text-xs bg-slate-800 border-slate-700 w-auto min-w-[80px]">
+                          <SelectValue>{getStatusBadge(order.status)}</SelectValue>
+                        </SelectTrigger>
+                        <SelectContent className="bg-slate-900 border-slate-800">
+                          {getMobileStatusOptions(order).map(opt => (
+                            <SelectItem key={opt.value} value={opt.value} className="text-sm">{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="border-l border-slate-800/60">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-9 text-xs text-blue-400 hover:text-blue-300 rounded-none px-3"
+                        onClick={() => openOrderDetails(order)}
+                      >
+                        <Eye className="w-3 h-3 mr-1" />
+                        Details
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ))}
               {(!todayOrders || todayOrders.length === 0) && (
-                <div className="p-8 text-center text-slate-500 text-sm">No orders for today</div>
+                <div className="py-8 text-center text-slate-500 text-sm">No orders for today</div>
               )}
             </div>
             {/* Desktop table view – Today */}
@@ -752,59 +772,79 @@ export default function OrdersPage() {
             </div>
             
             {/* Mobile card view – Monthly */}
-            <div className="md:hidden divide-y divide-slate-800">
+            <div className="md:hidden p-3 space-y-2">
               {monthlyOrders?.map((order) => (
-                <div key={order.id} className="p-4 hover:bg-slate-900/30 active:bg-slate-900/50 transition-colors">
-                  <div className="flex items-start justify-between gap-2 mb-2">
+                <div key={order.id} className="rounded-xl border border-slate-700/50 bg-slate-900/60 overflow-hidden hover:border-slate-600/60 transition-all">
+                  <div className="flex items-start justify-between p-3 gap-2">
                     <div className="min-w-0">
-                      <p className="text-white font-semibold text-sm truncate">{order.clientName}</p>
-                      <p className="text-blue-400 font-mono text-xs">{order.orderNumber}</p>
+                      <p className="text-white font-semibold text-sm leading-tight truncate">{order.clientName}</p>
+                      <p className="text-blue-400 font-mono text-xs mt-0.5">{order.orderNumber}</p>
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
                       {getStatusBadge(order.status)}
-                      <span className="text-slate-500 text-xs">{format(new Date(order.createdAt!), "MMM dd")}</span>
+                      <span className="text-slate-500 text-[10px]">{format(new Date(order.createdAt!), "MMM dd")}</span>
                     </div>
                   </div>
-                  <div className="mb-2 text-sm">{getServicesDisplay(order)}</div>
-                  {!isDesigner && (order.clientPhone || order.assignee?.name) && (
-                    <p className="text-slate-400 text-xs mb-2">
-                      {[order.clientPhone, order.assignee?.name ? `👤 ${order.assignee.name}` : null].filter(Boolean).join(" · ")}
-                    </p>
-                  )}
+                  <div className="px-3 pb-2 border-t border-slate-800/60 pt-2 space-y-1.5">
+                    <div className="text-sm">{getServicesDisplay(order)}</div>
+                    {!isDesigner && (order.clientPhone || order.assignee?.name) && (
+                      <div className="flex items-center gap-3 flex-wrap">
+                        {order.clientPhone && <span className="text-slate-400 text-xs">{order.clientPhone}</span>}
+                        {order.assignee?.name && (
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-4 h-4 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-[9px] font-bold shrink-0">
+                              {order.assignee.name.charAt(0)}
+                            </div>
+                            <span className="text-slate-400 text-xs">{order.assignee.name}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   {canSeeAmounts && (
-                    <div className="flex gap-3 text-xs mb-3">
-                      <span className="text-green-400">Adv: ₨{((order.advanceAmount || 0) / 100).toLocaleString()}</span>
-                      <span className="text-red-400">Rem: ₨{((order.remainingAmount || 0) / 100).toLocaleString()}</span>
+                    <div className="flex gap-5 px-3 py-2 border-t border-slate-800/60 bg-slate-950/40">
+                      <div>
+                        <p className="text-[9px] text-slate-500 uppercase tracking-wide mb-0.5">Advance</p>
+                        <p className="text-green-400 text-xs font-semibold">₨{((order.advanceAmount || 0) / 100).toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] text-slate-500 uppercase tracking-wide mb-0.5">Remaining</p>
+                        <p className="text-red-400 text-xs font-semibold">₨{((order.remainingAmount || 0) / 100).toLocaleString()}</p>
+                      </div>
                     </div>
                   )}
-                  <div className="flex items-center justify-between gap-2">
-                    <Select
-                      defaultValue={order.status}
-                      onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { status: val } })}
-                    >
-                      <SelectTrigger className="h-7 text-xs bg-slate-800 border-slate-700 w-auto min-w-[80px]">
-                        <SelectValue>{getStatusBadge(order.status)}</SelectValue>
-                      </SelectTrigger>
-                      <SelectContent className="bg-slate-900 border-slate-800">
-                        {getMobileStatusOptions(order).map(opt => (
-                          <SelectItem key={opt.value} value={opt.value} className="text-sm">{opt.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs text-blue-400 hover:text-blue-300 px-2"
-                      onClick={() => openOrderDetails(order)}
-                    >
-                      <Eye className="w-3 h-3 mr-1" />
-                      Details
-                    </Button>
+                  <div className="flex items-center border-t border-slate-800/60">
+                    <div className="flex-1 px-3 py-2">
+                      <Select
+                        defaultValue={order.status}
+                        onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { status: val } })}
+                      >
+                        <SelectTrigger className="h-7 text-xs bg-slate-800 border-slate-700 w-auto min-w-[80px]">
+                          <SelectValue>{getStatusBadge(order.status)}</SelectValue>
+                        </SelectTrigger>
+                        <SelectContent className="bg-slate-900 border-slate-800">
+                          {getMobileStatusOptions(order).map(opt => (
+                            <SelectItem key={opt.value} value={opt.value} className="text-sm">{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="border-l border-slate-800/60">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-9 text-xs text-blue-400 hover:text-blue-300 rounded-none px-3"
+                        onClick={() => openOrderDetails(order)}
+                      >
+                        <Eye className="w-3 h-3 mr-1" />
+                        Details
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ))}
               {(!monthlyOrders || monthlyOrders.length === 0) && (
-                <div className="p-8 text-center text-slate-500 text-sm">No orders for this month</div>
+                <div className="py-8 text-center text-slate-500 text-sm">No orders for this month</div>
               )}
             </div>
             {/* Desktop table view – Monthly */}
