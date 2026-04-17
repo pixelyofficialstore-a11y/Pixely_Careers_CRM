@@ -211,6 +211,7 @@ export async function runMigrations() {
         ADD COLUMN IF NOT EXISTS payment_status         TEXT DEFAULT 'pending',
         ADD COLUMN IF NOT EXISTS advance_payment_status TEXT DEFAULT 'pending',
         ADD COLUMN IF NOT EXISTS intended_designer_id   INTEGER REFERENCES users(id),
+        ADD COLUMN IF NOT EXISTS platform               TEXT,
         ADD COLUMN IF NOT EXISTS campaign               TEXT,
         ADD COLUMN IF NOT EXISTS ad_set                 TEXT,
         ADD COLUMN IF NOT EXISTS creative               TEXT,
