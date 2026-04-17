@@ -92,9 +92,17 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
   const [, setLocation] = useLocation();
 
   useEffect(() => {
-    if ("Notification" in window) {
-      setNotifPermission(Notification.permission);
+    function updatePermission() {
+      if ("Notification" in window) setNotifPermission(Notification.permission);
     }
+    updatePermission();
+    // Update when permission changes (from login flow or browser settings)
+    window.addEventListener('notificationPermissionChanged', updatePermission);
+    window.addEventListener('focus', updatePermission);
+    return () => {
+      window.removeEventListener('notificationPermissionChanged', updatePermission);
+      window.removeEventListener('focus', updatePermission);
+    };
   }, []);
 
   useEffect(() => {
@@ -153,19 +161,25 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
     }
     if (unreadCount > prevCount.current) {
       playNotificationSound();
-      const unreadNotifs = notifsList.filter(n => !n.read);
-      const newest = unreadNotifs[0];
-      const notifTitle = newest?.title || "New Notification";
-      const notifMsg = newest?.message ?? "You have a new notification";
-      const priority = newest?.priority ?? "update";
-      sendPushNotification(notifTitle, notifMsg, priority);
-      toast({
-        title: notifTitle,
-        description: notifMsg,
-      });
+      // Always fetch fresh notification data for push — don't rely on potentially stale notifsList
+      fetch('/api/notifications', { credentials: 'include' })
+        .then(r => r.ok ? r.json() : [])
+        .then((freshList: Notification[]) => {
+          const newest = freshList.find(n => !n.read) ?? freshList[0];
+          const notifTitle = newest?.title || "PixelCRM";
+          const notifMsg = newest?.message ?? "You have a new notification";
+          const priority = newest?.priority ?? "update";
+          sendPushNotification(notifTitle, notifMsg, priority);
+          toast({ title: notifTitle, description: notifMsg });
+          // Also update the React Query cache so the panel shows fresh data
+          queryClient.setQueryData(["/api/notifications"], freshList);
+        })
+        .catch(() => {
+          toast({ title: "PixelCRM", description: "You have a new notification" });
+        });
     }
     prevCount.current = unreadCount;
-  }, [unreadCount, notifsList]);
+  }, [unreadCount]);
 
   const handleOpen = () => {
     if (!open && buttonRef.current) {
