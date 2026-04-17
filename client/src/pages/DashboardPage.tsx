@@ -15,6 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import { format, isToday, startOfMonth } from "date-fns";
 import type { OrderWithServices } from "@shared/schema";
+import { DashboardSkeleton } from "@/components/PageSkeleton";
 
 function StatCard({ 
   title, 
@@ -78,7 +79,7 @@ export default function DashboardPage() {
     staleTime: 30 * 1000,
   });
 
-  if (isLoading) return null;
+  if (isLoading) return <DashboardSkeleton />;
 
   const isAdmin = user?.role === "admin";
   const isSupport = user?.role === "support";

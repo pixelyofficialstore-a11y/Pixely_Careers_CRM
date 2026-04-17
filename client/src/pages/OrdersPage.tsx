@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { OrdersSkeleton } from "@/components/PageSkeleton";
 import { useAuth } from "@/hooks/use-auth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
@@ -157,7 +158,7 @@ export default function OrdersPage() {
     },
   });
 
-  if (isLoading) return null;
+  if (isLoading) return <OrdersSkeleton />;
 
   const isAdmin = user?.role === "admin";
   const isSupport = user?.role === "support";

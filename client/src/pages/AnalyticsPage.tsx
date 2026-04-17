@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
+import { AnalyticsSkeleton } from "@/components/PageSkeleton";
 import { Redirect } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
@@ -156,7 +157,7 @@ export default function AnalyticsPage() {
     return <Redirect to="/" />;
   }
 
-  if (isLoading) return null;
+  if (isLoading) return <AnalyticsSkeleton />;
 
   const designers = teamMembers?.filter(u => u.role === "designer") || [];
   const now = new Date();

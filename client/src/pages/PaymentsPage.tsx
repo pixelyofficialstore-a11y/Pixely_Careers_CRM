@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
+import { PaymentsSkeleton } from "@/components/PageSkeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Table, 
@@ -248,7 +249,7 @@ export default function PaymentsPage() {
     submitRemainingMutation.mutate(formData);
   };
 
-  if (isLoading) return null;
+  if (isLoading) return <PaymentsSkeleton />;
 
   return (
     <div className="p-8 space-y-8">

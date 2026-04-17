@@ -1,7 +1,7 @@
 /**
- * Startup migration: ensures the production database schema is up to date.
- * Uses ADD COLUMN IF NOT EXISTS so it is safe to run on every startup.
- * This covers columns added via direct SQL in dev that were never pushed to prod.
+ * Startup migration: creates all tables if they don't exist, then ensures
+ * any columns added after the initial deploy are present.
+ * Idempotent — safe to run on every startup.
  */
 import { pool } from "./db";
 
@@ -10,84 +10,43 @@ export async function runMigrations() {
   try {
     await client.query("BEGIN");
 
-    // ── orders ─────────────────────────────────────────────────────────────
+    // ── Core tables (no foreign-key deps) ───────────────────────────────────
+
     await client.query(`
-      ALTER TABLE orders
-        ADD COLUMN IF NOT EXISTS order_number         TEXT,
-        ADD COLUMN IF NOT EXISTS priority             TEXT NOT NULL DEFAULT 'normal',
-        ADD COLUMN IF NOT EXISTS payment_status       TEXT DEFAULT 'pending',
-        ADD COLUMN IF NOT EXISTS advance_payment_status TEXT DEFAULT 'pending',
-        ADD COLUMN IF NOT EXISTS intended_designer_id INTEGER REFERENCES users(id),
-        ADD COLUMN IF NOT EXISTS campaign             TEXT,
-        ADD COLUMN IF NOT EXISTS ad_set               TEXT,
-        ADD COLUMN IF NOT EXISTS creative             TEXT,
-        ADD COLUMN IF NOT EXISTS package_type         TEXT,
-        ADD COLUMN IF NOT EXISTS internal_notes       TEXT
+      CREATE TABLE IF NOT EXISTS users (
+        id          SERIAL PRIMARY KEY,
+        username    TEXT NOT NULL UNIQUE,
+        password    TEXT NOT NULL,
+        role        TEXT NOT NULL DEFAULT 'designer',
+        name        TEXT NOT NULL,
+        title       TEXT,
+        avatar      TEXT,
+        is_active   BOOLEAN NOT NULL DEFAULT true,
+        created_at  TIMESTAMP DEFAULT NOW()
+      )
     `);
 
-    // Unique constraint on order_number (safe to run if already exists)
     await client.query(`
-      DO $$ BEGIN
-        IF NOT EXISTS (
-          SELECT 1 FROM pg_constraint
-          WHERE conname = 'orders_order_number_unique'
-        ) THEN
-          ALTER TABLE orders ADD CONSTRAINT orders_order_number_unique UNIQUE (order_number);
-        END IF;
-      END $$
+      CREATE TABLE IF NOT EXISTS platforms_catalog (
+        id                   SERIAL PRIMARY KEY,
+        name                 TEXT NOT NULL UNIQUE,
+        is_active            BOOLEAN NOT NULL DEFAULT true,
+        has_campaign_fields  BOOLEAN NOT NULL DEFAULT false,
+        sort_order           INTEGER NOT NULL DEFAULT 0,
+        created_at           TIMESTAMP DEFAULT NOW()
+      )
     `);
 
-    // ── order_services ─────────────────────────────────────────────────────
     await client.query(`
-      ALTER TABLE order_services
-        ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'new'
-    `);
-
-    // ── notifications ──────────────────────────────────────────────────────
-    await client.query(`
-      ALTER TABLE notifications
-        ADD COLUMN IF NOT EXISTS title    TEXT NOT NULL DEFAULT '',
-        ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'update',
-        ADD COLUMN IF NOT EXISTS related_id   INTEGER,
-        ADD COLUMN IF NOT EXISTS related_type TEXT
-    `);
-
-    // ── payment_verifications ──────────────────────────────────────────────
-    await client.query(`
-      ALTER TABLE payment_verifications
-        ADD COLUMN IF NOT EXISTS screenshot_data      TEXT,
-        ADD COLUMN IF NOT EXISTS screenshot_mime_type TEXT,
-        ADD COLUMN IF NOT EXISTS reviewed_by_id       INTEGER REFERENCES users(id),
-        ADD COLUMN IF NOT EXISTS reviewed_at          TIMESTAMP,
-        ADD COLUMN IF NOT EXISTS notes                TEXT
-    `);
-
-    // ── push_subscriptions ─────────────────────────────────────────────────
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS push_subscriptions (
+      CREATE TABLE IF NOT EXISTS services_catalog (
         id         SERIAL PRIMARY KEY,
-        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        endpoint   TEXT NOT NULL UNIQUE,
-        p256dh     TEXT NOT NULL,
-        auth       TEXT NOT NULL,
+        name       TEXT NOT NULL UNIQUE,
+        is_active  BOOLEAN NOT NULL DEFAULT true,
+        sort_order INTEGER NOT NULL DEFAULT 0,
         created_at TIMESTAMP DEFAULT NOW()
       )
     `);
 
-    // ── platforms_catalog ──────────────────────────────────────────────────
-    await client.query(`
-      ALTER TABLE platforms_catalog
-        ADD COLUMN IF NOT EXISTS has_campaign_fields BOOLEAN NOT NULL DEFAULT false,
-        ADD COLUMN IF NOT EXISTS sort_order          INTEGER NOT NULL DEFAULT 0
-    `);
-
-    // ── services_catalog ───────────────────────────────────────────────────
-    await client.query(`
-      ALTER TABLE services_catalog
-        ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0
-    `);
-
-    // ── package_configs ────────────────────────────────────────────────────
     await client.query(`
       CREATE TABLE IF NOT EXISTS package_configs (
         id         SERIAL PRIMARY KEY,
@@ -99,10 +58,202 @@ export async function runMigrations() {
       )
     `);
 
-    // ── users ──────────────────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS monthly_finance (
+        id              SERIAL PRIMARY KEY,
+        month           TEXT NOT NULL UNIQUE,
+        total_collected INTEGER DEFAULT 0,
+        total_remaining INTEGER DEFAULT 0,
+        total_orders    INTEGER DEFAULT 0,
+        paid_orders     INTEGER DEFAULT 0,
+        updated_at      TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    // ── Orders (depends on users) ────────────────────────────────────────────
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS orders (
+        id                      SERIAL PRIMARY KEY,
+        order_number            TEXT,
+        client_name             TEXT NOT NULL,
+        client_phone            TEXT,
+        client_email            TEXT,
+        status                  TEXT NOT NULL DEFAULT 'new',
+        priority                TEXT NOT NULL DEFAULT 'normal',
+        assigned_to_id          INTEGER REFERENCES users(id),
+        ready_date              TIMESTAMP,
+        payment_status          TEXT DEFAULT 'pending',
+        advance_payment_status  TEXT DEFAULT 'pending',
+        intended_designer_id    INTEGER REFERENCES users(id),
+        total_price             INTEGER NOT NULL DEFAULT 0,
+        advance_amount          INTEGER DEFAULT 0,
+        remaining_amount        INTEGER DEFAULT 0,
+        platform                TEXT,
+        campaign                TEXT,
+        ad_set                  TEXT,
+        creative                TEXT,
+        package_type            TEXT,
+        notes                   TEXT,
+        internal_notes          TEXT,
+        created_by_id           INTEGER REFERENCES users(id),
+        created_at              TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    // Unique constraint on order_number
+    await client.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'orders_order_number_unique'
+        ) THEN
+          ALTER TABLE orders ADD CONSTRAINT orders_order_number_unique UNIQUE (order_number);
+        END IF;
+      END $$
+    `);
+
+    // ── Order services (depends on orders) ──────────────────────────────────
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS order_services (
+        id           SERIAL PRIMARY KEY,
+        order_id     INTEGER NOT NULL REFERENCES orders(id),
+        service_type TEXT NOT NULL,
+        quantity     INTEGER NOT NULL DEFAULT 1,
+        instructions TEXT,
+        status       TEXT NOT NULL DEFAULT 'new'
+      )
+    `);
+
+    // ── Notifications (depends on users) ────────────────────────────────────
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id           SERIAL PRIMARY KEY,
+        user_id      INTEGER NOT NULL REFERENCES users(id),
+        type         TEXT NOT NULL,
+        title        TEXT NOT NULL DEFAULT '',
+        message      TEXT NOT NULL,
+        priority     TEXT NOT NULL DEFAULT 'update',
+        read         BOOLEAN NOT NULL DEFAULT false,
+        related_id   INTEGER,
+        related_type TEXT,
+        created_at   TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    // ── Activity logs (depends on orders + users) ────────────────────────────
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS activity_logs (
+        id             SERIAL PRIMARY KEY,
+        order_id       INTEGER REFERENCES orders(id),
+        actor_id       INTEGER REFERENCES users(id),
+        activity_type  TEXT NOT NULL,
+        previous_value TEXT,
+        new_value      TEXT,
+        details        JSONB,
+        created_at     TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    // ── Payment verifications (depends on orders + users) ───────────────────
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS payment_verifications (
+        id                   SERIAL PRIMARY KEY,
+        order_id             INTEGER NOT NULL REFERENCES orders(id),
+        payment_type         TEXT NOT NULL,
+        amount               INTEGER NOT NULL,
+        screenshot_url       TEXT,
+        screenshot_data      TEXT,
+        screenshot_mime_type TEXT,
+        submitted_by_id      INTEGER NOT NULL REFERENCES users(id),
+        status               TEXT DEFAULT 'pending_confirmation',
+        reviewed_by_id       INTEGER REFERENCES users(id),
+        reviewed_at          TIMESTAMP,
+        notes                TEXT,
+        created_at           TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    // ── Support-designer assignments (depends on users) ──────────────────────
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS support_designer_assignments (
+        id               SERIAL PRIMARY KEY,
+        support_user_id  INTEGER NOT NULL REFERENCES users(id),
+        designer_user_id INTEGER NOT NULL REFERENCES users(id),
+        assigned_at      TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    // ── Push subscriptions (depends on users) ────────────────────────────────
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id         SERIAL PRIMARY KEY,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        endpoint   TEXT NOT NULL UNIQUE,
+        p256dh     TEXT NOT NULL,
+        auth       TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    // ── Additive ALTER columns for existing installs ─────────────────────────
+    // Safe on fresh DBs (columns already exist); safe on old DBs (IF NOT EXISTS)
+
+    await client.query(`
+      ALTER TABLE orders
+        ADD COLUMN IF NOT EXISTS order_number           TEXT,
+        ADD COLUMN IF NOT EXISTS priority               TEXT NOT NULL DEFAULT 'normal',
+        ADD COLUMN IF NOT EXISTS payment_status         TEXT DEFAULT 'pending',
+        ADD COLUMN IF NOT EXISTS advance_payment_status TEXT DEFAULT 'pending',
+        ADD COLUMN IF NOT EXISTS intended_designer_id   INTEGER REFERENCES users(id),
+        ADD COLUMN IF NOT EXISTS campaign               TEXT,
+        ADD COLUMN IF NOT EXISTS ad_set                 TEXT,
+        ADD COLUMN IF NOT EXISTS creative               TEXT,
+        ADD COLUMN IF NOT EXISTS package_type           TEXT,
+        ADD COLUMN IF NOT EXISTS internal_notes         TEXT
+    `);
+
+    await client.query(`
+      ALTER TABLE order_services
+        ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'new'
+    `);
+
+    await client.query(`
+      ALTER TABLE notifications
+        ADD COLUMN IF NOT EXISTS title        TEXT NOT NULL DEFAULT '',
+        ADD COLUMN IF NOT EXISTS priority     TEXT NOT NULL DEFAULT 'update',
+        ADD COLUMN IF NOT EXISTS related_id   INTEGER,
+        ADD COLUMN IF NOT EXISTS related_type TEXT
+    `);
+
+    await client.query(`
+      ALTER TABLE payment_verifications
+        ADD COLUMN IF NOT EXISTS screenshot_data      TEXT,
+        ADD COLUMN IF NOT EXISTS screenshot_mime_type TEXT,
+        ADD COLUMN IF NOT EXISTS reviewed_by_id       INTEGER REFERENCES users(id),
+        ADD COLUMN IF NOT EXISTS reviewed_at          TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS notes                TEXT
+    `);
+
+    await client.query(`
+      ALTER TABLE platforms_catalog
+        ADD COLUMN IF NOT EXISTS has_campaign_fields BOOLEAN NOT NULL DEFAULT false,
+        ADD COLUMN IF NOT EXISTS sort_order          INTEGER NOT NULL DEFAULT 0
+    `);
+
+    await client.query(`
+      ALTER TABLE services_catalog
+        ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0
+    `);
+
     await client.query(`
       ALTER TABLE users
-        ADD COLUMN IF NOT EXISTS title    TEXT,
+        ADD COLUMN IF NOT EXISTS title     TEXT,
         ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true
     `);
 

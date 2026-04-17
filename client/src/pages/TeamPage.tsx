@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
+import { TeamSkeleton } from "@/components/PageSkeleton";
 import { 
   Table, 
   TableBody, 
@@ -73,7 +74,7 @@ export default function TeamPage() {
     return null;
   }
 
-  if (isLoading) return null;
+  if (isLoading) return <TeamSkeleton />;
 
   const designers = teamMembers?.filter(u => u.role === 'designer') || [];
 
