@@ -377,7 +377,7 @@ export async function registerRoutes(
         totalPrice: z.number().int().optional(),
         advanceAmount: z.number().int().min(0).optional(),
         amountPaid: z.number().int().optional(),
-        packageType: z.enum(["starter", "professional", "executive", "custom"]).optional().nullable(),
+        packageType: z.string().optional().nullable(),
         platform: z.string().optional().nullable(),
         campaign: z.string().optional().nullable(),
         adSet: z.string().optional().nullable(),
