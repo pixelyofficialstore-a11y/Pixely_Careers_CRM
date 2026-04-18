@@ -1168,14 +1168,17 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
           }))
         : [];
 
+      const isAdmin = currentUser?.role === 'admin';
       const orderRes = await apiRequest("POST", "/api/orders", {
         clientName: clientName.trim(),
         clientPhone: clientPhone.trim(),
         assignedToId: assignedToId ? parseInt(assignedToId) : null,
         paymentStatus: "pending",
         totalPrice: totalPriceValue,
-        advanceAmount: 0,
-        remainingAmount: totalPriceValue,
+        // Admin: advance is collected immediately — send real values.
+        // Support: advance goes through verification — starts at 0.
+        advanceAmount: isAdmin ? advanceValue : 0,
+        remainingAmount: isAdmin ? remainingValue : totalPriceValue,
         packageType: packageType || null,
         platform: platform.trim() || null,
         campaign: campaign.trim() || null,

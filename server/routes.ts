@@ -375,6 +375,7 @@ export async function registerRoutes(
         assignedToId: z.number().int().positive().optional().nullable(),
         paymentStatus: z.enum(["pending", "paid"]).optional(),
         totalPrice: z.number().int().optional(),
+        advanceAmount: z.number().int().min(0).optional(),
         amountPaid: z.number().int().optional(),
         packageType: z.enum(["starter", "professional", "executive", "custom"]).optional().nullable(),
         platform: z.string().optional().nullable(),
@@ -392,14 +393,16 @@ export async function registerRoutes(
       const totalPrice = orderData.totalPrice || 0;
       
       if (user.role === 'admin') {
-        // Admin orders are auto-approved — no screenshot upload required
+        // Admin orders are auto-approved — advance is collected immediately, no screenshot needed
         const orderNumber = await storage.generateOrderNumber();
+        const advanceAmount = orderData.advanceAmount || 0;
+        const remainingAmount = Math.max(0, totalPrice - advanceAmount);
         const order = await storage.createOrder({
           ...orderData,
-          totalPrice: totalPrice,
-          advanceAmount: 0,
-          remainingAmount: totalPrice,
-          paymentStatus: "pending",
+          totalPrice,
+          advanceAmount,
+          remainingAmount,
+          paymentStatus: remainingAmount === 0 ? "paid" : "pending",
           assignedToId: intendedDesignerId || null,
           intendedDesignerId: intendedDesignerId || null,
           advancePaymentStatus: "approved",
