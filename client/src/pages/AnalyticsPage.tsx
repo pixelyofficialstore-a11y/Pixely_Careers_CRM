@@ -180,16 +180,18 @@ export default function AnalyticsPage() {
       o => o.assignedToId === designerId && o.advancePaymentStatus === 'approved'
     ) || [];
     
-    // Completed today = status is ready/delivered AND readyDate is today
+    // Completed today = status is ready/delivered AND readyDate (or createdAt fallback) is today
     const completedToday = assignedOrders.filter(o => {
-      if (!o.readyDate) return false;
-      return isToday(new Date(o.readyDate));
+      if (o.status !== 'ready' && o.status !== 'delivered') return false;
+      const d = o.readyDate ? new Date(o.readyDate) : new Date(o.createdAt!);
+      return isToday(d);
     }).length;
     
-    // Completed this month = status is ready/delivered AND readyDate is in current month
+    // Completed this month = status is ready/delivered AND readyDate (or createdAt fallback) is in current month
     const completedThisMonth = assignedOrders.filter(o => {
-      if (!o.readyDate) return false;
-      return new Date(o.readyDate) >= monthStart;
+      if (o.status !== 'ready' && o.status !== 'delivered') return false;
+      const d = o.readyDate ? new Date(o.readyDate) : new Date(o.createdAt!);
+      return d >= monthStart;
     }).length;
     
     // Total completed = orders currently in ready or delivered status
