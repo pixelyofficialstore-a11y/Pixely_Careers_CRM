@@ -82,6 +82,7 @@ interface User {
   username: string;
   name: string;
   role: string;
+  isActive: boolean;
 }
 
 function StatCard({ 
@@ -159,7 +160,10 @@ export default function AnalyticsPage() {
 
   if (isLoading) return <AnalyticsSkeleton />;
 
-  const designers = teamMembers?.filter(u => u.role === "designer") || [];
+  const designers = teamMembers?.filter(u =>
+    u.role === "designer" ||
+    (u.isActive && orders?.some(o => o.assignedToId === u.id))
+  ) || [];
   const now = new Date();
   const monthStart = startOfMonth(now);
   

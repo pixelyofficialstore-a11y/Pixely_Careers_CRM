@@ -17,6 +17,14 @@ import { format, isToday, startOfMonth } from "date-fns";
 import type { OrderWithServices } from "@shared/schema";
 import { DashboardSkeleton } from "@/components/PageSkeleton";
 
+interface User {
+  id: number;
+  username: string;
+  name: string;
+  role: string;
+  isActive: boolean;
+}
+
 function StatCard({ 
   title, 
   value, 
@@ -77,6 +85,11 @@ export default function DashboardPage() {
     queryKey: ["/api/orders"],
     refetchInterval: 60 * 1000,
     staleTime: 30 * 1000,
+  });
+
+  const { data: teamMembers } = useQuery<User[]>({
+    queryKey: ["/api/users"],
+    staleTime: 5 * 60 * 1000,
   });
 
   if (isLoading) return <DashboardSkeleton />;
@@ -419,18 +432,19 @@ export default function DashboardPage() {
         <div className="glass-panel p-6 rounded-2xl">
           <h3 className="text-lg font-bold font-display text-white mb-6">Designer Performance</h3>
           <div className="space-y-3">
-            {orders && orders.length > 0 ? (
-              Array.from(new Set(orders.filter(o => o.assignee).map(o => o.assignee?.id))).slice(0, 5).map(designerId => {
-                const designer = orders.find(o => o.assignee?.id === designerId)?.assignee;
-                const designerOrders = orders.filter(o => o.assignedToId === designerId);
+            {(() => {
+              const activeDesigners = teamMembers?.filter(u => u.role === "designer" && u.isActive) || [];
+              if (activeDesigners.length === 0) return <p className="text-slate-500 text-center py-4">No designer data available</p>;
+              return activeDesigners.map(designer => {
+                const designerOrders = orders?.filter(o => o.assignedToId === designer.id) || [];
                 const completedCount = designerOrders.filter(o => o.status === 'ready' || o.status === 'delivered').length;
                 return (
-                  <div key={designerId} className="flex items-center justify-between p-3 bg-slate-950/50 rounded-lg border border-slate-800">
+                  <div key={designer.id} className="flex items-center justify-between p-3 bg-slate-950/50 rounded-lg border border-slate-800">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs text-white">
-                        {designer?.name?.charAt(0) || "?"}
+                        {designer.name.charAt(0)}
                       </div>
-                      <span className="text-slate-300">{designer?.name || "Unknown"}</span>
+                      <span className="text-slate-300">{designer.name}</span>
                     </div>
                     <div className="text-right">
                       <p className="text-white font-bold">{completedCount}/{designerOrders.length}</p>
@@ -438,10 +452,8 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 );
-              })
-            ) : (
-              <p className="text-slate-500 text-center py-4">No designer data available</p>
-            )}
+              });
+            })()}
           </div>
         </div>
       </div>
