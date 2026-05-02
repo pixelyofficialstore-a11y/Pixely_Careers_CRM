@@ -228,12 +228,13 @@ export default function AnalyticsPage() {
   }) || [];
 
   // Filter orders by selected month/year for performance analytics (approved only)
+  // Use readyDate if available, fall back to createdAt for historical/imported orders
   const performanceOrders = orders?.filter(o => {
-    if (!o.readyDate) return false;
     if (o.advancePaymentStatus !== 'approved') return false;
-    const readyDate = new Date(o.readyDate);
-    return readyDate.getMonth().toString() === performanceMonth && 
-           readyDate.getFullYear().toString() === performanceYear;
+    if (o.status !== 'ready' && o.status !== 'delivered') return false;
+    const perfDate = o.readyDate ? new Date(o.readyDate) : new Date(o.createdAt!);
+    return perfDate.getMonth().toString() === performanceMonth && 
+           perfDate.getFullYear().toString() === performanceYear;
   }) || [];
 
   // Platform Analytics Calculations
