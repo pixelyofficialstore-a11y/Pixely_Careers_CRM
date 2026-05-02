@@ -529,9 +529,28 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Designers cannot cancel orders" });
       }
 
-      // Anti-gaming: once an order is ready or delivered, designer cannot change its status
-      if (updates.status && (existingOrder.status === 'ready' || existingOrder.status === 'delivered')) {
-        return res.status(403).json({ message: "Order status is locked once completed" });
+      // Anti-gaming: once delivered, status is permanently locked
+      if (updates.status && existingOrder.status === 'delivered') {
+        return res.status(403).json({ message: "Order status is locked once delivered" });
+      }
+
+      // Once ready, designer can only move to delivered if there is no remaining balance
+      if (updates.status && existingOrder.status === 'ready') {
+        if (updates.status !== 'delivered') {
+          return res.status(403).json({ message: "Order status is locked once completed" });
+        }
+        const remaining = existingOrder.remainingAmount || 0;
+        if (remaining > 0) {
+          return res.status(403).json({ message: "Cannot mark as delivered: remaining balance must be cleared by admin first" });
+        }
+      }
+
+      // Designer can only mark as delivered from non-ready states if full payment received (no remaining)
+      if (updates.status === 'delivered' && existingOrder.status !== 'ready') {
+        const remaining = existingOrder.remainingAmount || 0;
+        if (remaining > 0) {
+          return res.status(403).json({ message: "Cannot mark as delivered: remaining balance must be cleared by admin first" });
+        }
       }
     }
     

@@ -459,14 +459,22 @@ export default function OrdersPage() {
                   // All roles can see all status options
                   const getStatusOptions = () => {
                     if (isDesignerUser) {
-                      // Completed orders are locked — designer cannot change back
-                      if (order.status === 'ready') return [{ value: "ready", label: "Ready" }];
+                      // Permanently locked once delivered
                       if (order.status === 'delivered') return [{ value: "delivered", label: "Delivered" }];
-                      return [
+                      const hasNoRemaining = (order.remainingAmount ?? 0) === 0;
+                      // If ready and no remaining balance, allow marking delivered
+                      if (order.status === 'ready') {
+                        if (hasNoRemaining) return [{ value: "ready", label: "Ready" }, { value: "delivered", label: "Delivered" }];
+                        return [{ value: "ready", label: "Ready" }];
+                      }
+                      // In-progress: can go up to ready, and to delivered if fully paid
+                      const opts = [
                         { value: "new", label: "New" },
                         { value: "working", label: "Working" },
                         { value: "ready", label: "Ready" },
                       ];
+                      if (hasNoRemaining) opts.push({ value: "delivered", label: "Delivered" });
+                      return opts;
                     }
                     return [
                       { value: "new", label: "New" },
@@ -721,14 +729,22 @@ export default function OrdersPage() {
                   // All roles can see all status options
                   const getMonthlyStatusOptions = () => {
                     if (isDesignerUser) {
-                      // Completed orders are locked — designer cannot change back
-                      if (order.status === 'ready') return [{ value: "ready", label: "Ready" }];
+                      // Permanently locked once delivered
                       if (order.status === 'delivered') return [{ value: "delivered", label: "Delivered" }];
-                      return [
+                      const hasNoRemaining = (order.remainingAmount ?? 0) === 0;
+                      // If ready and no remaining balance, allow marking delivered
+                      if (order.status === 'ready') {
+                        if (hasNoRemaining) return [{ value: "ready", label: "Ready" }, { value: "delivered", label: "Delivered" }];
+                        return [{ value: "ready", label: "Ready" }];
+                      }
+                      // In-progress: can go up to ready, and to delivered if fully paid
+                      const opts = [
                         { value: "new", label: "New" },
                         { value: "working", label: "Working" },
                         { value: "ready", label: "Ready" },
                       ];
+                      if (hasNoRemaining) opts.push({ value: "delivered", label: "Delivered" });
+                      return opts;
                     }
                     return [
                       { value: "new", label: "New" },
