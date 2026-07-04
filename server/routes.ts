@@ -558,11 +558,16 @@ export async function registerRoutes(
       updates.readyDate = new Date();
     }
 
+    if (updates.status === 'delivered' && existingOrder.status !== 'delivered') {
+      updates.deliveredAt = new Date();
+    }
+
     if (updates.paymentStatus === 'paid' && existingOrder.paymentStatus === 'pending') {
       const currentAdvance = existingOrder.advanceAmount || 0;
       const currentRemaining = existingOrder.remainingAmount || 0;
       updates.advanceAmount = currentAdvance + currentRemaining;
       updates.remainingAmount = 0;
+      updates.paymentDate = new Date();
     }
 
     const updatedOrder = await storage.updateOrder(orderId, updates);
@@ -830,6 +835,7 @@ export async function registerRoutes(
         advancePaymentStatus: "approved",
         assignedToId: order.intendedDesignerId,
         status: "new",
+        paymentDate: new Date(),
       });
       
       if (order.intendedDesignerId) {
@@ -867,6 +873,7 @@ export async function registerRoutes(
         advancePaymentStatus: "approved",
         assignedToId: order.intendedDesignerId,
         status: "new",
+        paymentDate: new Date(),
       });
       
       const fullRs = Math.floor(verification.amount / 100);
@@ -901,7 +908,7 @@ export async function registerRoutes(
         advanceAmount: currentAdvance + verification.amount,
         remainingAmount: newRemaining,
         paymentStatus: isFullyPaid ? "paid" : "pending",
-        ...(isFullyPaid ? { status: "delivered" } : {}),
+        ...(isFullyPaid ? { status: "delivered", deliveredAt: new Date(), paymentDate: new Date() } : {}),
       });
     }
     

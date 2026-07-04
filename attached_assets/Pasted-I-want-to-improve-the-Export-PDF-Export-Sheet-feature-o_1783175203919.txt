@@ -1,0 +1,235 @@
+I want to improve the Export PDF / Export Sheet feature on the Admin Orders Management page of my existing CRM.
+
+Project Context:
+This is Pixely_CRM for Pixely Careers. On the Orders Management page, there is an Export PDF button. Currently, when I export monthly orders, the generated PDF report only shows basic order details.
+
+Current Export Includes:
+Order ID
+Date
+Client
+Phone
+Services
+Designer
+Status
+Payment
+
+Current Problem:
+The exported report is incomplete. It does not show full financial details of each order. I need the export report to include complete order and finance details so I can use it for monthly review, payment tracking, accounting, and team management.
+
+Change Required:
+Improve the Export PDF / Export Sheet details on the Orders Management page.
+
+The exported report should include complete order details and finance details for each order.
+
+Required Export Columns:
+1. Order ID
+2. Date Placed
+3. Month / Year
+4. Client Name
+5. Client Phone Number
+6. Service / Package Name
+7. Full Service Details
+8. Designer Name
+9. Order Status
+10. Payment Status
+11. Total Package Amount
+12. Advance Payment
+13. Remaining Payment
+14. Collected Amount
+15. Payment Method
+16. Payment Date
+17. Discount Amount
+18. Final Payable Amount
+19. Delivery Date
+20. Notes / Remarks
+
+Finance Details Required:
+Add these finance-related fields in the export:
+
+Total Package Amount:
+The full original price/value of the selected package or custom service.
+
+Advance Payment:
+The amount received at the start of the order.
+
+Remaining Payment:
+The unpaid balance.
+
+Collected Amount:
+Total amount received from client.
+
+Payment Status:
+Paid, Pending, Partial, Approved, or whatever statuses already exist in the CRM.
+
+Payment Method:
+JazzCash, Easypaisa, Bank Transfer, Cash, or any existing method stored in CRM.
+
+Discount Amount:
+Any discount given to the client.
+
+Final Payable Amount:
+Total Package Amount minus Discount Amount.
+
+Calculation Logic:
+Final Payable Amount = Total Package Amount - Discount Amount
+
+Collected Amount = Advance Payment + any remaining payment received
+
+Remaining Payment = Final Payable Amount - Collected Amount
+
+If any value is missing, null, or undefined, show:
+Rs0
+or
+Not Specified
+depending on the field type.
+
+Important:
+Use the actual existing database field names. Before making changes, inspect the existing schema and code to find fields for:
+total amount
+package amount
+advance payment
+remaining payment
+payment status
+payment method
+discount
+delivery date
+notes
+
+Do not invent new field names unless the fields do not exist. If some fields are missing in the database, add them carefully only if required and make sure existing orders do not break.
+
+Report Header Requirements:
+The exported report should have a professional header.
+
+Header should include:
+Pixely Careers Orders Report
+Selected Month and Year
+Generated Date and Time
+Total Orders
+Monthly Revenue
+Collected Amount
+Remaining Amount
+Delivered Orders
+Pending Orders
+
+Example Header:
+Pixely Careers Orders Report - July 2026
+Generated: Jul 04, 2026 7:24 PM
+
+Summary:
+Total Orders: 22
+Monthly Revenue: Rs85,300
+Collected: Rs44,850
+Remaining: Rs30,450
+Delivered: 5
+Pending: 17
+
+Table Design Requirements:
+1. Keep the export clean and professional.
+2. Use readable font size.
+3. Use proper column spacing.
+4. Long service details should wrap properly.
+5. Phone numbers should not break badly.
+6. Amount columns should be right aligned if possible.
+7. Header row should be clearly visible.
+8. If the table becomes too wide for portrait PDF, use landscape orientation.
+9. If PDF has many columns, use smaller font size but keep it readable.
+10. If data is too much for one page, continue properly on the next page with table header repeated.
+
+Recommended Export Layout:
+Use landscape PDF format because the report has many columns.
+
+Suggested column order:
+Order ID
+Date
+Client
+Phone
+Package / Services
+Designer
+Order Status
+Payment Status
+Total Amount
+Discount
+Final Payable
+Advance Paid
+Collected
+Remaining
+Payment Method
+Payment Date
+Delivery Date
+Notes
+
+Alternative:
+If the PDF becomes too crowded, create two export formats:
+1. Basic Export
+2. Detailed Finance Export
+
+But the Export PDF button should preferably generate the detailed report by default.
+
+Data Formatting Requirements:
+1. Currency should show in Pakistani Rupees format:
+   Rs3,000
+   Rs5,000
+   Rs7,500
+
+2. Dates should be readable:
+   Jul 04, 2026
+
+3. Empty fields should show:
+   Not Specified
+   or
+   Rs0 for empty amount fields
+
+4. Payment numbers should not show NaN.
+
+5. All calculations should be safe even if values are missing.
+
+Technical Implementation Instructions:
+1. Find the Orders Management export function.
+2. Inspect the existing PDF generation library or export logic.
+3. Update the export columns.
+4. Add finance fields to the exported data.
+5. Add summary totals at the top of the PDF.
+6. Make sure monthly filter is respected when exporting monthly orders.
+7. If Today's Orders tab is active, export today's orders.
+8. If Monthly Orders tab is active, export selected month/year orders.
+9. If universal search is active, export the current search results and title it as Search Results Export.
+10. Use the same data currently displayed in the CRM plus additional finance fields from the order record.
+11. Do not remove the existing Export PDF button.
+12. Do not break order creation, status changes, payment status, designer assignment, filters, or tabs.
+
+Important Search Export Behavior:
+If the user has searched an order using universal search, the export should export the filtered search results, not the full month.
+
+Export Behavior Rules:
+1. Monthly Orders tab active with no search:
+   Export selected month/year orders.
+
+2. Today's Orders tab active with no search:
+   Export today's orders.
+
+3. Search query active:
+   Export search results from all orders.
+
+4. If no orders found:
+   Show a clean message or export an empty report with:
+   No orders found.
+
+Acceptance Criteria:
+1. Export PDF includes complete finance details.
+2. Export PDF shows Total Package Amount.
+3. Export PDF shows Advance Payment.
+4. Export PDF shows Remaining Payment.
+5. Export PDF shows Collected Amount.
+6. Export PDF shows Discount and Final Payable Amount if available.
+7. Export PDF shows Payment Method and Payment Date if available.
+8. Export PDF has a summary section at the top.
+9. Summary section shows Total Orders, Monthly Revenue, Collected, Remaining, Delivered, and Pending.
+10. Currency formatting is correct and does not show NaN.
+11. Long service/package details wrap properly.
+12. Export works for Monthly Orders.
+13. Export works for Today's Orders.
+14. Export works for Search Results.
+15. Existing CRM design and functionality should not break.
+16. Existing order data should not be deleted or modified.
+
+Please implement this carefully and test the Export PDF feature after making the changes.

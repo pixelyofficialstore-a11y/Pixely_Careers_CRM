@@ -103,6 +103,7 @@ export default function OrdersPage() {
   const [search, setSearch] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth().toString());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
+  const [activeOrdersTab, setActiveOrdersTab] = useState<"today" | "monthly">("today");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<OrderWithServices | null>(null);
   const [detailsSheetOpen, setDetailsSheetOpen] = useState(false);
@@ -328,37 +329,157 @@ export default function OrdersPage() {
     ];
   };
 
+  const formatRs = (value: number | null | undefined) => {
+    const amount = Number(value);
+    if (!Number.isFinite(amount)) return "Rs0";
+    return `Rs${Math.round(amount / 100).toLocaleString()}`;
+  };
+
+  const formatDateSafe = (value: string | Date | null | undefined, withTime = false) => {
+    if (!value) return "Not Specified";
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return "Not Specified";
+    return format(d, withTime ? "MMM dd, yyyy h:mm a" : "MMM dd, yyyy");
+  };
+
+  const paymentMethodLabels: Record<string, string> = {
+    cash: "Cash",
+    jazzcash: "JazzCash",
+    easypaisa: "Easypaisa",
+    bank_transfer: "Bank Transfer",
+    other: "Other",
+  };
+
+  const getServicesLabel = (order: OrderWithServices) => {
+    return (order.packageType && order.packageType !== "custom")
+      ? (packageLabels[order.packageType] || order.packageType)
+      : (order.services?.map(s => `${s.quantity}x ${s.serviceType}`).join(", ") || "Not Specified");
+  };
+
+  const getFullServiceDetails = (order: OrderWithServices) => {
+    if (order.packageType && order.packageType !== "custom") {
+      return packageLabels[order.packageType] || order.packageType;
+    }
+    if (order.services && order.services.length > 0) {
+      return order.services
+        .map(s => `${s.quantity}x ${s.serviceType}${s.instructions ? ` (${s.instructions})` : ""}`)
+        .join("; ");
+    }
+    return "Not Specified";
+  };
+
   const exportOrdersPDF = () => {
-    const doc = new jsPDF();
-    const monthName = format(new Date(parseInt(selectedYear), parseInt(selectedMonth), 1), "MMMM yyyy");
-    
-    doc.setFontSize(18);
-    doc.text(`Orders Report - ${monthName}`, 14, 22);
-    doc.setFontSize(11);
-    doc.text(`Generated: ${format(new Date(), "MMM dd, yyyy h:mm a")}`, 14, 32);
-    
-    const tableData = monthlyOrders?.map(order => [
-      order.orderNumber,
-      format(new Date(order.createdAt!), "MMM dd"),
-      order.clientName,
-      order.clientPhone || "-",
-      (order.packageType && order.packageType !== "custom") 
-        ? packageLabels[order.packageType] || order.packageType
-        : (order.services?.map(s => `${s.quantity}x ${s.serviceType}`).join(", ") || "-"),
-      order.assignee?.name || "Unassigned",
-      order.status.charAt(0).toUpperCase() + order.status.slice(1),
-      order.paymentStatus === "paid" ? "Paid" : "Pending"
-    ]) || [];
+    let exportOrders: OrderWithServices[];
+    let reportTitle: string;
+
+    if (isSearchActive) {
+      exportOrders = universalSearchResults;
+      reportTitle = "Search Results Export";
+    } else if (activeOrdersTab === "today") {
+      exportOrders = todayOrders;
+      reportTitle = `Pixely Careers Orders Report - Today (${format(new Date(), "MMM dd, yyyy")})`;
+    } else {
+      const monthName = format(new Date(parseInt(selectedYear), parseInt(selectedMonth), 1), "MMMM yyyy");
+      exportOrders = monthlyOrders;
+      reportTitle = `Pixely Careers Orders Report - ${monthName}`;
+    }
+
+    const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text(reportTitle, 28, 30);
+
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Generated: ${format(new Date(), "MMM dd, yyyy h:mm a")}`, 28, 44);
+
+    const approvedExportOrders = exportOrders.filter(o => o.advancePaymentStatus === 'approved');
+    const totalOrders = exportOrders.length;
+    const revenue = approvedExportOrders.reduce((sum, o) => sum + (Number(o.totalPrice) || 0), 0);
+    const collected = approvedExportOrders.reduce((sum, o) => sum + (Number(o.advanceAmount) || 0), 0);
+    const remaining = approvedExportOrders.filter(o => o.status !== 'canceled').reduce((sum, o) => sum + (Number(o.remainingAmount) || 0), 0);
+    const delivered = exportOrders.filter(o => o.status === 'delivered').length;
+    const pending = exportOrders.filter(o => o.status === 'new' || o.status === 'working' || o.status === 'ready').length;
+
+    let summaryY = 60;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text("Summary", 28, summaryY);
+    doc.setFont("helvetica", "normal");
+    summaryY += 14;
+    const summaryLine1 = `Total Orders: ${totalOrders}     Monthly Revenue: ${formatRs(revenue)}     Collected: ${formatRs(collected)}`;
+    const summaryLine2 = `Remaining: ${formatRs(remaining)}     Delivered: ${delivered}     Pending: ${pending}`;
+    doc.text(summaryLine1, 28, summaryY);
+    summaryY += 14;
+    doc.text(summaryLine2, 28, summaryY);
+    summaryY += 10;
+
+    const tableData = exportOrders.length > 0 ? exportOrders.map(order => {
+      const monthYear = order.createdAt ? format(new Date(order.createdAt), "MMMM yyyy") : "Not Specified";
+      const finalPayable = Math.max(0, (Number(order.totalPrice) || 0) - (Number(order.discountAmount) || 0));
+      const collectedAmount = Number(order.advanceAmount) || 0;
+      const remainingAmount = Number(order.remainingAmount) || 0;
+
+      return [
+        order.orderNumber || "Not Specified",
+        formatDateSafe(order.createdAt),
+        monthYear,
+        order.clientName || "Not Specified",
+        order.clientPhone || "Not Specified",
+        getServicesLabel(order),
+        getFullServiceDetails(order),
+        order.assignee?.name || "Unassigned",
+        order.status ? order.status.charAt(0).toUpperCase() + order.status.slice(1) : "Not Specified",
+        order.paymentStatus === "paid" ? "Paid" : (order.paymentStatus ? order.paymentStatus.charAt(0).toUpperCase() + order.paymentStatus.slice(1) : "Pending"),
+        formatRs(order.totalPrice),
+        formatRs(order.discountAmount),
+        formatRs(finalPayable),
+        formatRs(order.advanceAmount),
+        formatRs(collectedAmount),
+        formatRs(remainingAmount),
+        order.paymentMethod ? (paymentMethodLabels[order.paymentMethod] || order.paymentMethod) : "Not Specified",
+        formatDateSafe(order.paymentDate),
+        formatDateSafe(order.deliveredAt),
+        order.notes && order.notes.trim() ? order.notes : "Not Specified",
+      ];
+    }) : [["No orders found.", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]];
 
     autoTable(doc, {
-      startY: 40,
-      head: [["Order ID", "Date", "Client", "Phone", "Services", "Designer", "Status", "Payment"]],
+      startY: summaryY + 6,
+      head: [[
+        "Order ID", "Date Placed", "Month/Year", "Client Name", "Phone",
+        "Package/Services", "Full Service Details", "Designer", "Order Status", "Payment Status",
+        "Total Amount", "Discount", "Final Payable", "Advance Paid", "Collected",
+        "Remaining", "Payment Method", "Payment Date", "Delivered On", "Notes"
+      ]],
       body: tableData,
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [37, 99, 235] }
+      styles: { fontSize: 6.5, cellPadding: 3, overflow: "linebreak" },
+      headStyles: { fillColor: [37, 99, 235], fontSize: 6.5, halign: "center" },
+      columnStyles: {
+        10: { halign: "right" },
+        11: { halign: "right" },
+        12: { halign: "right" },
+        13: { halign: "right" },
+        14: { halign: "right" },
+        15: { halign: "right" },
+      },
+      margin: { left: 20, right: 20 },
+      tableWidth: pageWidth - 40,
+      showHead: "everyPage",
+      didDrawPage: () => {
+        // header repeats via showHead: 'everyPage'
+      },
     });
 
-    doc.save(`orders-${monthName.replace(" ", "-")}.pdf`);
+    const fileSuffix = isSearchActive
+      ? `search-results-${format(new Date(), "yyyy-MM-dd")}`
+      : activeOrdersTab === "today"
+      ? `today-${format(new Date(), "yyyy-MM-dd")}`
+      : format(new Date(parseInt(selectedYear), parseInt(selectedMonth), 1), "MMMM-yyyy");
+
+    doc.save(`orders-${fileSuffix}.pdf`);
   };
 
   return (
@@ -511,7 +632,7 @@ export default function OrdersPage() {
           </div>
         </div>
       ) : (
-      <Tabs defaultValue="today" className="w-full">
+      <Tabs value={activeOrdersTab} onValueChange={(val) => setActiveOrdersTab(val as "today" | "monthly")} className="w-full">
         <TabsList className="bg-slate-900 border border-slate-800 p-1 mb-6">
           <TabsTrigger value="today" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white" data-testid="tab-today-orders">Today's Orders</TabsTrigger>
           <TabsTrigger value="monthly" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white" data-testid="tab-monthly-orders">Monthly Orders</TabsTrigger>
@@ -1193,6 +1314,8 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
   const [assignedToId, setAssignedToId] = useState("");
   const [totalBill, setTotalBill] = useState("");
   const [advanceAmount, setAdvanceAmount] = useState("");
+  const [discountAmount, setDiscountAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<string>("");
   const [platform, setPlatform] = useState("");
   const [campaign, setCampaign] = useState("");
   const [adSet, setAdSet] = useState("");
@@ -1256,13 +1379,15 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
     }
 
     const totalPriceValue = totalBill ? Math.round(parseFloat(totalBill) * 100) : 0;
+    const discountValue = discountAmount ? Math.round(parseFloat(discountAmount) * 100) : 0;
+    const finalPayableValue = Math.max(0, totalPriceValue - discountValue);
     const advanceValue = advanceAmount ? Math.round(parseFloat(advanceAmount) * 100) : 0;
-    const remainingValue = totalPriceValue - advanceValue;
+    const remainingValue = finalPayableValue - advanceValue;
 
     // For payment verification system:
     // - advance payment: advanceAmount is stored but status is pending_confirmation
     // - full payment: total is stored but status is pending_confirmation
-    const paymentAmount = paymentType === "full" ? totalPriceValue : advanceValue;
+    const paymentAmount = paymentType === "full" ? finalPayableValue : advanceValue;
 
     setIsUploading(true);
     try {
@@ -1281,10 +1406,12 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
         assignedToId: assignedToId ? parseInt(assignedToId) : null,
         paymentStatus: "pending",
         totalPrice: totalPriceValue,
+        discountAmount: discountValue,
+        paymentMethod: paymentMethod || null,
         // Admin: advance is collected immediately — send real values.
         // Support: advance goes through verification — starts at 0.
         advanceAmount: isAdmin ? advanceValue : 0,
-        remainingAmount: isAdmin ? remainingValue : totalPriceValue,
+        remainingAmount: isAdmin ? remainingValue : finalPayableValue,
         packageType: packageType || null,
         platform: platform.trim() || null,
         campaign: campaign.trim() || null,
@@ -1494,6 +1621,25 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
             />
           </div>
           <div className="space-y-2">
+            <Label className="text-slate-300">Discount (₨)</Label>
+            <Input 
+              type="number"
+              min="0"
+              step="1"
+              value={discountAmount} 
+              onChange={(e) => setDiscountAmount(e.target.value.replace(/[^0-9]/g, ''))} 
+              className="bg-slate-950 border-slate-800 text-white"
+              placeholder="0"
+              data-testid="input-discount-amount"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-slate-300">Final Payable (₨)</Label>
+            <div className="h-9 flex items-center px-3 bg-slate-950 border border-slate-800 rounded-md text-white">
+              ₨{Math.max(0, (parseInt(totalBill) || 0) - (parseInt(discountAmount) || 0)).toLocaleString()}
+            </div>
+          </div>
+          <div className="space-y-2">
             <Label className="text-slate-300">Advance Paid (₨)</Label>
             <Input 
               type="number"
@@ -1509,8 +1655,23 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
           <div className="space-y-2">
             <Label className="text-slate-300">Remaining</Label>
             <div className="h-9 flex items-center px-3 bg-slate-950 border border-slate-800 rounded-md text-white">
-              ₨{Math.max(0, (parseInt(totalBill) || 0) - (parseInt(advanceAmount) || 0)).toLocaleString()}
+              ₨{Math.max(0, (parseInt(totalBill) || 0) - (parseInt(discountAmount) || 0) - (parseInt(advanceAmount) || 0)).toLocaleString()}
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-slate-300">Payment Method</Label>
+            <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+              <SelectTrigger className="bg-slate-950 border-slate-800 text-white" data-testid="select-payment-method">
+                <SelectValue placeholder="Select method" />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                <SelectItem value="cash">Cash</SelectItem>
+                <SelectItem value="jazzcash">JazzCash</SelectItem>
+                <SelectItem value="easypaisa">Easypaisa</SelectItem>
+                <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </div>
