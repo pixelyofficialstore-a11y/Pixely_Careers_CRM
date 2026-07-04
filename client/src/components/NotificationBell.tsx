@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Bell, ShoppingCart, CreditCard, User, CheckCheck, X, AlertTriangle } from "lucide-react";
+import { Bell, ShoppingCart, CreditCard, User, UserCheck, UserX, CheckCheck, CheckCircle, XCircle, PackageCheck, AlertTriangle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { formatDistanceToNow } from "date-fns";
+import { format, differenceInMinutes, isToday } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 
@@ -96,19 +96,46 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return outputArray;
 }
 
-function notifIcon(type: string) {
+function notifIcon(type: string, priority: string, title: string) {
+  const t = (title || "").toLowerCase();
+  // Choose the most descriptive icon based on the event, falling back to the type.
+  if (t.includes("rejected")) return XCircle;
+  if (t.includes("delivered")) return PackageCheck;
+  if (t.includes("approved")) return CheckCircle;
+  if (t.includes("disabled")) return UserX;
+  if (t.includes("enabled")) return UserCheck;
+  if (t.includes("assigned")) return UserCheck;
+  if (t.includes("remaining") || t.includes("verification")) return AlertTriangle;
   if (type === "order") return ShoppingCart;
   if (type === "payment") return CreditCard;
-  if (type === "assignment") return User;
+  if (type === "assignment") return UserCheck;
+  if (type === "user") return User;
   return Bell;
 }
 
-function notifColor(type: string, priority: string) {
+function notifColor(type: string, priority: string, title: string) {
+  const t = (title || "").toLowerCase();
   if (priority === "action_required") return "text-red-400 bg-red-500/10";
+  if (priority === "confirmation" || t.includes("approved") || t.includes("delivered")) {
+    return "text-green-400 bg-green-500/10";
+  }
   if (type === "order") return "text-blue-400 bg-blue-500/10";
   if (type === "payment") return "text-yellow-400 bg-yellow-500/10";
   if (type === "assignment") return "text-purple-400 bg-purple-500/10";
+  if (type === "user") return "text-cyan-400 bg-cyan-500/10";
   return "text-slate-400 bg-slate-500/10";
+}
+
+// Friendly relative time: "Just now", "5 minutes ago", "Today, 3:45 PM", or "Jul 04, 2026".
+function formatNotifTime(iso: string): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return "";
+  const mins = differenceInMinutes(new Date(), date);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
+  if (isToday(date)) return `Today, ${format(date, "h:mm a")}`;
+  return format(date, "MMM dd, yyyy");
 }
 
 interface NotificationBellProps {
@@ -336,16 +363,18 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
           </div>
         ) : (
           notifsList.slice(0, 20).map((notif) => {
-            const Icon = notifIcon(notif.type);
-            const colorCls = notifColor(notif.type, notif.priority);
+            const Icon = notifIcon(notif.type, notif.priority, notif.title);
+            const colorCls = notifColor(notif.type, notif.priority, notif.title);
             const isActionRequired = notif.priority === "action_required";
+            const isConfirmation = notif.priority === "confirmation";
             return (
               <div
                 key={notif.id}
                 className={cn(
                   "flex items-start gap-3 px-4 py-3 border-b border-slate-800/50 transition-colors cursor-pointer hover:bg-slate-800/40",
                   !notif.read && "bg-blue-500/5",
-                  isActionRequired && !notif.read && "border-l-2 border-l-red-500"
+                  isActionRequired && !notif.read && "border-l-2 border-l-red-500",
+                  isConfirmation && !notif.read && "border-l-2 border-l-green-500"
                 )}
                 onClick={() => handleNotifClick(notif)}
               >
@@ -362,15 +391,13 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
                     {notif.message}
                   </p>
                   <p className="text-[10px] text-slate-600 mt-1">
-                    {notif.createdAt
-                      ? formatDistanceToNow(new Date(notif.createdAt), { addSuffix: true })
-                      : ""}
+                    {formatNotifTime(notif.createdAt)}
                   </p>
                 </div>
                 {!notif.read && (
                   <div className={cn(
                     "w-2 h-2 rounded-full flex-shrink-0 mt-1.5",
-                    isActionRequired ? "bg-red-500" : "bg-blue-500"
+                    isActionRequired ? "bg-red-500" : isConfirmation ? "bg-green-500" : "bg-blue-500"
                   )} />
                 )}
               </div>

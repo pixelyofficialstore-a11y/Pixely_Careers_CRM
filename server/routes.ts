@@ -77,6 +77,42 @@ async function notifyUser(
   return notification;
 }
 
+// Notify several unique recipients at once (skips falsy/duplicate ids and any excluded ids).
+async function notifyMany(
+  userIds: (number | null | undefined)[], type: string, title: string, message: string,
+  priority: string, relatedId?: number, relatedType?: string, exclude: (number | null | undefined)[] = []
+) {
+  const excludeSet = new Set(exclude.filter((id): id is number => typeof id === "number"));
+  const recipients = Array.from(
+    new Set(userIds.filter((id): id is number => typeof id === "number" && !excludeSet.has(id)))
+  );
+  for (const id of recipients) {
+    await notifyUser(id, type, title, message, priority, relatedId, relatedType);
+  }
+}
+
+// Format PKR paisa (integer) into a readable rupee string, e.g. 300000 -> "₨3,000".
+function fmtRs(paisa: number | null | undefined): string {
+  const rs = Math.floor((paisa || 0) / 100);
+  return `₨${rs.toLocaleString()}`;
+}
+
+// Human-readable order reference. Falls back gracefully when no order number exists yet.
+function orderRef(order: { orderNumber?: string | null; id?: number }): string {
+  if (order?.orderNumber) return `#${order.orderNumber}`;
+  if (order?.id) return `Order #${order.id}`;
+  return "this order";
+}
+
+// Turn an internal status key into a clean label, e.g. "pending_payment" -> "Pending Payment".
+function statusLabel(status: string | null | undefined): string {
+  if (!status) return "Unknown";
+  return status
+    .split("_")
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
 const PgSession = connectPgSimple(session);
 
 const scryptAsync = promisify(scrypt);
@@ -246,12 +282,46 @@ export async function registerRoutes(
     try {
       const userId = Number(req.params.id);
       const updates = { ...req.body };
-      
+      const actor = req.user as User;
+
+      const existingUser = await storage.getUser(userId);
+
       if (updates.password) {
         updates.password = await hashPassword(updates.password);
       }
       
       const updatedUser = await storage.updateUser(userId, updates);
+
+      // Notify other admins when a team member's access is enabled/disabled.
+      if (
+        existingUser &&
+        typeof updates.isActive === "boolean" &&
+        updates.isActive !== existingUser.isActive
+      ) {
+        const targetName = updatedUser.name || "A team member";
+        const actorName = actor.name || "an admin";
+        const admins = await storage.getAdmins();
+        if (updates.isActive) {
+          await notifyMany(
+            admins.map(a => a.id), "user",
+            "User Account Enabled",
+            `${targetName}'s CRM access was enabled by ${actorName}.`,
+            "update",
+            userId, "user",
+            [actor.id]
+          );
+        } else {
+          await notifyMany(
+            admins.map(a => a.id), "user",
+            "User Account Disabled",
+            `${targetName}'s CRM access was disabled by ${actorName}.`,
+            "action_required",
+            userId, "user",
+            [actor.id]
+          );
+        }
+      }
+
       res.json(updatedUser);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -434,24 +504,21 @@ export async function registerRoutes(
 
         // Notify all OTHER admins (not the one who placed it)
         const admins = await storage.getAdmins();
-        for (const admin of admins) {
-          if (admin.id !== user.id) {
-            await notifyUser(
-              admin.id, "order",
-              "New Order Created",
-              `#${orderNumber} · Client: ${orderData.clientName} · Awaiting assignment`,
-              "update",
-              order.id, "order"
-            );
-          }
-        }
+        await notifyMany(
+          admins.map(a => a.id), "order",
+          "New Order Created",
+          `New order of ${fmtRs(totalPrice)} placed by ${user.name} for ${orderData.clientName}. Order ${orderRef({ orderNumber })}.`,
+          "update",
+          order.id, "order",
+          [user.id]
+        );
 
-        // Notify assigned designer
-        if (intendedDesignerId) {
+        // Notify assigned designer (never notify the actor about their own assignment)
+        if (intendedDesignerId && intendedDesignerId !== user.id) {
           await notifyUser(
             intendedDesignerId, "assignment",
-            "New Order Assigned",
-            `#${orderNumber} · ${orderData.clientName} · Start processing`,
+            "Order Assigned",
+            `${orderRef({ orderNumber })} for ${orderData.clientName} has been assigned to you. You can start working on it.`,
             "action_required",
             order.id, "order"
           );
@@ -476,17 +543,14 @@ export async function registerRoutes(
       }, services || []);
 
       // Notify admins of a new payment request (not "order placed" — no order exists yet)
-      const totalRs = Math.floor(totalPrice / 100);
       const admins = await storage.getAdmins();
-      for (const admin of admins) {
-        await notifyUser(
-          admin.id, "payment",
-          "Payment Request Pending",
-          `${orderData.clientName} · ₨${totalRs.toLocaleString()} · Awaiting approval`,
-          "action_required",
-          order.id, "order"
-        );
-      }
+      await notifyMany(
+        admins.map(a => a.id), "payment",
+        "Payment Verification Required",
+        `${fmtRs(totalPrice)} order placed by ${user.name} for ${orderData.clientName}. Verify the payment before approval.`,
+        "action_required",
+        order.id, "order"
+      );
 
       res.status(201).json(order);
     } catch (err) {
@@ -592,6 +656,50 @@ export async function registerRoutes(
     }
 
     const updatedOrder = await storage.updateOrder(orderId, updates);
+
+    // Notify relevant parties when the order status actually changes.
+    if (updates.status && updates.status !== existingOrder.status) {
+      const statusAdmins = await storage.getAdmins();
+      const recipients = [
+        ...statusAdmins.map(a => a.id),
+        existingOrder.assignedToId,
+        existingOrder.createdById,
+      ];
+      const clientName = existingOrder.clientName || "this client";
+
+      if (updates.status === 'delivered') {
+        await notifyMany(
+          recipients, "order",
+          "Order Delivered",
+          `${orderRef(existingOrder)} for ${clientName} was marked as delivered by ${user.name}.`,
+          "confirmation",
+          orderId, "order",
+          [user.id]
+        );
+      } else {
+        await notifyMany(
+          recipients, "order",
+          "Order Status Updated",
+          `${orderRef(existingOrder)} for ${clientName} changed from ${statusLabel(existingOrder.status)} to ${statusLabel(updates.status)} by ${user.name}.`,
+          "update",
+          orderId, "order",
+          [user.id]
+        );
+      }
+
+      // Flag any outstanding balance when an order reaches ready/delivered.
+      const remaining = updatedOrder.remainingAmount || 0;
+      if ((updates.status === 'ready' || updates.status === 'delivered') && remaining > 0) {
+        await notifyMany(
+          statusAdmins.map(a => a.id), "payment",
+          "Remaining Payment Pending",
+          `${clientName} still has ${fmtRs(remaining)} remaining for ${orderRef(existingOrder)}.`,
+          "action_required",
+          orderId, "order",
+          [user.id]
+        );
+      }
+    }
 
     res.json(updatedOrder);
   });
@@ -794,20 +902,17 @@ export async function registerRoutes(
       // Never notify the submitter of their own action.
       if (order.status !== 'pending_payment') {
         const admins = await storage.getAdmins();
-        const amountRs = Math.floor(parsedAmount / 100);
-        for (const admin of admins) {
-          if (admin.id !== user.id) {
-            await notifyUser(
-              admin.id,
-              "payment",
-              "Payment Verification Required",
-              `${order.clientName} · Order #${order.orderNumber || `REQ-${verification.id}`} · ₨${amountRs.toLocaleString()}`,
-              "action_required",
-              verification.id,
-              "payment_verification"
-            );
-          }
-        }
+        const typeLabel = paymentType === 'remaining' ? 'remaining' : paymentType;
+        await notifyMany(
+          admins.map(a => a.id),
+          "payment",
+          "Payment Verification Required",
+          `${fmtRs(parsedAmount)} ${typeLabel} payment received from ${order.clientName} for ${orderRef(order)}. Please verify and approve.`,
+          "action_required",
+          verification.id,
+          "payment_verification",
+          [user.id]
+        );
       }
       
       res.status(201).json(verification);
@@ -859,30 +964,27 @@ export async function registerRoutes(
         paymentDate: new Date(),
       });
       
-      if (order.intendedDesignerId) {
+      if (order.intendedDesignerId && order.intendedDesignerId !== user.id) {
         await notifyUser(
           order.intendedDesignerId, "assignment",
-          "Approved Order Assigned",
-          `#${orderNumber} · ${order.clientName} · Begin work`,
+          "Order Assigned",
+          `${orderRef({ orderNumber })} for ${order.clientName} is approved and assigned to you. You can start working on it.`,
           "action_required",
           order.id, "order"
         );
       }
 
       // Notify all other admins (not the one who approved)
-      const advanceRs = Math.floor(verification.amount / 100);
       const approvalAdmins = await storage.getAdmins();
-      for (const admin of approvalAdmins) {
-        if (admin.id !== user.id) {
-          await notifyUser(
-            admin.id, "order",
-            "Order Approved",
-            `#${orderNumber} · ${order.clientName} · ₨${advanceRs.toLocaleString()} received`,
-            "confirmation",
-            order.id, "order"
-          );
-        }
-      }
+      const advBalanceNote = newRemaining > 0 ? ` ${fmtRs(newRemaining)} remaining.` : "";
+      await notifyMany(
+        approvalAdmins.map(a => a.id), "payment",
+        "Payment Approved",
+        `${fmtRs(verification.amount)} advance payment for ${orderRef({ orderNumber })} (${order.clientName}) was approved by ${user.name}.${advBalanceNote}`,
+        "confirmation",
+        order.id, "order",
+        [user.id]
+      );
     } else if (verification.paymentType === 'full') {
       const orderNumber = await storage.generateOrderNumber();
       
@@ -897,12 +999,11 @@ export async function registerRoutes(
         paymentDate: new Date(),
       });
       
-      const fullRs = Math.floor(verification.amount / 100);
-      if (order.intendedDesignerId) {
+      if (order.intendedDesignerId && order.intendedDesignerId !== user.id) {
         await notifyUser(
           order.intendedDesignerId, "assignment",
-          "Approved Order Assigned",
-          `#${orderNumber} · ${order.clientName} · Begin work`,
+          "Order Assigned",
+          `${orderRef({ orderNumber })} for ${order.clientName} is approved and assigned to you. You can start working on it.`,
           "action_required",
           order.id, "order"
         );
@@ -910,17 +1011,14 @@ export async function registerRoutes(
 
       // Notify all other admins (not the one who approved)
       const fullApprovalAdmins = await storage.getAdmins();
-      for (const admin of fullApprovalAdmins) {
-        if (admin.id !== user.id) {
-          await notifyUser(
-            admin.id, "order",
-            "Order Approved",
-            `#${orderNumber} · ${order.clientName} · ₨${fullRs.toLocaleString()} received`,
-            "confirmation",
-            order.id, "order"
-          );
-        }
-      }
+      await notifyMany(
+        fullApprovalAdmins.map(a => a.id), "payment",
+        "Payment Approved",
+        `${fmtRs(verification.amount)} full payment for ${orderRef({ orderNumber })} (${order.clientName}) was approved by ${user.name}. Order fully paid.`,
+        "confirmation",
+        order.id, "order",
+        [user.id]
+      );
     } else if (verification.paymentType === 'remaining') {
       const newRemaining = Math.max(0, currentRemaining - verification.amount);
       const isFullyPaid = newRemaining <= 0;
@@ -931,6 +1029,31 @@ export async function registerRoutes(
         paymentStatus: isFullyPaid ? "paid" : "pending",
         ...(isFullyPaid ? { status: "delivered", deliveredAt: new Date(), paymentDate: new Date() } : {}),
       });
+
+      // Notify other admins and the assigned designer that the remaining payment cleared.
+      const remainingAdmins = await storage.getAdmins();
+      const balanceNote = isFullyPaid
+        ? "Order fully paid."
+        : `${fmtRs(newRemaining)} still remaining.`;
+      await notifyMany(
+        [...remainingAdmins.map(a => a.id), order.assignedToId], "payment",
+        "Payment Approved",
+        `${fmtRs(verification.amount)} remaining payment for ${orderRef(order)} (${order.clientName}) was approved by ${user.name}. ${balanceNote}`,
+        "confirmation",
+        order.id, "order",
+        [user.id]
+      );
+
+      if (isFullyPaid) {
+        await notifyMany(
+          [...remainingAdmins.map(a => a.id), order.assignedToId], "order",
+          "Order Delivered",
+          `${orderRef(order)} for ${order.clientName} is fully paid and marked as delivered by ${user.name}.`,
+          "confirmation",
+          order.id, "order",
+          [user.id]
+        );
+      }
     }
     
     const updatedVerification = await storage.getPaymentVerifications("admin", 0);
@@ -957,15 +1080,30 @@ export async function registerRoutes(
       notes,
     });
     
+    const rejectedOrder = await storage.getOrder(verification.orderId);
+
     if (verification.paymentType !== 'remaining') {
-      const order = await storage.getOrder(verification.orderId);
-      if (order) {
+      if (rejectedOrder) {
         // Keep as pending_payment (not canceled) so it stays hidden from Orders page
-        await storage.updateOrder(order.id, {
+        await storage.updateOrder(rejectedOrder.id, {
           advancePaymentStatus: "disapproved",
           status: "pending_payment",
         });
       }
+    }
+
+    // Notify the person who submitted the payment and other admins that it was rejected.
+    if (rejectedOrder) {
+      const typeLabel = verification.paymentType === 'remaining' ? 'remaining' : verification.paymentType;
+      const rejectAdmins = await storage.getAdmins();
+      await notifyMany(
+        [...rejectAdmins.map(a => a.id), verification.submittedById, rejectedOrder.createdById], "payment",
+        "Payment Rejected",
+        `${fmtRs(verification.amount)} ${typeLabel} payment for ${orderRef(rejectedOrder)} (${rejectedOrder.clientName}) was rejected by ${user.name}. Please review the payment details.`,
+        "action_required",
+        rejectedOrder.id, "order",
+        [user.id]
+      );
     }
     
     const updatedVerifications = await storage.getPaymentVerifications("admin", 0);

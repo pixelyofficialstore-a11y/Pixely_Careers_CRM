@@ -1,0 +1,271 @@
+I want to improve the notification system in my existing CRM.
+
+Project Context:
+This is Pixely_CRM for Pixely Careers. The CRM has notifications shown in the sidebar/header bell icon. Notifications are used for order updates, payment verification, new orders, status changes, and admin/team activity.
+
+Change Required:
+Improve CRM notifications so they are clean, understandable, unique, and useful.
+
+Current Problem:
+Notifications are not clear enough. Some notifications look generic and do not clearly explain what happened, who did it, and what action is required.
+
+Required Behavior:
+Notifications should clearly show:
+1. What happened
+2. Which order/client it is related to
+3. Amount/charges if related to payment or order value
+4. Who performed the action
+5. Whether action is required
+6. Date/time of notification
+
+Notification Style Requirements:
+1. Notifications should be short but meaningful.
+2. Each notification should have a clear title and short description.
+3. Notification wording should not be generic.
+4. Similar notifications should still feel unique and understandable.
+5. Use professional CRM-style language.
+6. Avoid confusing technical wording.
+7. Include order ID where possible.
+8. Include client name where possible.
+9. Include amount/charges where relevant.
+10. Include user name/admin/support/designer name where relevant.
+
+Important:
+Use existing database fields and existing notification structure. Do not break current notification logic. Improve the notification message/title formatting.
+
+Suggested Notification Format:
+Each notification should have:
+
+Title:
+Short action title
+
+Description:
+Detailed but short explanation
+
+Example:
+Title: Payment Verification Required
+Description: Rs3,000 payment received for PX-2607-413. Please verify the payment before approval.
+
+Example:
+Title: New Order Created
+Description: New order of Rs5,000 was placed by Soban Masood for client Adnan. Order ID: PX-2607-413.
+
+Required Notification Examples:
+
+1. Payment Verification Required
+When a payment is submitted or marked for approval:
+Title:
+Payment Verification Required
+
+Description:
+Rs[Amount] payment received for [Order ID]. Please verify and approve the payment.
+
+Alternative with client:
+Rs[Amount] payment received from [Client Name] for [Order ID]. Verification required.
+
+2. New Order Created
+When admin or customer support creates a new order:
+Title:
+New Order Created
+
+Description:
+New order of Rs[Total Amount] was placed by [Admin/Customer Support Name] for [Client Name]. Order ID: [Order ID].
+
+3. Order Assigned
+When an order is assigned to a designer:
+Title:
+Order Assigned
+
+Description:
+[Order ID] for [Client Name] has been assigned to [Designer Name].
+
+4. Order Status Updated
+When order status changes:
+Title:
+Order Status Updated
+
+Description:
+[Order ID] status changed from [Old Status] to [New Status] by [User Name].
+
+5. Payment Approved
+When admin approves payment:
+Title:
+Payment Approved
+
+Description:
+Rs[Amount] payment for [Order ID] has been approved by [Admin Name].
+
+6. Payment Rejected
+When payment is rejected:
+Title:
+Payment Rejected
+
+Description:
+Rs[Amount] payment for [Order ID] was rejected by [Admin Name]. Please review payment details.
+
+7. Remaining Payment Pending
+When order is ready/delivered but remaining amount is still pending:
+Title:
+Remaining Payment Pending
+
+Description:
+[Client Name] has Rs[Remaining Amount] remaining for [Order ID].
+
+8. Order Delivered
+When order is marked delivered:
+Title:
+Order Delivered
+
+Description:
+[Order ID] for [Client Name] was marked as delivered by [User Name].
+
+9. New Revision Request
+When revision is added/requested:
+Title:
+Revision Requested
+
+Description:
+[Client Name] requested a revision for [Order ID]. Assigned designer: [Designer Name].
+
+10. Order Deleted
+When an order is deleted:
+Title:
+Order Deleted
+
+Description:
+[Order ID] for [Client Name] was deleted by [Admin Name].
+
+11. User Disabled
+When a team user is disabled:
+Title:
+User Account Disabled
+
+Description:
+[User Name]'s CRM access was disabled by [Admin Name].
+
+12. User Enabled
+When a team user is enabled:
+Title:
+User Account Enabled
+
+Description:
+[User Name]'s CRM access was enabled by [Admin Name].
+
+Notification Data Requirements:
+Whenever possible, include these fields:
+- orderId
+- clientName
+- totalAmount
+- paymentAmount
+- remainingAmount
+- performedByName
+- assignedDesignerName
+- oldStatus
+- newStatus
+- createdAt
+- notificationType
+- isRead
+
+If a field is missing:
+Use fallback text without breaking.
+Example:
+If client name is missing, use "this client".
+If amount is missing, use "payment".
+If user name is missing, use "a team member".
+
+Notification Types:
+Create or standardize notification types if possible:
+- payment_verification_required
+- new_order_created
+- order_assigned
+- order_status_updated
+- payment_approved
+- payment_rejected
+- remaining_payment_pending
+- order_delivered
+- revision_requested
+- order_deleted
+- user_disabled
+- user_enabled
+
+UI Requirements:
+1. Notifications should show a clear title.
+2. Notifications should show a short description.
+3. Show time/date such as:
+   Just now
+   5 minutes ago
+   Today
+   Jul 04, 2026
+4. Unread notifications should look visually different from read notifications.
+5. Add suitable icons/colors if the CRM already uses them:
+   Payment = money/check icon
+   New order = plus/order icon
+   Warning/action required = alert icon
+   Delivered = check icon
+   Deleted/rejected = red alert/trash icon
+6. Keep the existing CRM dark theme.
+7. Do not make the notification panel too crowded.
+
+Priority / Importance:
+Some notifications should be highlighted as important:
+- Payment Verification Required
+- Payment Rejected
+- Remaining Payment Pending
+- Order Deleted
+
+These can have a warning or red indicator if the design already supports it.
+
+Backend Requirements:
+1. Find the notification creation logic.
+2. Update notification message generation to use templates.
+3. Use dynamic placeholders like amount, order ID, client name, and user name.
+4. Make sure notifications are stored properly in the database.
+5. Make sure existing notifications do not crash if they do not have the new fields.
+6. Do not delete old notifications unless required.
+7. Ensure notifications are created only once per action to avoid duplicates.
+
+Duplicate Prevention:
+Do not create multiple duplicate notifications for the same action.
+Example:
+If payment verification is submitted once, create one notification.
+If the same page reloads, do not create another duplicate notification.
+
+Suggested Helper Function:
+Create a notification helper function if not already available.
+
+Example logic:
+createNotification({
+  type: "payment_verification_required",
+  title: "Payment Verification Required",
+  message: `Rs${amount} payment received from ${clientName} for ${orderId}. Verification required.`,
+  orderId,
+  clientName,
+  amount,
+  performedBy: userId,
+  priority: "high"
+})
+
+Acceptance Criteria:
+1. Notifications are clear and professional.
+2. Payment verification notification shows the amount and order ID.
+3. New order notification shows amount, creator name, client name, and order ID.
+4. Order assignment notification shows order ID, client name, and designer name.
+5. Order status update shows old and new status.
+6. Payment approval/rejection notifications are clear.
+7. Notification panel shows title, description, and time.
+8. Unread notifications are visually different.
+9. Important notifications are highlighted.
+10. Duplicate notifications are prevented.
+11. Existing notifications and CRM pages do not break.
+12. Existing dark theme remains the same.
+13. No existing order, user, or payment data should be deleted.
+
+Please implement this carefully and test notifications for:
+- New order creation
+- Payment verification
+- Payment approval
+- Order assignment
+- Order status change
+- Order delivery
+- Order deletion
+- User disabled/enabled
