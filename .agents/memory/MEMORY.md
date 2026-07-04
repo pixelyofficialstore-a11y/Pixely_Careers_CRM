@@ -1,1 +1,2 @@
 - [Order PATCH role enforcement](order-patch-authorization.md) — finance/package/service/paymentStatus edits are admin-only; support fields stripped via deny-list, designers via allowlist.
+- [Vite HMR periodic refresh](vite-hmr-reload-loop.md) — dev-preview reloads on Vite HMR reconnect after dev-server blips/restarts; NOT an app bug, absent in prod; do NOT set hmr.clientPort in middleware mode
