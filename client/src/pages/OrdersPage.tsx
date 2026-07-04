@@ -1826,7 +1826,6 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
   const customServicesTopRef = useRef<HTMLDivElement | null>(null);
   
   // Payment verification fields
-  const [paymentType, setPaymentType] = useState<"advance" | "full">("advance");
   const [paymentScreenshot, setPaymentScreenshot] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -1868,13 +1867,22 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    const totalPriceValue = totalBill ? Math.round(parseFloat(totalBill) * 100) : 0;
+    const discountValue = 0;
+    const finalPayableValue = totalPriceValue;
+    const advanceValue = advanceAmount ? Math.round(parseFloat(advanceAmount) * 100) : 0;
+    const remainingValue = Math.max(0, finalPayableValue - advanceValue);
+    const isSupport = currentUser?.role !== 'admin';
+
     const missingFields: string[] = [];
     if (!clientName.trim()) missingFields.push("Client Name");
     if (!clientPhone.trim()) missingFields.push("Phone Number");
     if (!packageType) missingFields.push("Package");
     if (packageType === "custom" && services.every(s => !s.serviceType)) missingFields.push("At least one service");
-    if (currentUser?.role !== 'admin' && !paymentScreenshot) missingFields.push("Payment Screenshot");
-    
+    if (!totalBill.trim() || totalPriceValue <= 0) missingFields.push("Total Bill");
+    if (isSupport && advanceValue <= 0) missingFields.push("Advance Paid (greater than 0)");
+    if (isSupport && advanceValue > 0 && !paymentScreenshot) missingFields.push("Payment Screenshot / Proof");
+
     if (missingFields.length > 0) {
       toast({ 
         title: "Missing Fields", 
@@ -1884,16 +1892,19 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
       return;
     }
 
-    const totalPriceValue = totalBill ? Math.round(parseFloat(totalBill) * 100) : 0;
-    const discountValue = discountAmount ? Math.round(parseFloat(discountAmount) * 100) : 0;
-    const finalPayableValue = Math.max(0, totalPriceValue - discountValue);
-    const advanceValue = advanceAmount ? Math.round(parseFloat(advanceAmount) * 100) : 0;
-    const remainingValue = finalPayableValue - advanceValue;
+    if (advanceValue > totalPriceValue) {
+      toast({ 
+        title: "Invalid amount", 
+        description: "Advance paid cannot be greater than total bill.", 
+        variant: "destructive" 
+      });
+      return;
+    }
 
-    // For payment verification system:
-    // - advance payment: advanceAmount is stored but status is pending_confirmation
-    // - full payment: total is stored but status is pending_confirmation
-    const paymentAmount = paymentType === "full" ? finalPayableValue : advanceValue;
+    // The payment verification stores the advance collected. If the advance
+    // covers the full bill, record it as a full payment.
+    const paymentType: "advance" | "full" = advanceValue >= finalPayableValue && advanceValue > 0 ? "full" : "advance";
+    const paymentAmount = advanceValue;
 
     setIsUploading(true);
     try {
@@ -2114,7 +2125,7 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
         <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Billing (PKR)</h4>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-2">
-            <Label className="text-slate-300">Total Bill (₨)</Label>
+            <Label className="text-slate-300">Total Bill (₨) *</Label>
             <Input 
               type="number"
               min="0"
@@ -2125,25 +2136,6 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
               placeholder="0"
               data-testid="input-total-bill"
             />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-slate-300">Discount (₨)</Label>
-            <Input 
-              type="number"
-              min="0"
-              step="1"
-              value={discountAmount} 
-              onChange={(e) => setDiscountAmount(e.target.value.replace(/[^0-9]/g, ''))} 
-              className="bg-slate-950 border-slate-800 text-white"
-              placeholder="0"
-              data-testid="input-discount-amount"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-slate-300">Final Payable (₨)</Label>
-            <div className="h-9 flex items-center px-3 bg-slate-950 border border-slate-800 rounded-md text-white">
-              ₨{Math.max(0, (parseInt(totalBill) || 0) - (parseInt(discountAmount) || 0)).toLocaleString()}
-            </div>
           </div>
           <div className="space-y-2">
             <Label className="text-slate-300">Advance Paid (₨)</Label>
@@ -2160,62 +2152,34 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
           </div>
           <div className="space-y-2">
             <Label className="text-slate-300">Remaining</Label>
-            <div className="h-9 flex items-center px-3 bg-slate-950 border border-slate-800 rounded-md text-white">
-              ₨{Math.max(0, (parseInt(totalBill) || 0) - (parseInt(discountAmount) || 0) - (parseInt(advanceAmount) || 0)).toLocaleString()}
+            <div className="h-9 flex items-center px-3 bg-slate-950 border border-slate-800 rounded-md text-white" data-testid="text-remaining">
+              ₨{Math.max(0, (parseInt(totalBill) || 0) - (parseInt(advanceAmount) || 0)).toLocaleString()}
             </div>
           </div>
-          <div className="space-y-2">
-            <Label className="text-slate-300">Payment Method</Label>
-            <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-              <SelectTrigger className="bg-slate-950 border-slate-800 text-white" data-testid="select-payment-method">
-                <SelectValue placeholder="Select method" />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                <SelectItem value="cash">Cash</SelectItem>
-                <SelectItem value="jazzcash">JazzCash</SelectItem>
-                <SelectItem value="easypaisa">Easypaisa</SelectItem>
-                <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                <SelectItem value="other">Other</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
         </div>
+        {(parseInt(advanceAmount) || 0) > (parseInt(totalBill) || 0) && (
+          <p className="text-xs text-red-400" data-testid="text-advance-warning">Advance paid cannot be greater than total bill.</p>
+        )}
       </div>
 
       {currentUser?.role !== 'admin' && (
         <div className="space-y-4">
-          <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Payment Request <span className="text-red-400 normal-case font-normal">(Required)</span></h4>
-          <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-slate-300">Payment Type *</Label>
-                <Select value={paymentType} onValueChange={(val: "advance" | "full") => setPaymentType(val)}>
-                  <SelectTrigger className="bg-slate-900 border-slate-700 text-white" data-testid="select-payment-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                    <SelectItem value="advance">Advance (Partial)</SelectItem>
-                    <SelectItem value="full">Full Payment</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label className={paymentScreenshot ? "text-slate-300" : "text-red-400"}>
-                  Payment Screenshot *
-                </Label>
-                <Input 
-                  type="file" 
-                  accept="image/*"
-                  onChange={(e) => setPaymentScreenshot(e.target.files?.[0] || null)}
-                  className={`bg-slate-900 border-slate-700 text-white file:bg-slate-800 file:text-slate-300 file:border-0 file:mr-3 ${!paymentScreenshot ? "border-red-500/50" : ""}`}
-                  data-testid="input-payment-screenshot"
-                />
-              </div>
-            </div>
+          <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+            Payment Screenshot / Proof <span className="text-red-400 normal-case font-normal">(Required)</span>
+          </h4>
+          <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-2">
+            <Input 
+              type="file" 
+              accept="image/png,image/jpeg,image/jpg,image/webp"
+              onChange={(e) => setPaymentScreenshot(e.target.files?.[0] || null)}
+              className={`bg-slate-900 border-slate-700 text-white file:bg-slate-800 file:text-slate-300 file:border-0 file:mr-3 ${(parseInt(advanceAmount) || 0) > 0 && !paymentScreenshot ? "border-red-500/50" : ""}`}
+              data-testid="input-payment-screenshot"
+            />
+            {paymentScreenshot && (
+              <p className="text-xs text-slate-400" data-testid="text-screenshot-filename">Selected: {paymentScreenshot.name}</p>
+            )}
             <p className="text-xs text-slate-500">
-              {paymentType === "advance" 
-                ? "Upload screenshot of advance payment. Order will be pending until admin approves this request."
-                : "Upload screenshot of full payment. Order will be marked as paid after admin approval."}
+              Upload proof of the advance payment. Your order stays pending until an admin approves it.
             </p>
           </div>
         </div>

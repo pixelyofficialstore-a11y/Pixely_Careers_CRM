@@ -1,0 +1,187 @@
+Please simplify and improve the Billing section in the Create Order form.
+
+Project Context:
+This is Pixely_CRM for Pixely Careers. In the Create Order form, the current Billing section has too many fields:
+
+Total Bill
+Discount
+Final Payable
+Advance Paid
+Remaining
+Payment Method
+
+This is too complicated for our workflow.
+
+Required Change:
+Only keep 3 billing fields:
+
+1. Total Bill
+2. Advance Paid
+3. Remaining
+
+Remove or hide these fields from the Create Order form:
+Discount
+Final Payable
+Payment Method
+
+Important:
+Do not delete old database fields if they already exist. Just remove/hide them from the Create Order form UI unless they are used somewhere else. The CRM should not break old records.
+
+Billing Logic:
+Total Bill = full amount of the package/order
+Advance Paid = amount received from client at order creation
+Remaining = Total Bill minus Advance Paid
+
+Formula:
+Remaining = Total Bill - Advance Paid
+
+Example:
+Total Bill: Rs3,000
+Advance Paid: Rs1,500
+Remaining: Rs1,500
+
+If Advance Paid is 0:
+Remaining should equal Total Bill.
+
+If Total Bill is empty:
+Remaining should show Rs0.
+
+Do not show NaN.
+Do not allow broken values.
+
+Billing Section UI:
+Show only these 3 fields in one clean row if space allows:
+
+Total Bill (Rs)
+Advance Paid (Rs)
+Remaining
+
+Remaining should be auto-calculated and read-only if possible.
+
+Required For Admin:
+Admin can enter:
+Total Bill
+Advance Paid
+
+CRM auto-calculates:
+Remaining
+
+Required For Customer Support:
+Customer Support should also see the same simple billing section:
+Total Bill
+Advance Paid
+Remaining
+
+Customer Support must also upload payment screenshot/proof while creating the order.
+
+Payment Screenshot Requirement:
+Add a required or clearly visible upload field for Customer Support and Admin:
+
+Label:
+Payment Screenshot / Proof
+
+Allowed files:
+Images such as PNG, JPG, JPEG, WEBP
+PDF optional if existing file upload supports it
+
+Purpose:
+When an order is created and advance payment is entered, the user should upload the payment screenshot/proof.
+
+Upload Field Behavior:
+1. Show upload field inside the Billing section or directly below Billing section.
+2. Label should be clear:
+   Payment Screenshot / Proof
+3. Show selected file name after upload.
+4. Allow replacing the uploaded screenshot before submitting.
+5. Save the file with the order.
+6. The screenshot/proof should be visible later in order details or payment verification area if that exists.
+7. Do not break order submission if screenshot upload already exists somewhere else. Reuse the existing upload logic if available.
+
+Validation:
+1. Total Bill should be required.
+2. Advance Paid can be 0 but should not be greater than Total Bill unless admin intentionally allows it.
+3. Remaining should auto-calculate.
+4. If Advance Paid is greater than Total Bill, show warning:
+   "Advance paid cannot be greater than total bill."
+5. For Customer Support, payment screenshot/proof should be required when Advance Paid is greater than 0.
+6. For Admin, payment screenshot/proof should be optional or required based on existing workflow. Prefer optional for Admin, required for Customer Support.
+
+Finance Data Mapping:
+Use existing database fields where possible.
+
+Suggested mapping:
+Total Bill = totalAmount / totalBill / packageAmount
+Advance Paid = advancePaid / advancePayment
+Remaining = remainingAmount / remaining
+
+Before making changes, inspect the existing schema and use the correct field names.
+
+If existing fields exist for discount, final payable, and payment method:
+Do not delete them from the database.
+Set discount to 0 by default if needed.
+Set final payable equal to total bill if needed.
+Set payment method to null / Not Specified if needed.
+
+Important:
+Since Discount and Final Payable are being removed from the Create Order form:
+Final Payable should internally equal Total Bill.
+Remaining should internally equal Total Bill minus Advance Paid.
+
+Order Table / Export / Payments:
+Make sure these pages still work after simplifying billing.
+
+Orders page should show:
+Total Bill
+Advance Paid
+Remaining
+Payment Status if already shown
+
+Export PDF should use:
+Total Bill
+Advance Paid
+Remaining
+
+Payments page should use:
+Total Bill
+Advance Paid
+Remaining
+Payment Screenshot if available
+
+Payment Status Logic:
+If Advance Paid is 0:
+Payment Status can be Pending
+
+If Advance Paid is greater than 0 but less than Total Bill:
+Payment Status can be Partial or Approved depending on existing logic
+
+If Advance Paid equals Total Bill:
+Payment Status can be Paid
+
+Do not break existing payment approval flow if the CRM already has one.
+
+UI Requirements:
+1. Keep the same dark theme.
+2. Keep spacing clean.
+3. Billing section should be simple and compact.
+4. Remove unnecessary clutter.
+5. Payment screenshot upload should look professional.
+6. Do not break the modal scroll.
+7. Do not affect Custom Order services layout.
+8. Do not affect package cards or assigned designer dropdown.
+
+Acceptance Criteria:
+1. Billing section only shows Total Bill, Advance Paid, and Remaining.
+2. Discount field is not shown in Create Order form.
+3. Final Payable field is not shown in Create Order form.
+4. Payment Method field is not shown in Create Order form.
+5. Remaining auto-calculates correctly.
+6. No NaN values appear.
+7. Customer Support can upload payment screenshot/proof while creating order.
+8. Payment screenshot/proof is saved with the order.
+9. Payment screenshot/proof can be viewed later in order details or payment verification area.
+10. Admin can still create orders normally.
+11. Customer Support can still create orders normally if allowed by role.
+12. Existing orders, payments, export, search, notifications, and monthly revenue calculations do not break.
+13. Existing database data should not be deleted.
+
+Please implement this carefully and test order creation as Admin and Customer Support.
