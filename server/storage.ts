@@ -1,6 +1,6 @@
 import { 
   users, orders, notifications, orderServices, paymentVerifications, supportDesignerAssignments,
-  servicesCatalog, packageConfigs, platformsCatalog, pushSubscriptions,
+  servicesCatalog, packageConfigs, platformsCatalog, pushSubscriptions, activityLogs,
   type User, type InsertUser, type Order, type InsertOrder,
   type OrderService, type InsertOrderService, type OrderWithServices,
   type PaymentVerification, type InsertPaymentVerification, type PaymentVerificationWithUsers,
@@ -26,6 +26,8 @@ export interface IStorage {
   updateOrder(id: number, updates: Partial<InsertOrder>): Promise<Order>;
   getOrderServices(orderId: number): Promise<OrderService[]>;
   createOrderService(service: InsertOrderService): Promise<OrderService>;
+  replaceOrderServices(orderId: number, services: Omit<InsertOrderService, 'orderId'>[]): Promise<void>;
+  deleteOrder(id: number): Promise<void>;
   generateOrderNumber(): Promise<string>;
 
   getNotifications(userId: number): Promise<Notification[]>;
@@ -142,6 +144,25 @@ export class DatabaseStorage implements IStorage {
   async createOrderService(service: InsertOrderService): Promise<OrderService> {
     const [newService] = await db.insert(orderServices).values(service).returning();
     return newService;
+  }
+
+  async replaceOrderServices(orderId: number, services: Omit<InsertOrderService, 'orderId'>[]): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx.delete(orderServices).where(eq(orderServices.orderId, orderId));
+      if (services && services.length > 0) {
+        await tx.insert(orderServices).values(services.map(svc => ({ ...svc, orderId })));
+      }
+    });
+  }
+
+  async deleteOrder(id: number): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx.delete(orderServices).where(eq(orderServices.orderId, id));
+      await tx.delete(activityLogs).where(eq(activityLogs.orderId, id));
+      await tx.delete(paymentVerifications).where(eq(paymentVerifications.orderId, id));
+      await tx.delete(notifications).where(and(eq(notifications.relatedId, id), eq(notifications.relatedType, "order")));
+      await tx.delete(orders).where(eq(orders.id, id));
+    });
   }
 
   async generateOrderNumber(): Promise<string> {

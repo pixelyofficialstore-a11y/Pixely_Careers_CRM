@@ -1,0 +1,1 @@
+- [Order PATCH role enforcement](order-patch-authorization.md) — finance/package/service/paymentStatus edits are admin-only; support fields stripped via deny-list, designers via allowlist.

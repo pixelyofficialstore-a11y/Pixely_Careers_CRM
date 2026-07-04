@@ -112,6 +112,15 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    remove: {
+      method: "DELETE" as const,
+      path: "/api/orders/:id",
+      responses: {
+        200: z.object({ success: z.boolean() }),
+        403: errorSchemas.forbidden,
+        404: errorSchemas.notFound,
+      },
+    },
   },
   notifications: {
     list: {

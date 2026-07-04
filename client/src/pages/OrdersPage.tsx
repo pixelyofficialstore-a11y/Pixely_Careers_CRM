@@ -54,7 +54,8 @@ import {
   Download,
   Star,
   Crown,
-  Wrench
+  Wrench,
+  Pencil
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -108,6 +109,10 @@ export default function OrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<OrderWithServices | null>(null);
   const [detailsSheetOpen, setDetailsSheetOpen] = useState(false);
   const [copiedPhone, setCopiedPhone] = useState<number | null>(null);
+  const [orderToEdit, setOrderToEdit] = useState<OrderWithServices | null>(null);
+  const [editSheetOpen, setEditSheetOpen] = useState(false);
+  const [orderToDelete, setOrderToDelete] = useState<OrderWithServices | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   const { data: orders, isLoading } = useQuery<OrderWithServices[]>({
     queryKey: ["/api/orders"],
@@ -156,6 +161,23 @@ export default function OrdersPage() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to update order", variant: "destructive" });
+    },
+  });
+
+  const deleteOrderMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest("DELETE", `/api/orders/${id}`);
+    },
+    onSuccess: (_data, id) => {
+      const label = orderToDelete?.orderNumber || `#${id}`;
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      toast({ title: "Order Deleted", description: `Order ${label} has been permanently deleted.` });
+      setOrderToDelete(null);
+      setDeleteConfirmText("");
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete order", variant: "destructive" });
     },
   });
 
@@ -850,6 +872,12 @@ export default function OrdersPage() {
                                 <FileText className="w-4 h-4 mr-2" />
                                 View Details
                               </DropdownMenuItem>
+                              {isAdmin && (
+                                <DropdownMenuItem onClick={() => { setOrderToEdit(order); setEditSheetOpen(true); }} className="text-slate-300 hover:text-white" data-testid={`menu-edit-${order.id}`}>
+                                  <Pencil className="w-4 h-4 mr-2" />
+                                  Edit Order
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuSeparator className="bg-slate-800" />
                               {canDelete && order.status !== 'canceled' && (
                                 <DropdownMenuItem 
@@ -859,6 +887,16 @@ export default function OrdersPage() {
                                 >
                                   <XCircle className="w-4 h-4 mr-2" />
                                   Cancel Order
+                                </DropdownMenuItem>
+                              )}
+                              {isAdmin && (
+                                <DropdownMenuItem 
+                                  onClick={() => { setOrderToDelete(order); setDeleteConfirmText(""); }}
+                                  className="text-red-400 hover:text-red-300"
+                                  data-testid={`menu-delete-${order.id}`}
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Delete Order
                                 </DropdownMenuItem>
                               )}
                             </DropdownMenuContent>
@@ -1078,6 +1116,12 @@ export default function OrdersPage() {
                             <FileText className="w-4 h-4 mr-2" />
                             View Details
                           </DropdownMenuItem>
+                          {isAdmin && (
+                            <DropdownMenuItem onClick={() => { setOrderToEdit(order); setEditSheetOpen(true); }} className="text-slate-300 hover:text-white" data-testid={`menu-edit-monthly-${order.id}`}>
+                              <Pencil className="w-4 h-4 mr-2" />
+                              Edit Order
+                            </DropdownMenuItem>
+                          )}
                           {(isAdmin || isSupport) && order.status !== 'canceled' && (
                             <>
                               <DropdownMenuSeparator className="bg-slate-800" />
@@ -1087,6 +1131,19 @@ export default function OrdersPage() {
                               >
                                 <XCircle className="w-4 h-4 mr-2" />
                                 Cancel Order
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                          {isAdmin && (
+                            <>
+                              <DropdownMenuSeparator className="bg-slate-800" />
+                              <DropdownMenuItem 
+                                onClick={() => { setOrderToDelete(order); setDeleteConfirmText(""); }}
+                                className="text-red-400 hover:text-red-300"
+                                data-testid={`menu-delete-monthly-${order.id}`}
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete Order
                               </DropdownMenuItem>
                             </>
                           )}
@@ -1282,7 +1339,445 @@ export default function OrdersPage() {
           )}
         </SheetContent>
       </Sheet>
+
+      {isAdmin && (
+        <Sheet open={editSheetOpen} onOpenChange={(open) => { setEditSheetOpen(open); if (!open) setOrderToEdit(null); }}>
+          <SheetContent className="bg-slate-900 border-slate-800 w-full sm:max-w-xl overflow-y-auto">
+            <SheetHeader>
+              <SheetTitle className="text-white font-display flex items-center gap-2">
+                <Pencil className="w-5 h-5" />
+                Edit Order {orderToEdit?.orderNumber}
+              </SheetTitle>
+            </SheetHeader>
+            {orderToEdit && (
+              <EditOrderForm
+                key={orderToEdit.id}
+                order={orderToEdit}
+                designers={availableDesigners}
+                onSuccess={() => { setEditSheetOpen(false); setOrderToEdit(null); }}
+              />
+            )}
+          </SheetContent>
+        </Sheet>
+      )}
+
+      {isAdmin && (
+        <Dialog open={!!orderToDelete} onOpenChange={(open) => { if (!open) { setOrderToDelete(null); setDeleteConfirmText(""); } }}>
+          <DialogContent className="bg-slate-900 border-slate-800 max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-white font-display flex items-center gap-2">
+                <Trash2 className="w-5 h-5 text-red-400" />
+                Delete Order
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <p className="text-slate-300 text-sm">
+                This will <span className="text-red-400 font-semibold">permanently delete</span> order{" "}
+                <span className="font-mono text-white">{orderToDelete?.orderNumber}</span> for{" "}
+                <span className="text-white">{orderToDelete?.clientName}</span>, including all its services,
+                payment records, and activity history. This action cannot be undone.
+              </p>
+              <div className="space-y-2">
+                <Label className="text-slate-300">
+                  Type <span className="font-mono text-white">{orderToDelete?.orderNumber}</span> to confirm
+                </Label>
+                <Input
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  className="bg-slate-950 border-slate-800 text-white"
+                  placeholder={orderToDelete?.orderNumber || ""}
+                  data-testid="input-delete-confirm"
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <Button
+                  variant="ghost"
+                  className="text-slate-300 hover:text-white"
+                  onClick={() => { setOrderToDelete(null); setDeleteConfirmText(""); }}
+                  data-testid="button-delete-cancel"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                  disabled={
+                    deleteOrderMutation.isPending ||
+                    !orderToDelete ||
+                    deleteConfirmText.trim() !== (orderToDelete?.orderNumber || "")
+                  }
+                  onClick={() => orderToDelete && deleteOrderMutation.mutate(orderToDelete.id)}
+                  data-testid="button-delete-confirm"
+                >
+                  {deleteOrderMutation.isPending ? "Deleting..." : "Delete Permanently"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
+  );
+}
+
+function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServices; designers: User[]; onSuccess: () => void }) {
+  const { toast } = useToast();
+
+  const { data: servicesCatalogData = [] } = useQuery<ServiceCatalogItem[]>({
+    queryKey: ["/api/services-catalog"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: packageConfigsData = [] } = useQuery<PackageConfig[]>({
+    queryKey: ["/api/package-configs"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: platformsCatalogData = [] } = useQuery<PlatformCatalogItem[]>({
+    queryKey: ["/api/platforms-catalog"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const activeFormServiceTypes = servicesCatalogData.filter(s => s.isActive).map(s => s.name);
+  const formServiceTypes = activeFormServiceTypes.length > 0 ? activeFormServiceTypes : FALLBACK_SERVICE_TYPES;
+  const activeFormPackages = packageConfigsData.filter(p => p.isActive);
+  const activePlatforms = platformsCatalogData.filter(p => p.isActive);
+
+  const toRupees = (paisa: number | null | undefined) => (paisa ? String(Math.round(paisa / 100)) : "");
+
+  const [clientName, setClientName] = useState(order.clientName || "");
+  const [clientPhone, setClientPhone] = useState(order.clientPhone || "");
+  const [assignedToId, setAssignedToId] = useState(order.assignedToId ? String(order.assignedToId) : "");
+  const [totalBill, setTotalBill] = useState(toRupees(order.totalPrice));
+  const [discountAmount, setDiscountAmount] = useState(toRupees(order.discountAmount));
+  const [advanceAmount, setAdvanceAmount] = useState(toRupees(order.advanceAmount));
+  const [paymentMethod, setPaymentMethod] = useState<string>(order.paymentMethod || "");
+  const [paymentStatus, setPaymentStatus] = useState<string>(order.paymentStatus || "pending");
+  const [platform, setPlatform] = useState(order.platform || "");
+  const [campaign, setCampaign] = useState(order.campaign || "");
+  const [adSet, setAdSet] = useState(order.adSet || "");
+  const [creative, setCreative] = useState(order.creative || "");
+  const [notes, setNotes] = useState(order.notes || "");
+  const [packageType, setPackageType] = useState<string>(order.packageType || "custom");
+  const serviceIdRef = useRef(1);
+  const [services, setServices] = useState(() => {
+    const existing = (order.services || []).map((s) => ({
+      id: serviceIdRef.current++,
+      serviceType: s.serviceType || "",
+      quantity: s.quantity || 1,
+      instructions: s.instructions || "",
+    }));
+    return existing.length > 0 ? existing : [{ id: serviceIdRef.current++, serviceType: "", quantity: 1, instructions: "" }];
+  });
+  const customServicesTopRef = useRef<HTMLDivElement | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const addService = () => {
+    const newService = { id: serviceIdRef.current++, serviceType: "", quantity: 1, instructions: "" };
+    setServices((prev) => [newService, ...prev]);
+    requestAnimationFrame(() => {
+      customServicesTopRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      const trigger = customServicesTopRef.current?.querySelector<HTMLButtonElement>('[data-testid^="select-service-type-"]');
+      trigger?.focus();
+    });
+  };
+
+  const removeService = (id: number) => {
+    setServices((prev) => (prev.length > 1 ? prev.filter((s) => s.id !== id) : prev));
+  };
+
+  const updateService = (id: number, field: string, value: any) => {
+    setServices((prev) => prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const missingFields: string[] = [];
+    if (!clientName.trim()) missingFields.push("Client Name");
+    if (!clientPhone.trim()) missingFields.push("Phone Number");
+    if (!packageType) missingFields.push("Package");
+    if (packageType === "custom" && services.every(s => !s.serviceType)) missingFields.push("At least one service");
+
+    if (missingFields.length > 0) {
+      toast({ title: "Missing Fields", description: `Please fill: ${missingFields.join(", ")}`, variant: "destructive" });
+      return;
+    }
+
+    const totalPriceValue = totalBill ? Math.round(parseFloat(totalBill) * 100) : 0;
+    const discountValue = discountAmount ? Math.round(parseFloat(discountAmount) * 100) : 0;
+    const finalPayableValue = Math.max(0, totalPriceValue - discountValue);
+    const advanceValue = advanceAmount ? Math.round(parseFloat(advanceAmount) * 100) : 0;
+    const remainingValue = Math.max(0, finalPayableValue - advanceValue);
+
+    const orderServices = packageType === "custom"
+      ? services.filter(s => s.serviceType).map(s => ({
+          serviceType: s.serviceType,
+          quantity: s.quantity || 1,
+          instructions: s.instructions || null,
+        }))
+      : [];
+
+    setIsSaving(true);
+    try {
+      await apiRequest("PATCH", `/api/orders/${order.id}`, {
+        clientName: clientName.trim(),
+        clientPhone: clientPhone.trim(),
+        assignedToId: assignedToId ? parseInt(assignedToId) : null,
+        totalPrice: totalPriceValue,
+        discountAmount: discountValue,
+        advanceAmount: advanceValue,
+        remainingAmount: remainingValue,
+        paymentMethod: paymentMethod || null,
+        paymentStatus,
+        packageType: packageType || null,
+        platform: platform.trim() || null,
+        campaign: campaign.trim() || null,
+        adSet: adSet.trim() || null,
+        creative: creative.trim() || null,
+        notes: notes.trim() || null,
+        services: orderServices,
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+      toast({ title: "Order Updated", description: `Order ${order.orderNumber} has been updated.` });
+      onSuccess();
+    } catch (error: any) {
+      toast({ title: "Error", description: error?.message || "Failed to update order", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const finalPayable = Math.max(0, (parseInt(totalBill) || 0) - (parseInt(discountAmount) || 0));
+  const remainingDisplay = Math.max(0, finalPayable - (parseInt(advanceAmount) || 0));
+
+  return (
+    <form onSubmit={handleSubmit} className="mt-6 space-y-6">
+      <div className="space-y-4">
+        <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Client Information</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label className="text-slate-300">Client Name *</Label>
+            <Input value={clientName} onChange={(e) => setClientName(e.target.value)} className="bg-slate-950 border-slate-800 text-white" placeholder="Enter client name" data-testid="edit-input-client-name" />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-slate-300">Phone Number *</Label>
+            <Input value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} className="bg-slate-950 border-slate-800 text-white" placeholder="+92 300 1234567" data-testid="edit-input-client-phone" />
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Assigned Designer</h4>
+        <Select value={assignedToId} onValueChange={setAssignedToId}>
+          <SelectTrigger className="bg-slate-950 border-slate-800 text-white" data-testid="edit-select-designer">
+            <SelectValue placeholder="Select designer" />
+          </SelectTrigger>
+          <SelectContent className="bg-slate-900 border-slate-800 text-white">
+            {designers.map(d => (
+              <SelectItem key={d.id} value={d.id.toString()}>{d.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-4">
+        <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Package *</h4>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            ...activeFormPackages.map((p, i) => {
+              const icons = [Package, Star, Crown, Package];
+              const Icon = icons[i % icons.length];
+              return { value: p.key, label: p.label, Icon };
+            }),
+            { value: "custom", label: "Custom Order", Icon: Wrench },
+          ].map((pkg) => (
+            <button
+              key={pkg.value}
+              type="button"
+              onClick={() => {
+                setPackageType(pkg.value);
+                if (pkg.value !== "custom") {
+                  setServices([{ id: serviceIdRef.current++, serviceType: "", quantity: 1, instructions: "" }]);
+                }
+              }}
+              className={`p-4 rounded-xl border-2 text-center transition-all ${
+                packageType === pkg.value
+                  ? "border-blue-500 bg-blue-500/10 ring-1 ring-blue-500/30"
+                  : "border-slate-800 bg-slate-950 hover:border-slate-700"
+              }`}
+              data-testid={`edit-button-package-${pkg.value}`}
+            >
+              <div className="flex justify-center mb-2">
+                <pkg.Icon className={`w-6 h-6 ${packageType === pkg.value ? "text-blue-400" : "text-slate-400"}`} />
+              </div>
+              <div className={`text-sm font-semibold ${packageType === pkg.value ? "text-blue-400" : "text-white"}`}>
+                {pkg.label}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {packageType === "custom" && (
+        <div className="space-y-4" ref={customServicesTopRef}>
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Custom Services</h4>
+            <Button type="button" variant="ghost" size="sm" onClick={addService} className="text-blue-400 hover:text-blue-300" data-testid="edit-button-add-service">
+              <Plus className="w-4 h-4 mr-1" /> Add Service
+            </Button>
+          </div>
+
+          {services.map((service, index) => (
+            <div key={service.id} className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-400">Service {index + 1}</span>
+                {services.length > 1 && (
+                  <Button type="button" variant="ghost" size="icon" onClick={() => removeService(service.id)} className="h-6 w-6 text-red-400 hover:text-red-300" data-testid={`edit-button-remove-service-${index}`}>
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                )}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="md:col-span-2">
+                  <Select value={service.serviceType} onValueChange={(val) => updateService(service.id, 'serviceType', val)}>
+                    <SelectTrigger className="bg-slate-900 border-slate-700 text-white" data-testid={`edit-select-service-type-${index}`}>
+                      <SelectValue placeholder="Select service type" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                      {formServiceTypes.map(type => (
+                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Input type="number" min="1" value={service.quantity} onChange={(e) => updateService(service.id, 'quantity', parseInt(e.target.value) || 1)} className="bg-slate-900 border-slate-700 text-white" placeholder="Qty" data-testid={`edit-input-quantity-${index}`} />
+                </div>
+              </div>
+              <Textarea value={service.instructions} onChange={(e) => updateService(service.id, 'instructions', e.target.value)} className="bg-slate-900 border-slate-700 text-white resize-none" placeholder="Special instructions for this service..." rows={2} data-testid={`edit-input-instructions-${index}`} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="space-y-4">
+        <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Billing (PKR)</h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <Label className="text-slate-300">Total Bill (₨)</Label>
+            <Input type="number" min="0" step="1" value={totalBill} onChange={(e) => setTotalBill(e.target.value.replace(/[^0-9]/g, ''))} className="bg-slate-950 border-slate-800 text-white" placeholder="0" data-testid="edit-input-total-bill" />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-slate-300">Discount (₨)</Label>
+            <Input type="number" min="0" step="1" value={discountAmount} onChange={(e) => setDiscountAmount(e.target.value.replace(/[^0-9]/g, ''))} className="bg-slate-950 border-slate-800 text-white" placeholder="0" data-testid="edit-input-discount-amount" />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-slate-300">Final Payable (₨)</Label>
+            <div className="h-9 flex items-center px-3 bg-slate-950 border border-slate-800 rounded-md text-white">
+              ₨{finalPayable.toLocaleString()}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-slate-300">Advance / Collected (₨)</Label>
+            <Input type="number" min="0" step="1" value={advanceAmount} onChange={(e) => setAdvanceAmount(e.target.value.replace(/[^0-9]/g, ''))} className="bg-slate-950 border-slate-800 text-white" placeholder="0" data-testid="edit-input-advance-amount" />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-slate-300">Remaining</Label>
+            <div className="h-9 flex items-center px-3 bg-slate-950 border border-slate-800 rounded-md text-white">
+              ₨{remainingDisplay.toLocaleString()}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-slate-300">Payment Method</Label>
+            <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+              <SelectTrigger className="bg-slate-950 border-slate-800 text-white" data-testid="edit-select-payment-method">
+                <SelectValue placeholder="Select method" />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                <SelectItem value="cash">Cash</SelectItem>
+                <SelectItem value="jazzcash">JazzCash</SelectItem>
+                <SelectItem value="easypaisa">Easypaisa</SelectItem>
+                <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-slate-300">Payment Status</Label>
+            <Select value={paymentStatus} onValueChange={setPaymentStatus}>
+              <SelectTrigger className="bg-slate-950 border-slate-800 text-white" data-testid="edit-select-payment-status">
+                <SelectValue placeholder="Select status" />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="paid">Paid</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Marketing</h4>
+        <div className="space-y-2">
+          <Label className="text-slate-300">How did the client find us?</Label>
+          <Select value={platform} onValueChange={(val) => {
+            setPlatform(val);
+            const found = platformsCatalogData.find(p => p.name === val);
+            if (!found?.hasCampaignFields) {
+              setCampaign("");
+              setAdSet("");
+              setCreative("");
+            }
+          }}>
+            <SelectTrigger className="bg-slate-950 border-slate-800 text-white" data-testid="edit-select-platform">
+              <SelectValue placeholder="Select platform..." />
+            </SelectTrigger>
+            <SelectContent className="bg-slate-900 border-slate-700">
+              {activePlatforms.length > 0 ? activePlatforms.map(p => (
+                <SelectItem key={p.id} value={p.name} className="text-white hover:bg-slate-800">{p.name}</SelectItem>
+              )) : (
+                <SelectItem value="Other" className="text-white hover:bg-slate-800">Other</SelectItem>
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+        {(() => {
+          const selectedPlatform = platformsCatalogData.find(p => p.name === platform);
+          if (!selectedPlatform?.hasCampaignFields) return null;
+          return (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label className="text-slate-300">Campaign</Label>
+                <Input value={campaign} onChange={(e) => setCampaign(e.target.value)} className="bg-slate-950 border-slate-800 text-white" placeholder="Campaign name..." data-testid="edit-input-campaign" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-slate-300">Ad Set</Label>
+                <Input value={adSet} onChange={(e) => setAdSet(e.target.value)} className="bg-slate-950 border-slate-800 text-white" placeholder="Ad set name..." data-testid="edit-input-ad-set" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-slate-300">Creative</Label>
+                <Input value={creative} onChange={(e) => setCreative(e.target.value)} className="bg-slate-950 border-slate-800 text-white" placeholder="Creative name..." data-testid="edit-input-creative" />
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
+      <div className="space-y-2">
+        <Label className="text-slate-300">Internal Notes</Label>
+        <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="bg-slate-950 border-slate-800 text-white resize-none" placeholder="Add any internal notes..." rows={3} data-testid="edit-input-notes" />
+      </div>
+
+      <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+        <Button type="submit" className="bg-primary" disabled={isSaving} data-testid="edit-button-submit-order">
+          {isSaving ? "Saving..." : "Save Changes"}
+        </Button>
+      </div>
+    </form>
   );
 }
 

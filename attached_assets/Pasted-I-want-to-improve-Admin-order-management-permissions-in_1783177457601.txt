@@ -1,0 +1,359 @@
+I want to improve Admin order management permissions in my existing CRM.
+
+Project Context:
+This is Pixely_CRM for Pixely Careers. The CRM has an Orders Management page where orders are created, assigned to designers, tracked by status, and connected with payment/finance data.
+
+Change Required:
+Admin should have full control over existing orders.
+
+Admin should be able to:
+1. Change assigned designer
+2. Edit package/services
+3. Add services
+4. Remove services
+5. Increase or decrease total bill
+6. Update payment/finance details accordingly
+7. Delete an order completely from the CRM/database
+
+IMPORTANT:
+These permissions should be for Admin only unless the existing system already allows higher-level roles. Designers or normal team users should not be able to perform these admin-level changes unless explicitly allowed.
+
+PART 1: ADMIN CAN CHANGE ASSIGNED DESIGNER
+
+Required Behavior:
+Admin should be able to edit the assigned designer of any order after the order has been created.
+
+Example:
+Order PX-2607-413 is assigned to Abdullah Butt.
+Admin should be able to change it to Muhammad Anas.
+
+Requirements:
+1. Add an edit option or dropdown for assigned designer.
+2. Admin can select another active designer/team member.
+3. Save the change in the database.
+4. Order table should update immediately.
+5. Designer dashboard/workload should update if applicable.
+6. Old designer should no longer see that order if designer-specific access exists.
+7. New designer should see the order if designer-specific access exists.
+8. Create a clear notification:
+   Order Reassigned
+   PX-2607-413 for Adnan was reassigned from Abdullah Butt to Muhammad Anas by Soban Masood.
+
+PART 2: ADMIN CAN EDIT PACKAGE / SERVICES
+
+Required Behavior:
+Admin should be able to edit the package or services of an existing order.
+
+Admin should be able to:
+1. Change package type
+2. Add extra services
+3. Remove existing services
+4. Edit service quantity
+5. Edit service instructions
+6. Update custom services
+7. Save changes without breaking the order
+
+Example:
+Current package:
+ATS Career
+
+Admin can change it to:
+International Career Pro
+
+Or add:
+1x LinkedIn Profile
+1x Cover Letter
+1x Infographic Resume
+
+Or remove:
+Naukri Gulf Profile
+
+Requirements:
+1. Add an Edit Order option for Admin.
+2. In Edit Order modal/page, show current selected package/services.
+3. Admin should be able to modify services.
+4. Service list should update in the order table and export reports.
+5. The updated package/services should be reflected everywhere:
+   - Orders page
+   - Order details
+   - Designer view
+   - Export PDF
+   - Notifications if relevant
+   - Finance calculations if related
+
+PART 3: ADMIN CAN ADD OR SUBTRACT TOTAL BILL
+
+Required Behavior:
+Admin should be able to manually adjust the total order bill.
+
+Admin should be able to:
+1. Increase total package amount
+2. Decrease total package amount
+3. Add discount
+4. Remove discount
+5. Update final payable amount
+6. Update advance payment
+7. Update remaining amount
+8. Update collected amount if needed
+
+Finance Fields To Support:
+Total Package Amount
+Discount Amount
+Final Payable Amount
+Advance Payment
+Collected Amount
+Remaining Amount
+Payment Status
+Payment Method
+Payment Date
+Notes / Reason for Adjustment
+
+Finance Calculation Logic:
+Final Payable Amount = Total Package Amount - Discount Amount
+
+Collected Amount = Total amount received from client
+
+Remaining Amount = Final Payable Amount - Collected Amount
+
+If Remaining Amount is 0:
+Payment Status can become Paid if existing logic allows.
+
+If Collected Amount is 0:
+Payment Status can remain Pending.
+
+If Collected Amount is greater than 0 but less than Final Payable Amount:
+Payment Status can be Partial.
+
+Important:
+Do not show NaN.
+Do not allow negative final payable unless intentionally supported.
+If admin reduces the bill below collected amount, show warning or handle overpaid balance properly.
+
+Required UI:
+In Edit Order modal/page, add finance edit fields:
+Total Package Amount
+Discount Amount
+Final Payable Amount
+Advance Payment
+Collected Amount
+Remaining Amount
+Payment Status
+Payment Method
+Payment Date
+Adjustment Notes
+
+Admin should be able to save changes.
+
+PART 4: ADMIN CAN DELETE ORDER COMPLETELY
+
+Required Behavior:
+Admin should be able to delete an order completely from the CRM.
+
+VERY IMPORTANT:
+When an order is deleted, it should be completely wiped out from everywhere.
+
+This means:
+1. Delete order record from database.
+2. Delete its payment/finance records.
+3. Delete its notifications linked to that order.
+4. Delete its assignment records.
+5. Delete its revision records if any.
+6. Delete its attachments/files references if any.
+7. Delete it from designer view.
+8. Delete it from admin orders view.
+9. Delete it from payments page.
+10. Delete it from analytics calculations.
+11. Delete it from export reports.
+12. Delete it from search results.
+13. Delete all related child records connected to that order.
+
+After deletion:
+No order ID should remain.
+No finance data should remain.
+No payment data should remain.
+No notification linked to the order should remain.
+No designer assignment should remain.
+No analytics count should include it.
+
+This must be a hard delete, not soft delete.
+
+Do not just mark the order as deleted.
+Actually remove it from the database and all related tables/collections.
+
+Important:
+Before implementing, inspect the database schema and find all relations connected to orders.
+
+Possible related data:
+orders
+payments
+payment_verifications
+notifications
+assignments
+order_services
+custom_services
+revisions
+attachments
+comments
+activity_logs
+analytics records
+designer workload records
+
+Delete all related records safely.
+
+Security Requirement:
+Only Admin can delete orders.
+
+No designer, support user, or disabled user should be able to delete orders.
+
+PART 5: DELETE CONFIRMATION SAFETY
+
+Because deletion is permanent, add a strong confirmation before deleting.
+
+Required Delete Flow:
+1. Admin clicks Delete Order.
+2. Show confirmation modal:
+   "This action will permanently delete this order and all related finance, payment, assignment, and notification data. This cannot be undone."
+
+3. Ask admin to confirm.
+4. Preferably require typing the order ID before delete.
+   Example:
+   Type PX-2607-413 to confirm deletion.
+
+5. Delete button stays disabled until correct Order ID is typed.
+6. After deletion, show success message:
+   "Order PX-2607-413 has been permanently deleted."
+
+7. Refresh order list and summary cards.
+
+PART 6: ACTIVITY LOG OPTION
+
+If the CRM has an activity log/audit log, keep a minimal admin activity record only if required for security.
+
+But the deleted order itself, order ID inside order tables, payment data, and finance data should be removed completely.
+
+If activity log is kept, it should not affect search, reports, orders, finance, payments, or analytics.
+
+If the user requirement conflicts with existing audit logs, prioritize complete removal from operational CRM data.
+
+PART 7: NOTIFICATIONS FOR EDITS
+
+Create clean notifications for major admin changes:
+
+Designer Changed:
+Title:
+Order Reassigned
+Description:
+[Order ID] for [Client Name] was reassigned from [Old Designer] to [New Designer] by [Admin Name].
+
+Package Updated:
+Title:
+Order Package Updated
+Description:
+[Order ID] package/services were updated by [Admin Name].
+
+Bill Updated:
+Title:
+Order Bill Updated
+Description:
+[Order ID] bill was updated by [Admin Name]. New payable amount: Rs[Final Payable Amount].
+
+Order Deleted:
+Only if notifications are also deleted with the order, this notification may not remain.
+If using global admin activity notifications, show:
+[Order ID] was permanently deleted by [Admin Name].
+But do not let deleted order appear in any operational module.
+
+PART 8: UI REQUIREMENTS
+
+Admin Orders Page:
+Add or improve an Edit Order option.
+
+Edit Order should allow:
+1. Change designer
+2. Edit package/services
+3. Edit quantity
+4. Edit service instructions
+5. Add services
+6. Remove services
+7. Edit total bill
+8. Edit discount
+9. Edit collected/advance/remaining payment
+10. Save changes
+11. Delete order permanently
+
+Keep existing CRM dark theme.
+Do not break current table design.
+Do not break current dropdowns.
+Do not break create order flow.
+
+PART 9: BACKEND REQUIREMENTS
+
+1. Add/update backend API routes for admin order update.
+2. Add/update backend API route for permanent order delete.
+3. Validate admin role on backend, not only frontend.
+4. Prevent unauthorized users from editing/deleting.
+5. Use transactions if database supports them.
+6. If deleting order and related records, perform deletion safely.
+7. If any related delete fails, rollback if possible.
+8. Return proper success/error messages.
+9. Refresh frontend data after update/delete.
+10. Recalculate summary cards after update/delete.
+
+Suggested API Behavior:
+PATCH /orders/:id
+Admin only
+Updates designer, package/services, finance fields.
+
+DELETE /orders/:id
+Admin only
+Hard deletes order and all related records.
+
+PART 10: DATA CONSISTENCY REQUIREMENTS
+
+After admin edits an order:
+1. Orders table should show updated values.
+2. Payment page should show updated finance values.
+3. Analytics should update.
+4. Monthly Revenue should update.
+5. Collected and Remaining cards should update.
+6. Export PDF should show updated details.
+7. Search should show updated details.
+8. Designer assignment should update.
+
+After admin deletes an order:
+1. Order should disappear from Orders page.
+2. Order should disappear from Payments page.
+3. Order should disappear from search results.
+4. Order should disappear from export PDF.
+5. Order should disappear from designer dashboard.
+6. Order should not be counted in Total Monthly.
+7. Order should not be counted in Monthly Revenue.
+8. Order should not be counted in Collected/Remaining.
+9. Order ID should not appear anywhere in operational CRM data.
+10. Database should not keep order finance/payment/service records.
+
+Acceptance Criteria:
+1. Admin can change assigned designer.
+2. Admin can edit package/services.
+3. Admin can add services to an order.
+4. Admin can remove services from an order.
+5. Admin can increase total bill.
+6. Admin can decrease total bill.
+7. Admin can edit discount and final payable amount.
+8. Admin can edit advance/collected/remaining amount.
+9. Finance calculations update correctly.
+10. Order table updates correctly after save.
+11. Export PDF shows updated order details.
+12. Search shows updated order details.
+13. Payments page shows updated finance details.
+14. Designer view updates after reassignment.
+15. Only Admin can edit these fields.
+16. Only Admin can delete orders.
+17. Delete order requires confirmation.
+18. Deleted order is completely removed from database.
+19. Deleted order has no order ID left in orders/search/export/payment/finance/analytics/designer view.
+20. Existing create order flow remains working.
+21. Existing order status, payment status, notifications, tabs, filters, and search remain working.
+22. No unrelated data should be deleted.
+
+Please implement this carefully. First inspect the existing database schema, relations, API routes, and frontend components. Then make changes safely and test with one sample order before applying broadly.

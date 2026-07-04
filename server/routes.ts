@@ -591,6 +591,12 @@ export async function registerRoutes(
     const existingOrder = await storage.getOrder(orderId);
     if (!existingOrder) return res.sendStatus(404);
 
+    // Services are stored in a separate table; pull them out of the column updates.
+    const incomingServices = Array.isArray(updates.services) ? updates.services : undefined;
+    delete updates.services;
+
+    const oldAssignedToId = existingOrder.assignedToId;
+
     if (user.role === 'support' && existingOrder.createdById !== user.id) {
       return res.sendStatus(403);
     }
@@ -639,6 +645,15 @@ export async function registerRoutes(
       }
     }
     
+    // Finance, package, service and payment-status edits are admin-only. Strip these
+    // fields from any non-admin (support) request so they cannot escalate via PATCH.
+    // (Designers are already constrained by the strict allowlist above.)
+    if (user.role !== 'admin' && user.role !== 'designer') {
+      for (const f of ['totalPrice', 'discountAmount', 'advanceAmount', 'remainingAmount', 'packageType', 'paymentStatus']) {
+        delete updates[f];
+      }
+    }
+
     if (updates.status === 'ready' && existingOrder.status !== 'ready') {
       updates.readyDate = new Date();
     }
@@ -647,7 +662,9 @@ export async function registerRoutes(
       updates.deliveredAt = new Date();
     }
 
-    if (updates.paymentStatus === 'paid' && existingOrder.paymentStatus === 'pending') {
+    // Marking a pending order as paid: collect the outstanding balance in full.
+    const becomingPaid = updates.paymentStatus === 'paid' && existingOrder.paymentStatus === 'pending';
+    if (becomingPaid) {
       const currentAdvance = existingOrder.advanceAmount || 0;
       const currentRemaining = existingOrder.remainingAmount || 0;
       updates.advanceAmount = currentAdvance + currentRemaining;
@@ -655,7 +672,79 @@ export async function registerRoutes(
       updates.paymentDate = new Date();
     }
 
+    // When admin edits finance fields, recompute amounts consistently to avoid NaN/negative values.
+    const financeKeys = ['totalPrice', 'discountAmount', 'advanceAmount'];
+    const hasFinanceEdit = user.role === 'admin' && financeKeys.some(k => k in updates);
+    if (hasFinanceEdit) {
+      const total = Number(updates.totalPrice ?? existingOrder.totalPrice ?? 0) || 0;
+      const discount = Number(updates.discountAmount ?? existingOrder.discountAmount ?? 0) || 0;
+      const finalPayable = Math.max(0, total - discount);
+      if (becomingPaid) {
+        // Paid + finance edits in one request: collect the full (newly computed) payable.
+        updates.advanceAmount = finalPayable;
+        updates.remainingAmount = 0;
+      } else {
+        const advance = Number(updates.advanceAmount ?? existingOrder.advanceAmount ?? 0) || 0;
+        updates.remainingAmount = Math.max(0, finalPayable - advance);
+      }
+    }
+
     const updatedOrder = await storage.updateOrder(orderId, updates);
+
+    // Admin can replace the order's services (add / remove / edit quantity & instructions).
+    if (incomingServices && user.role === 'admin') {
+      const cleanedServices = incomingServices
+        .filter((s: any) => s && s.serviceType)
+        .map((s: any) => ({
+          serviceType: String(s.serviceType),
+          quantity: Number(s.quantity) > 0 ? Number(s.quantity) : 1,
+          instructions: s.instructions ? String(s.instructions) : null,
+        }));
+      await storage.replaceOrderServices(orderId, cleanedServices);
+    }
+
+    // Admin edit notifications: reassignment, package/services update, bill update.
+    if (user.role === 'admin') {
+      const editAdmins = await storage.getAdmins();
+      const editUsers = await storage.getUsers();
+      const nameOf = (id: number | null | undefined) => editUsers.find(u => u.id === id)?.name || "Unassigned";
+      const clientName = existingOrder.clientName || "this client";
+
+      if ('assignedToId' in updates && updates.assignedToId !== oldAssignedToId) {
+        await notifyMany(
+          [...editAdmins.map(a => a.id), oldAssignedToId, updates.assignedToId], "assignment",
+          "Order Reassigned",
+          `${orderRef(existingOrder)} for ${clientName} was reassigned from ${nameOf(oldAssignedToId)} to ${nameOf(updates.assignedToId)} by ${user.name}.`,
+          "update",
+          orderId, "order",
+          [user.id]
+        );
+      }
+
+      const packageChanged = ('packageType' in updates && updates.packageType !== existingOrder.packageType);
+      if (incomingServices || packageChanged) {
+        await notifyMany(
+          [...editAdmins.map(a => a.id), updatedOrder.assignedToId], "order",
+          "Order Package Updated",
+          `${orderRef(existingOrder)} package/services for ${clientName} were updated by ${user.name}.`,
+          "update",
+          orderId, "order",
+          [user.id]
+        );
+      }
+
+      if (hasFinanceEdit) {
+        const finalPayable = Math.max(0, (updatedOrder.totalPrice || 0) - (updatedOrder.discountAmount || 0));
+        await notifyMany(
+          editAdmins.map(a => a.id), "payment",
+          "Order Bill Updated",
+          `${orderRef(existingOrder)} bill for ${clientName} was updated by ${user.name}. New payable amount: ${fmtRs(finalPayable)}.`,
+          "update",
+          orderId, "order",
+          [user.id]
+        );
+      }
+    }
 
     // Notify relevant parties when the order status actually changes.
     if (updates.status && updates.status !== existingOrder.status) {
@@ -702,6 +791,32 @@ export async function registerRoutes(
     }
 
     res.json(updatedOrder);
+  });
+
+  app.delete(api.orders.remove.path, requireRole(["admin"]), async (req, res) => {
+    const orderId = Number(req.params.id);
+    const user = req.user as User;
+
+    const existingOrder = await storage.getOrder(orderId);
+    if (!existingOrder) return res.sendStatus(404);
+
+    const orderLabel = orderRef(existingOrder);
+    const clientName = existingOrder.clientName || "this client";
+
+    await storage.deleteOrder(orderId);
+
+    // Notify other admins that an order was permanently removed (this notification is not tied to the deleted order).
+    const deleteAdmins = await storage.getAdmins();
+    await notifyMany(
+      deleteAdmins.map(a => a.id), "order",
+      "Order Deleted",
+      `${orderLabel} for ${clientName} was permanently deleted by ${user.name}.`,
+      "action_required",
+      undefined, undefined,
+      [user.id]
+    );
+
+    res.json({ success: true });
   });
 
   app.get(api.notifications.list.path, requireAuth, async (req, res) => {
