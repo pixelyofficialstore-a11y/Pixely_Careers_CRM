@@ -240,6 +240,14 @@ export default function OrdersPage() {
   // Approved monthly orders - same logic as dashboard (advancePaymentStatus === 'approved')
   const approvedMonthlyOrders = monthlyOrders.filter(o => o.advancePaymentStatus === 'approved');
 
+  // Monthly Revenue: total order value (full order amount) for all approved orders
+  // placed in the selected month/year — distinct from Collected (advance received)
+  // and Remaining (unpaid balance).
+  const monthlyRevenue = approvedMonthlyOrders.reduce((sum, order) => {
+    const amount = Number(order.totalPrice ?? 0);
+    return sum + (Number.isFinite(amount) ? amount : 0);
+  }, 0);
+
   // Approved today's orders — for Total Revenue of the day
   const approvedTodayOrders = (orders || []).filter(o =>
     o.advancePaymentStatus === 'approved' && isToday(new Date(o.createdAt!))
@@ -403,7 +411,7 @@ export default function OrdersPage() {
       </div>
 
       {isAdmin && (
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-4">
           <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
             <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500"><Package className="w-5 h-5" /></div>
             <div><p className="text-xs text-slate-500">Total Monthly</p><p className="font-bold text-white">{approvedMonthlyOrders.length}</p></div>
@@ -415,6 +423,13 @@ export default function OrdersPage() {
           <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
             <div className="p-2 bg-orange-500/10 rounded-lg text-orange-500"><Clock className="w-5 h-5" /></div>
             <div><p className="text-xs text-slate-500">Pending</p><p className="font-bold text-white">{approvedMonthlyOrders.filter(o => o.status === 'new' || o.status === 'working' || o.status === 'ready').length}</p></div>
+          </div>
+          <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
+            <div className="p-2 bg-indigo-500/10 rounded-lg text-indigo-500"><TrendingUp className="w-5 h-5" /></div>
+            <div>
+              <p className="text-xs text-slate-500">Monthly Revenue</p>
+              <p className="font-bold text-white" data-testid="text-monthly-revenue">₨{Math.round(monthlyRevenue / 100).toLocaleString()}</p>
+            </div>
           </div>
           <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
             <div className="p-2 bg-green-500/10 rounded-lg text-green-500"><TrendingUp className="w-5 h-5" /></div>

@@ -1,0 +1,136 @@
+I want to add a new Monthly Revenue box/card on the Admin Orders Management page of my existing CRM.
+
+Project Context:
+This is Pixely_CRM for Pixely Careers. The Orders Management page currently shows summary cards at the top such as:
+
+Total Monthly
+Delivered
+Pending
+Collected
+Remaining
+Today's Revenue
+
+I want to add one more summary card for Monthly Revenue.
+
+Change Required:
+Add a new card/box named "Monthly Revenue" on the Admin Orders page.
+
+Purpose:
+The Monthly Revenue box should show the total revenue generated for the selected month.
+
+Important:
+This should be shown on the Admin Orders Management page only, not necessarily for other user roles unless already part of the same admin dashboard logic.
+
+Current Issue:
+Right now, I can see Today's Revenue, Collected, Remaining, Total Monthly, Delivered, and Pending, but I also need a clear Monthly Revenue box so I can quickly see how much revenue was generated in the selected month.
+
+Required Behavior:
+1. Add a new summary card named:
+   Monthly Revenue
+
+2. It should calculate total monthly revenue from orders of the selected month.
+
+3. Monthly Revenue should change when the admin changes the selected month or year.
+
+4. Monthly Revenue should include the full order amount/value for all orders placed in that selected month.
+
+5. It should not only calculate today's orders. It should calculate the complete selected month.
+
+6. It should work with the existing monthly filter.
+
+7. If there are no orders in the selected month, it should show:
+   Rs0
+   or
+   Rs0.00
+   depending on the current CRM currency format.
+
+Calculation Logic:
+Use the existing order total amount field from the database.
+
+Monthly Revenue =
+Sum of total order amount of all orders where order date belongs to the selected month and selected year.
+
+Example:
+If July 2026 is selected and there are 22 orders in July:
+Order 1 total amount = Rs3,000
+Order 2 total amount = Rs5,000
+Order 3 total amount = Rs7,500
+
+Monthly Revenue should show the total of all July order amounts.
+
+Important Difference:
+Collected = amount already received/paid
+Remaining = unpaid amount
+Today's Revenue = today's revenue only
+Monthly Revenue = total value of all orders in selected month
+
+So do not confuse Monthly Revenue with Collected or Remaining.
+
+Display Requirements:
+The new card should match the same design style as the existing summary cards:
+- Same dark theme
+- Same spacing
+- Same border radius
+- Same typography
+- Same responsive behavior
+- Use a suitable revenue/money/chart icon if icons are already being used
+
+Suggested Card Position:
+Place the Monthly Revenue card near the existing revenue cards.
+
+Recommended order:
+Total Monthly
+Delivered
+Pending
+Monthly Revenue
+Collected
+Remaining
+Today's Revenue
+
+If layout space is limited, adjust responsively but keep the design clean.
+
+Card Text:
+Title:
+Monthly Revenue
+
+Value:
+Rs[calculated amount]
+
+Example:
+Monthly Revenue
+Rs85,300
+
+Technical Implementation Instructions:
+1. Find the Orders Management page/component.
+2. Find where the top summary cards are calculated and rendered.
+3. Add a new computed value called something like monthlyRevenue.
+4. monthlyRevenue should be calculated from selected month orders, not today's orders.
+5. Use the full order total amount field.
+6. Convert amount values safely to numbers before summing.
+7. Handle missing, null, undefined, or string amount values safely.
+8. Use the existing currency formatting function if available.
+9. Do not delete or change existing summary cards.
+10. Do not break Today's Orders and Monthly Orders tabs.
+11. Do not break filters, export PDF, create order, payment status, order status, designer assignment, or any existing CRM functionality.
+
+Suggested Calculation Example:
+const monthlyRevenue = monthlyOrders.reduce((sum, order) => {
+  const amount = Number(order.totalAmount || order.amount || order.packagePrice || 0);
+  return sum + amount;
+}, 0);
+
+Important:
+Before using field names like totalAmount, amount, or packagePrice, inspect the existing database schema and current code. Use the correct existing field that stores the full order value.
+
+Acceptance Criteria:
+1. A new Monthly Revenue card appears on the Admin Orders Management page.
+2. The card matches the existing CRM design.
+3. The card shows the total value of all orders in the selected month.
+4. Changing month/year updates the Monthly Revenue value.
+5. Monthly Revenue is different from Collected and Remaining.
+6. If no orders exist in a month, it shows Rs0.
+7. Existing summary boxes continue working.
+8. Existing order table, tabs, filters, export PDF, create order, and status dropdowns continue working.
+9. No existing order data should be deleted or modified.
+
+Please implement this carefully and test it on the Orders Management page.
