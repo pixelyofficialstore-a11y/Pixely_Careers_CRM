@@ -1460,20 +1460,24 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
   const [packageType, setPackageType] = useState<string>(order.packageType || "custom");
   const serviceIdRef = useRef(1);
   const [services, setServices] = useState(() => {
-    const existing = (order.services || []).map((s) => ({
+    const existing = (order.services || []).map((s, i) => ({
       id: serviceIdRef.current++,
+      serviceNumber: i + 1,
       serviceType: s.serviceType || "",
       quantity: s.quantity || 1,
       instructions: s.instructions || "",
     }));
-    return existing.length > 0 ? existing : [{ id: serviceIdRef.current++, serviceType: "", quantity: 1, instructions: "" }];
+    return existing.length > 0 ? existing : [{ id: serviceIdRef.current++, serviceNumber: 1, serviceType: "", quantity: 1, instructions: "" }];
   });
   const customServicesTopRef = useRef<HTMLDivElement | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const addService = () => {
-    const newService = { id: serviceIdRef.current++, serviceType: "", quantity: 1, instructions: "" };
-    setServices((prev) => [newService, ...prev]);
+    setServices((prev) => {
+      const nextNumber = prev.reduce((m, s) => Math.max(m, s.serviceNumber), 0) + 1;
+      const newService = { id: serviceIdRef.current++, serviceNumber: nextNumber, serviceType: "", quantity: 1, instructions: "" };
+      return [newService, ...prev];
+    });
     requestAnimationFrame(() => {
       customServicesTopRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       const trigger = customServicesTopRef.current?.querySelector<HTMLButtonElement>('[data-testid^="select-service-type-"]');
@@ -1600,7 +1604,7 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
               onClick={() => {
                 setPackageType(pkg.value);
                 if (pkg.value !== "custom") {
-                  setServices([{ id: serviceIdRef.current++, serviceType: "", quantity: 1, instructions: "" }]);
+                  setServices([{ id: serviceIdRef.current++, serviceNumber: 1, serviceType: "", quantity: 1, instructions: "" }]);
                 }
               }}
               className={`p-4 rounded-xl border-2 text-center transition-all ${
@@ -1633,7 +1637,7 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
           {services.map((service, index) => (
             <div key={service.id} className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-400">Service {index + 1}</span>
+                <span className="text-sm text-slate-400">Service {service.serviceNumber}</span>
                 {services.length > 1 && (
                   <Button type="button" variant="ghost" size="icon" onClick={() => removeService(service.id)} className="h-6 w-6 text-red-400 hover:text-red-300" data-testid={`edit-button-remove-service-${index}`}>
                     <Trash2 className="w-3 h-3" />
@@ -1818,7 +1822,7 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
   const [notes, setNotes] = useState("");
   const [packageType, setPackageType] = useState<string>("");
   const serviceIdRef = useRef(1);
-  const [services, setServices] = useState([{ id: 0, serviceType: "", quantity: 1, instructions: "" }]);
+  const [services, setServices] = useState([{ id: 0, serviceNumber: 1, serviceType: "", quantity: 1, instructions: "" }]);
   const customServicesTopRef = useRef<HTMLDivElement | null>(null);
   
   // Payment verification fields
@@ -1841,8 +1845,11 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
   });
 
   const addService = () => {
-    const newService = { id: serviceIdRef.current++, serviceType: "", quantity: 1, instructions: "" };
-    setServices((prev) => [newService, ...prev]);
+    setServices((prev) => {
+      const nextNumber = prev.reduce((m, s) => Math.max(m, s.serviceNumber), 0) + 1;
+      const newService = { id: serviceIdRef.current++, serviceNumber: nextNumber, serviceType: "", quantity: 1, instructions: "" };
+      return [newService, ...prev];
+    });
     requestAnimationFrame(() => {
       customServicesTopRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       const trigger = customServicesTopRef.current?.querySelector<HTMLButtonElement>('[data-testid^="select-service-type-"]');
@@ -2025,7 +2032,7 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
               onClick={() => {
                 setPackageType(pkg.value);
                 if (pkg.value !== "custom") {
-                  setServices([{ id: serviceIdRef.current++, serviceType: "", quantity: 1, instructions: "" }]);
+                  setServices([{ id: serviceIdRef.current++, serviceNumber: 1, serviceType: "", quantity: 1, instructions: "" }]);
                 }
               }}
               className={`p-4 rounded-xl border-2 text-center transition-all ${
@@ -2058,7 +2065,7 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
           {services.map((service, index) => (
             <div key={service.id} className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-400">Service {index + 1}</span>
+                <span className="text-sm text-slate-400">Service {service.serviceNumber}</span>
                 {services.length > 1 && (
                   <Button type="button" variant="ghost" size="icon" onClick={() => removeService(service.id)} className="h-6 w-6 text-red-400 hover:text-red-300" data-testid={`button-remove-service-${index}`}>
                     <Trash2 className="w-3 h-3" />

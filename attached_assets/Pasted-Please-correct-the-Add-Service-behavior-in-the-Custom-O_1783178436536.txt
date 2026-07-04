@@ -1,0 +1,94 @@
+Please correct the Add Service behavior in the Custom Order section of the Create Order form.
+
+Current Issue:
+When I click Add Service, the new service appears below the existing service. I do not want that.
+
+Required Behavior:
+When I click Add Service, the newly added service should appear at the top of the Custom Services list, but its service number should remain the next number.
+
+Example:
+
+Initial state:
+Service 1
+
+After clicking Add Service:
+Service 2 should appear on top
+Service 1 should move below it
+
+After clicking Add Service again:
+Service 3 should appear on top
+Service 2 should move below it
+Service 1 should remain below it
+
+So the newest added service should always appear at the top, but numbering should remain based on creation order, not visual order.
+
+Very Important:
+Do not rename the newly added service to Service 1.
+The newly added service should be Service 2, Service 3, Service 4, etc., depending on how many services already exist.
+But visually, the newest service should be shown at the top.
+
+Correct Example:
+Service 3
+Service 2
+Service 1
+
+Wrong Example:
+Service 1
+Service 2
+Service 3
+
+Wrong Example:
+Service 1
+Service 2 where new service appears at bottom
+
+Technical Logic:
+Each service should have a permanent serviceNumber when created.
+
+Example:
+If there is 1 existing service:
+newService.serviceNumber = 2
+
+If there are 2 existing services:
+newService.serviceNumber = 3
+
+Then add the new service at the beginning of the array:
+
+setCustomServices([newService, ...customServices])
+
+But do not render label using index + 1.
+
+Wrong:
+Service {index + 1}
+
+Correct:
+Service {service.serviceNumber}
+
+Because the visual order is newest first, but the service number should remain creation based.
+
+Important Technical Requirements:
+1. New service should be inserted at the top of the list.
+2. New service should keep the next available service number.
+3. Existing service numbers should not change.
+4. Service 1 should remain Service 1 even when it moves down.
+5. Service 2 should remain Service 2 even if it appears above Service 1.
+6. Service 3 should appear above Service 2 and Service 1.
+7. Delete button should delete the correct service.
+8. Editing service type, quantity, and instructions should update the correct service.
+9. Use stable unique IDs for each service.
+10. Do not use array index as the display service number.
+11. Form submission should still save all services correctly.
+12. Billing calculation should not break.
+13. Custom Order creation should still work properly.
+14. Do not change the CRM dark theme or modal layout.
+
+Acceptance Criteria:
+1. I select Custom Order.
+2. I see Service 1.
+3. I click Add Service.
+4. New Service 2 appears on top.
+5. Old Service 1 moves below Service 2.
+6. I click Add Service again.
+7. New Service 3 appears on top.
+8. Service order becomes Service 3, Service 2, Service 1.
+9. Service numbers do not reset based on visual position.
+10. Delete and edit functionality still works correctly.
