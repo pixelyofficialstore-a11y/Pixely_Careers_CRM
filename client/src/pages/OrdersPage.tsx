@@ -1247,7 +1247,6 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
   const [clientPhone, setClientPhone] = useState(order.clientPhone || "");
   const [assignedToId, setAssignedToId] = useState(order.assignedToId ? String(order.assignedToId) : "");
   const [totalBill, setTotalBill] = useState(toRupees(order.totalPrice));
-  const [discountAmount, setDiscountAmount] = useState(toRupees(order.discountAmount));
   const [advanceAmount, setAdvanceAmount] = useState(toRupees(order.advanceAmount));
   const [paymentMethod, setPaymentMethod] = useState<string>(order.paymentMethod || "");
   const [paymentStatus, setPaymentStatus] = useState<string>(order.paymentStatus || "pending");
@@ -1307,7 +1306,7 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
     }
 
     const totalPriceValue = totalBill ? Math.round(parseFloat(totalBill) * 100) : 0;
-    const discountValue = discountAmount ? Math.round(parseFloat(discountAmount) * 100) : 0;
+    const discountValue = order.discountAmount || 0;
     const finalPayableValue = Math.max(0, totalPriceValue - discountValue);
     const advanceValue = advanceAmount ? Math.round(parseFloat(advanceAmount) * 100) : 0;
     const remainingValue = Math.max(0, finalPayableValue - advanceValue);
@@ -1353,8 +1352,7 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
     }
   };
 
-  const finalPayable = Math.max(0, (parseInt(totalBill) || 0) - (parseInt(discountAmount) || 0));
-  const remainingDisplay = Math.max(0, finalPayable - (parseInt(advanceAmount) || 0));
+  const remainingDisplay = Math.max(0, (parseInt(totalBill) || 0) - Math.round((order.discountAmount || 0) / 100) - (parseInt(advanceAmount) || 0));
 
   return (
     <form onSubmit={handleSubmit} className="mt-6 space-y-6">
@@ -1474,16 +1472,6 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
             <Input type="number" min="0" step="1" value={totalBill} onChange={(e) => setTotalBill(e.target.value.replace(/[^0-9]/g, ''))} className="bg-slate-950 border-slate-800 text-white" placeholder="0" data-testid="edit-input-total-bill" />
           </div>
           <div className="space-y-2">
-            <Label className="text-slate-300">Discount (₨)</Label>
-            <Input type="number" min="0" step="1" value={discountAmount} onChange={(e) => setDiscountAmount(e.target.value.replace(/[^0-9]/g, ''))} className="bg-slate-950 border-slate-800 text-white" placeholder="0" data-testid="edit-input-discount-amount" />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-slate-300">Final Payable (₨)</Label>
-            <div className="h-9 flex items-center px-3 bg-slate-950 border border-slate-800 rounded-md text-white">
-              ₨{finalPayable.toLocaleString()}
-            </div>
-          </div>
-          <div className="space-y-2">
             <Label className="text-slate-300">Advance / Collected (₨)</Label>
             <Input type="number" min="0" step="1" value={advanceAmount} onChange={(e) => setAdvanceAmount(e.target.value.replace(/[^0-9]/g, ''))} className="bg-slate-950 border-slate-800 text-white" placeholder="0" data-testid="edit-input-advance-amount" />
           </div>
@@ -1493,34 +1481,10 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
               ₨{remainingDisplay.toLocaleString()}
             </div>
           </div>
-          <div className="space-y-2">
-            <Label className="text-slate-300">Payment Method</Label>
-            <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-              <SelectTrigger className="bg-slate-950 border-slate-800 text-white" data-testid="edit-select-payment-method">
-                <SelectValue placeholder="Select method" />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                <SelectItem value="cash">Cash</SelectItem>
-                <SelectItem value="jazzcash">JazzCash</SelectItem>
-                <SelectItem value="easypaisa">Easypaisa</SelectItem>
-                <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                <SelectItem value="other">Other</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label className="text-slate-300">Payment Status</Label>
-            <Select value={paymentStatus} onValueChange={setPaymentStatus}>
-              <SelectTrigger className="bg-slate-950 border-slate-800 text-white" data-testid="edit-select-payment-status">
-                <SelectValue placeholder="Select status" />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="paid">Paid</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
         </div>
+        {(parseInt(advanceAmount) || 0) > (parseInt(totalBill) || 0) && (
+          <p className="text-xs text-red-400" data-testid="edit-text-advance-warning">Advance paid cannot be greater than total bill.</p>
+        )}
       </div>
 
       <div className="space-y-4">
