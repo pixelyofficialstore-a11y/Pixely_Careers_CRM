@@ -1,0 +1,169 @@
+Please make these two changes on the Admin Orders Management page.
+
+Project Context:
+This is Pixely_CRM for Pixely Careers. The Orders Management page has top summary cards and an order table. It also has universal search. Currently, search results appear in a simplified table that does not include complete finance data, edit options, delete options, and full order controls.
+
+VERY IMPORTANT:
+Do not delete or change any CRM data.
+Do not reset database.
+Do not remove existing orders, users, payments, or notifications.
+Only update UI and logic safely.
+
+CHANGE 1: REMOVE PENDING ORDERS SUMMARY CARD
+
+Current Top Cards:
+Total Monthly
+Delivered
+Pending
+Monthly Revenue
+Collected
+Remaining
+Today's Revenue
+
+Required Change:
+Remove the Pending card from the top summary cards on the Orders Management page.
+
+Reason:
+We need more space for important finance cards like Monthly Revenue, Collected, Remaining, and Today's Revenue.
+
+Keep these cards:
+Total Monthly
+Delivered
+Monthly Revenue
+Collected
+Remaining
+Today's Revenue
+
+Remove only:
+Pending
+
+Important:
+1. Do not delete pending order logic from database.
+2. Do not delete pending status.
+3. Do not remove pending order count from backend if used somewhere else.
+4. Only remove/hide the Pending card from this Orders Management page UI.
+5. Make sure the remaining cards align properly and use the available space cleanly.
+6. Keep the same dark theme and existing design.
+
+Acceptance Criteria for Change 1:
+1. Pending card no longer appears on the Orders Management page.
+2. Other cards remain visible.
+3. Cards have better spacing.
+4. No order data or status data is deleted.
+
+CHANGE 2: SEARCH RESULTS TABLE SHOULD USE FULL NORMAL ORDERS TABLE
+
+Current Problem:
+When I search an order by client name, phone, or order ID, the Search Results table appears, but it is too simple.
+
+It only shows basic columns like:
+Order ID
+Date Placed
+Client
+Contact
+Services
+Designer
+Status
+Payment
+
+But it does not show complete order columns and actions like the normal monthly orders table.
+
+Required Change:
+Search results should display the exact same full table structure as the normal Monthly Orders table.
+
+Search Results table should include all important columns and controls that are available in the normal order table.
+
+Required Search Results Columns:
+Order ID
+Date Placed
+Client
+Contact
+Services / Package
+Designer
+Status
+Advance Payment
+Payment Status
+Total Bill
+Remaining
+Actions
+
+Actions should include the same admin options available in the normal monthly orders table, such as:
+Edit Order
+Change Assigned Designer if available
+Edit Package / Services if available
+Edit Billing if available
+Delete Order if available
+View Details if available
+
+Important:
+Search results should not be shown in a simplified table.
+Search results should use the same reusable order table component as Monthly Orders if possible.
+
+Required Behavior:
+1. When search is active, show heading:
+   Search Results
+
+2. Under heading, show:
+   Showing results from all orders — month/year filters are ignored while searching
+
+3. Search results should still search universally from all orders.
+
+4. The search results table should show the same columns, same styling, same dropdowns, same badges, and same action buttons as the normal monthly orders table.
+
+5. Admin should be able to edit/delete orders directly from search results, same as monthly orders.
+
+6. If admin updates an order from search results, the result row should update immediately.
+
+7. If admin deletes an order from search results, the order should disappear from search results and from all other CRM modules as already required.
+
+8. Finance fields should show properly in search results:
+   Total Bill
+   Advance Payment
+   Remaining
+   Payment Status
+
+9. No NaN values should appear.
+
+10. If finance field is missing, show safe fallback:
+   Rs0
+   or Not Specified
+
+Technical Implementation Instructions:
+1. Find the Orders Management page/component.
+2. Find the current Search Results rendering code.
+3. Replace the simplified search table with the same full order table component used for Monthly Orders.
+4. If there is no reusable component, refactor carefully so Monthly Orders and Search Results share the same row/table layout.
+5. Do not duplicate inconsistent table layouts.
+6. Make sure search results use the same action handlers:
+   edit order
+   delete order
+   update status
+   update payment status
+   change designer
+7. Make sure search results use the same finance formatting function.
+8. Make sure search results use the same service/package display logic.
+9. Keep universal search logic unchanged except for table display.
+10. Do not break Today's Orders and Monthly Orders tabs.
+
+Search Export Behavior:
+If search is active and user clicks Export PDF, export the search results, not the selected month.
+
+Do not break this if already implemented.
+
+Acceptance Criteria for Change 2:
+1. Search results show complete order table, not simplified table.
+2. Search results include finance columns.
+3. Search results include edit/actions column.
+4. Search results allow admin to edit order.
+5. Search results allow admin to delete order if admin delete feature exists.
+6. Search results use same design as Monthly Orders table.
+7. Search results show Total Bill, Advance Payment, Remaining, and Payment Status.
+8. Search still works universally across all months.
+9. Month/year filters are ignored while searching.
+10. Clearing search returns to normal Today/Monthly view.
+11. Existing orders, payments, users, notifications, and database data remain safe.
+
+Final Reminder:
+Remove only the Pending summary card from UI.
+Do not remove pending orders or pending status from data.
+Make search results table complete and identical to the normal order table with full finance and action controls.

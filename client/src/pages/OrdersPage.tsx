@@ -547,6 +547,234 @@ export default function OrdersPage() {
     doc.save(`orders-${fileSuffix}.pdf`);
   };
 
+  // ── Shared order table (used by Search, Today, and Monthly so they stay identical) ──
+  const getStatusOptionsFor = (order: OrderWithServices) => {
+    if (isDesigner) {
+      if (order.status === 'delivered') return [{ value: "delivered", label: "Delivered" }];
+      const hasNoRemaining = (order.remainingAmount ?? 0) === 0;
+      if (order.status === 'ready') {
+        if (hasNoRemaining) return [{ value: "ready", label: "Ready" }, { value: "delivered", label: "Delivered" }];
+        return [{ value: "ready", label: "Ready" }];
+      }
+      const opts = [
+        { value: "new", label: "New" },
+        { value: "working", label: "Working" },
+        { value: "ready", label: "Ready" },
+      ];
+      if (hasNoRemaining) opts.push({ value: "delivered", label: "Delivered" });
+      return opts;
+    }
+    return [
+      { value: "new", label: "New" },
+      { value: "working", label: "Working" },
+      { value: "ready", label: "Ready" },
+      { value: "delivered", label: "Delivered" },
+      { value: "canceled", label: "Canceled" },
+    ];
+  };
+
+  const orderColSpan = 8 + (!isDesigner ? 2 : 0) + (canSeeAmounts ? 3 : 0);
+
+  const orderTableHead = (
+    <TableHeader className="bg-slate-900/50">
+      <TableRow className="border-slate-800 hover:bg-transparent">
+        <TableHead className="text-slate-400">Order ID</TableHead>
+        <TableHead className="text-slate-400">Date Placed</TableHead>
+        <TableHead className="text-slate-400">Client</TableHead>
+        <TableHead className="text-slate-400">Contact</TableHead>
+        <TableHead className="text-slate-400">Services / Package</TableHead>
+        {!isDesigner && <TableHead className="text-slate-400">Designer</TableHead>}
+        <TableHead className="text-slate-400">Status</TableHead>
+        {!isDesigner && <TableHead className="text-slate-400">Adv. Payment</TableHead>}
+        <TableHead className="text-slate-400">Payment</TableHead>
+        {canSeeAmounts && <TableHead className="text-slate-400 text-right">Total Bill</TableHead>}
+        {canSeeAmounts && <TableHead className="text-slate-400 text-right">Advance</TableHead>}
+        {canSeeAmounts && <TableHead className="text-slate-400 text-right">Remaining</TableHead>}
+        <TableHead className="text-right text-slate-400">Actions</TableHead>
+      </TableRow>
+    </TableHeader>
+  );
+
+  const renderOrderRow = (order: OrderWithServices) => (
+    <TableRow key={order.id} className="border-slate-800 hover:bg-slate-900/50" data-testid={`row-order-${order.id}`}>
+      <TableCell className="font-mono text-xs text-blue-400">{order.orderNumber || "—"}</TableCell>
+      <TableCell className="text-slate-400 text-xs">{order.createdAt ? format(new Date(order.createdAt), "MMM dd, yyyy") : "Not Specified"}</TableCell>
+      <TableCell className="text-white font-medium">{order.clientName || "Not Specified"}</TableCell>
+      <TableCell>
+        {order.clientPhone ? (
+          <div className="flex items-center gap-1">
+            <span className="text-slate-300 text-sm">{order.clientPhone}</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-slate-400 hover:text-white"
+              onClick={() => copyPhone(order.id, order.clientPhone!)}
+              data-testid={`button-copy-phone-${order.id}`}
+            >
+              {copiedPhone === order.id ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+            </Button>
+          </div>
+        ) : (
+          <span className="text-slate-500 text-sm">-</span>
+        )}
+      </TableCell>
+      <TableCell className="text-slate-300 text-sm">{getServicesDisplay(order)}</TableCell>
+      {!isDesigner && (
+        <TableCell>
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-[10px] text-slate-400">
+              {order.assignee?.name?.charAt(0) || "?"}
+            </div>
+            <span className="text-sm text-slate-300">{order.assignee?.name || "Unassigned"}</span>
+          </div>
+        </TableCell>
+      )}
+      <TableCell>
+        <Select
+          defaultValue={order.status}
+          onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { status: val } })}
+        >
+          <SelectTrigger className="w-32 bg-transparent border-0 h-auto p-0 focus:ring-0 shadow-none hover:bg-white/5 rounded px-2 py-1" data-testid={`select-status-${order.id}`}>
+            <SelectValue>{getStatusBadge(order.status)}</SelectValue>
+          </SelectTrigger>
+          <SelectContent className="bg-slate-900 border-slate-800">
+            {getStatusOptionsFor(order).map(opt => (
+              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </TableCell>
+      {!isDesigner && (
+        <TableCell>
+          {isAdmin ? (
+            <Select
+              defaultValue={order.advancePaymentStatus || "pending"}
+              onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { advancePaymentStatus: val } })}
+            >
+              <SelectTrigger className="w-32 bg-transparent border-0 h-auto p-0 focus:ring-0 shadow-none hover:bg-white/5 rounded px-2 py-1" data-testid={`select-adv-payment-${order.id}`}>
+                <SelectValue>{getAdvancePaymentStatusBadge(order.advancePaymentStatus)}</SelectValue>
+              </SelectTrigger>
+              <SelectContent className="bg-slate-900 border-slate-800">
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="approved">Approved</SelectItem>
+                <SelectItem value="disapproved">Disapproved</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : (
+            getAdvancePaymentStatusBadge(order.advancePaymentStatus)
+          )}
+        </TableCell>
+      )}
+      <TableCell>
+        {isAdmin ? (
+          <Select
+            defaultValue={order.paymentStatus || "pending"}
+            onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { paymentStatus: val } })}
+          >
+            <SelectTrigger className="w-28 bg-transparent border-0 h-auto p-0 focus:ring-0 shadow-none hover:bg-white/5 rounded px-2 py-1" data-testid={`select-payment-${order.id}`}>
+              <SelectValue>
+                <Badge variant="outline" className={cn("border-0", order.paymentStatus === 'paid' ? "text-green-500" : "text-yellow-500")}>
+                  {order.paymentStatus === 'paid' ? "Paid" : "Pending"}
+                </Badge>
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent className="bg-slate-900 border-slate-800">
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="paid">Paid</SelectItem>
+            </SelectContent>
+          </Select>
+        ) : (
+          <Badge variant="outline" className={cn("border-0", order.paymentStatus === 'paid' ? "text-green-500" : "text-yellow-500")} data-testid={`badge-payment-${order.id}`}>
+            {order.paymentStatus === 'paid' ? "Paid" : "Pending"}
+          </Badge>
+        )}
+      </TableCell>
+      {canSeeAmounts && (
+        <TableCell className="text-white font-medium text-right">{formatRs(order.totalPrice)}</TableCell>
+      )}
+      {canSeeAmounts && (
+        <TableCell className="text-green-400 font-medium text-right">{formatRs(order.advanceAmount)}</TableCell>
+      )}
+      {canSeeAmounts && (
+        <TableCell className="text-red-400 font-medium text-right">{formatRs(order.remainingAmount)}</TableCell>
+      )}
+      <TableCell className="text-right">
+        <div className="flex justify-end gap-1">
+          {(isAdmin || isSupport) && (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-white" data-testid={`button-assign-${order.id}`}><UserPlus className="w-4 h-4" /></Button>
+              </DialogTrigger>
+              <DialogContent className="bg-slate-900 border-slate-800">
+                <DialogHeader><DialogTitle className="text-white font-display">Assign Designer</DialogTitle></DialogHeader>
+                <div className="space-y-4 py-4">
+                  <Select
+                    defaultValue={order.assignedToId?.toString()}
+                    onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { assignedToId: parseInt(val) } })}
+                  >
+                    <SelectTrigger className="bg-slate-950 border-slate-800 text-white">
+                      <SelectValue placeholder="Select designer" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                      {availableDesigners.map(designer => (
+                        <SelectItem key={designer.id} value={designer.id.toString()}>{designer.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-white" data-testid={`button-menu-${order.id}`}>
+                <MoreVertical className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="bg-slate-900 border-slate-800">
+              <DropdownMenuItem onClick={() => openOrderDetails(order)} className="text-slate-300 hover:text-white" data-testid={`menu-view-details-${order.id}`}>
+                <FileText className="w-4 h-4 mr-2" />
+                View Details
+              </DropdownMenuItem>
+              {isAdmin && (
+                <DropdownMenuItem onClick={() => { setOrderToEdit(order); setEditSheetOpen(true); }} className="text-slate-300 hover:text-white" data-testid={`menu-edit-${order.id}`}>
+                  <Pencil className="w-4 h-4 mr-2" />
+                  Edit Order
+                </DropdownMenuItem>
+              )}
+              {(isAdmin || isSupport) && order.status !== 'canceled' && (
+                <>
+                  <DropdownMenuSeparator className="bg-slate-800" />
+                  <DropdownMenuItem
+                    onClick={() => updateOrderMutation.mutate({ id: order.id, updates: { status: 'canceled' } })}
+                    className="text-red-400 hover:text-red-300"
+                    data-testid={`menu-cancel-${order.id}`}
+                  >
+                    <XCircle className="w-4 h-4 mr-2" />
+                    Cancel Order
+                  </DropdownMenuItem>
+                </>
+              )}
+              {isAdmin && (
+                <>
+                  <DropdownMenuSeparator className="bg-slate-800" />
+                  <DropdownMenuItem
+                    onClick={() => { setOrderToDelete(order); setDeleteConfirmText(""); }}
+                    className="text-red-400 hover:text-red-300"
+                    data-testid={`menu-delete-${order.id}`}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete Order
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+
   return (
     <div className="p-4 md:p-8 space-y-4 md:space-y-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -597,7 +825,7 @@ export default function OrdersPage() {
       </div>
 
       {isAdmin && (
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
             <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500"><Package className="w-5 h-5" /></div>
             <div><p className="text-xs text-slate-500">Total Monthly</p><p className="font-bold text-white">{approvedMonthlyOrders.length}</p></div>
@@ -605,10 +833,6 @@ export default function OrdersPage() {
           <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
             <div className="p-2 bg-green-500/10 rounded-lg text-green-500"><CheckCircle2 className="w-5 h-5" /></div>
             <div><p className="text-xs text-slate-500">Delivered</p><p className="font-bold text-white">{approvedMonthlyOrders.filter(o => o.status === 'delivered').length}</p></div>
-          </div>
-          <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
-            <div className="p-2 bg-orange-500/10 rounded-lg text-orange-500"><Clock className="w-5 h-5" /></div>
-            <div><p className="text-xs text-slate-500">Pending</p><p className="font-bold text-white">{approvedMonthlyOrders.filter(o => o.status === 'new' || o.status === 'working' || o.status === 'ready').length}</p></div>
           </div>
           <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
             <div className="p-2 bg-indigo-500/10 rounded-lg text-indigo-500"><TrendingUp className="w-5 h-5" /></div>
@@ -643,51 +867,12 @@ export default function OrdersPage() {
           </div>
           <div className="table-scroll-wrapper">
             <Table>
-              <TableHeader className="bg-slate-900/50">
-                <TableRow className="border-slate-800 hover:bg-transparent">
-                  <TableHead className="text-slate-400">Order ID</TableHead>
-                  <TableHead className="text-slate-400">Date Placed</TableHead>
-                  <TableHead className="text-slate-400">Client</TableHead>
-                  <TableHead className="text-slate-400">Contact</TableHead>
-                  <TableHead className="text-slate-400">Services</TableHead>
-                  {!isDesigner && <TableHead className="text-slate-400">Designer</TableHead>}
-                  <TableHead className="text-slate-400">Status</TableHead>
-                  <TableHead className="text-slate-400">Payment</TableHead>
-                </TableRow>
-              </TableHeader>
+              {orderTableHead}
               <TableBody>
-                {universalSearchResults.map((order) => (
-                  <TableRow
-                    key={order.id}
-                    className="border-slate-800 hover:bg-slate-900/50 cursor-pointer"
-                    onClick={() => openOrderDetails(order)}
-                    data-testid={`row-search-order-${order.id}`}
-                  >
-                    <TableCell className="font-mono text-xs text-blue-400">{order.orderNumber}</TableCell>
-                    <TableCell className="text-slate-400 text-xs">
-                      {format(new Date(order.createdAt!), "MMM dd, yyyy")}
-                      <span className="block text-slate-500">{format(new Date(order.createdAt!), "MMMM yyyy")}</span>
-                    </TableCell>
-                    <TableCell className="text-white font-medium">{order.clientName}</TableCell>
-                    <TableCell className="text-slate-300 text-sm">{order.clientPhone || "-"}</TableCell>
-                    <TableCell className="text-slate-300 text-sm">{getServicesDisplay(order)}</TableCell>
-                    {!isDesigner && (
-                      <TableCell className="text-slate-300 text-sm">{order.assignee?.name || "Unassigned"}</TableCell>
-                    )}
-                    <TableCell>{getStatusBadge(order.status)}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={cn("border-0", order.paymentStatus === 'paid' ? "text-green-500" : "text-yellow-500")}
-                      >
-                        {order.paymentStatus === 'paid' ? "Paid" : "Pending"}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {universalSearchResults.map((order) => renderOrderRow(order))}
                 {universalSearchResults.length === 0 && (
                   <TableRow className="border-slate-800">
-                    <TableCell colSpan={8} className="text-center text-slate-500 py-8" data-testid="text-no-search-results">
+                    <TableCell colSpan={orderColSpan} className="text-center text-slate-500 py-8" data-testid="text-no-search-results">
                       No matching orders found.
                     </TableCell>
                   </TableRow>
@@ -712,246 +897,12 @@ export default function OrdersPage() {
             {/* Table view – Today */}
             <div className="table-scroll-wrapper">
             <Table>
-              <TableHeader className="bg-slate-900/50">
-                <TableRow className="border-slate-800 hover:bg-transparent">
-                  <TableHead className="text-slate-400">Order ID</TableHead>
-                  <TableHead className="text-slate-400">Date Placed</TableHead>
-                  <TableHead className="text-slate-400">Client</TableHead>
-                  <TableHead className="text-slate-400">Contact</TableHead>
-                  <TableHead className="text-slate-400">Services</TableHead>
-                  {!isDesigner && <TableHead className="text-slate-400">Designer</TableHead>}
-                  <TableHead className="text-slate-400">Status</TableHead>
-                  {!isDesigner && <TableHead className="text-slate-400">Adv. Payment</TableHead>}
-                  <TableHead className="text-slate-400">Payment</TableHead>
-                  {canSeeAmounts && <TableHead className="text-slate-400 text-right">Advance</TableHead>}
-                  {canSeeAmounts && <TableHead className="text-slate-400 text-right">Remaining</TableHead>}
-                  <TableHead className="text-right text-slate-400">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
+              {orderTableHead}
               <TableBody>
-                {todayOrders?.map((order) => {
-                  const isDesignerUser = user?.role === 'designer';
-                  // All roles can see all status options
-                  const getStatusOptions = () => {
-                    if (isDesignerUser) {
-                      // Permanently locked once delivered
-                      if (order.status === 'delivered') return [{ value: "delivered", label: "Delivered" }];
-                      const hasNoRemaining = (order.remainingAmount ?? 0) === 0;
-                      // If ready and no remaining balance, allow marking delivered
-                      if (order.status === 'ready') {
-                        if (hasNoRemaining) return [{ value: "ready", label: "Ready" }, { value: "delivered", label: "Delivered" }];
-                        return [{ value: "ready", label: "Ready" }];
-                      }
-                      // In-progress: can go up to ready, and to delivered if fully paid
-                      const opts = [
-                        { value: "new", label: "New" },
-                        { value: "working", label: "Working" },
-                        { value: "ready", label: "Ready" },
-                      ];
-                      if (hasNoRemaining) opts.push({ value: "delivered", label: "Delivered" });
-                      return opts;
-                    }
-                    return [
-                      { value: "new", label: "New" },
-                      { value: "working", label: "Working" },
-                      { value: "ready", label: "Ready" },
-                      { value: "delivered", label: "Delivered" },
-                      { value: "canceled", label: "Canceled" },
-                    ];
-                  };
-                  
-                  return (
-                    <TableRow key={order.id} className="border-slate-800 hover:bg-slate-900/50" data-testid={`row-order-${order.id}`}>
-                      <TableCell className="font-mono text-xs text-blue-400">{order.orderNumber}</TableCell>
-                      <TableCell className="text-slate-400 text-xs">{format(new Date(order.createdAt!), "MMM dd, yyyy")}</TableCell>
-                      <TableCell className="text-white font-medium">{order.clientName}</TableCell>
-                      <TableCell>
-                        {order.clientPhone ? (
-                          <div className="flex items-center gap-1">
-                            <span className="text-slate-300 text-sm">{order.clientPhone}</span>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 text-slate-400 hover:text-white"
-                              onClick={() => copyPhone(order.id, order.clientPhone!)}
-                              data-testid={`button-copy-phone-${order.id}`}
-                            >
-                              {copiedPhone === order.id ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-                            </Button>
-                          </div>
-                        ) : (
-                          <span className="text-slate-500 text-sm">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-slate-300 text-sm">{getServicesDisplay(order)}</TableCell>
-                      {!isDesigner && (
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-[10px] text-slate-400">
-                              {order.assignee?.name?.charAt(0) || "?"}
-                            </div>
-                            <span className="text-sm text-slate-300">{order.assignee?.name || "Unassigned"}</span>
-                          </div>
-                        </TableCell>
-                      )}
-                      <TableCell>
-                        <Select 
-                          defaultValue={order.status} 
-                          onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { status: val } })}
-                        >
-                          <SelectTrigger className="w-32 bg-transparent border-0 h-auto p-0 focus:ring-0 shadow-none hover:bg-white/5 rounded px-2 py-1" data-testid={`select-status-${order.id}`}>
-                            <SelectValue>{getStatusBadge(order.status)}</SelectValue>
-                          </SelectTrigger>
-                          <SelectContent className="bg-slate-900 border-slate-800">
-                            {getStatusOptions().map(opt => (
-                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      {!isDesigner && (
-                        <TableCell>
-                          {isAdmin ? (
-                            <Select 
-                              defaultValue={order.advancePaymentStatus || "pending"} 
-                              onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { advancePaymentStatus: val } })}
-                            >
-                              <SelectTrigger className="w-32 bg-transparent border-0 h-auto p-0 focus:ring-0 shadow-none hover:bg-white/5 rounded px-2 py-1" data-testid={`select-adv-payment-${order.id}`}>
-                                <SelectValue>{getAdvancePaymentStatusBadge(order.advancePaymentStatus)}</SelectValue>
-                              </SelectTrigger>
-                              <SelectContent className="bg-slate-900 border-slate-800">
-                                <SelectItem value="pending">Pending</SelectItem>
-                                <SelectItem value="approved">Approved</SelectItem>
-                                <SelectItem value="disapproved">Disapproved</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            getAdvancePaymentStatusBadge(order.advancePaymentStatus)
-                          )}
-                        </TableCell>
-                      )}
-                      <TableCell>
-                        {isAdmin ? (
-                          <Select 
-                            defaultValue={order.paymentStatus || "pending"} 
-                            onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { paymentStatus: val } })}
-                          >
-                            <SelectTrigger className="w-28 bg-transparent border-0 h-auto p-0 focus:ring-0 shadow-none hover:bg-white/5 rounded px-2 py-1" data-testid={`select-payment-${order.id}`}>
-                              <SelectValue>
-                                <Badge 
-                                  variant="outline" 
-                                  className={cn(
-                                    "border-0",
-                                    order.paymentStatus === 'paid' ? "text-green-500" : "text-yellow-500"
-                                  )}
-                                >
-                                  {order.paymentStatus === 'paid' ? "Paid" : "Pending"}
-                                </Badge>
-                              </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent className="bg-slate-900 border-slate-800">
-                              <SelectItem value="pending">Pending</SelectItem>
-                              <SelectItem value="paid">Paid</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <Badge 
-                            variant="outline" 
-                            className={cn(
-                              "border-0",
-                              order.paymentStatus === 'paid' ? "text-green-500" : "text-yellow-500"
-                            )}
-                            data-testid={`badge-payment-${order.id}`}
-                          >
-                            {order.paymentStatus === 'paid' ? "Paid" : "Pending"}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      {canSeeAmounts && (
-                        <TableCell className="text-green-400 font-medium text-right">
-                          ₨{Math.round((order.advanceAmount || 0) / 100).toLocaleString()}
-                        </TableCell>
-                      )}
-                      {canSeeAmounts && (
-                        <TableCell className="text-red-400 font-medium text-right">
-                          ₨{Math.round((order.remainingAmount || 0) / 100).toLocaleString()}
-                        </TableCell>
-                      )}
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          {(isAdmin || isSupport) && (
-                            <Dialog>
-                              <DialogTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-white" data-testid={`button-assign-${order.id}`}><UserPlus className="w-4 h-4" /></Button>
-                              </DialogTrigger>
-                              <DialogContent className="bg-slate-900 border-slate-800">
-                                <DialogHeader><DialogTitle className="text-white font-display">Assign Designer</DialogTitle></DialogHeader>
-                                <div className="space-y-4 py-4">
-                                  <Select 
-                                    defaultValue={order.assignedToId?.toString()} 
-                                    onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { assignedToId: parseInt(val) } })}
-                                  >
-                                    <SelectTrigger className="bg-slate-950 border-slate-800 text-white">
-                                      <SelectValue placeholder="Select designer" />
-                                    </SelectTrigger>
-                                    <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                                      {availableDesigners.map(designer => (
-                                        <SelectItem key={designer.id} value={designer.id.toString()}>{designer.name}</SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                              </DialogContent>
-                            </Dialog>
-                          )}
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-white" data-testid={`button-menu-${order.id}`}>
-                                <MoreVertical className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="bg-slate-900 border-slate-800">
-                              <DropdownMenuItem onClick={() => openOrderDetails(order)} className="text-slate-300 hover:text-white" data-testid={`menu-view-details-${order.id}`}>
-                                <FileText className="w-4 h-4 mr-2" />
-                                View Details
-                              </DropdownMenuItem>
-                              {isAdmin && (
-                                <DropdownMenuItem onClick={() => { setOrderToEdit(order); setEditSheetOpen(true); }} className="text-slate-300 hover:text-white" data-testid={`menu-edit-${order.id}`}>
-                                  <Pencil className="w-4 h-4 mr-2" />
-                                  Edit Order
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuSeparator className="bg-slate-800" />
-                              {canDelete && order.status !== 'canceled' && (
-                                <DropdownMenuItem 
-                                  onClick={() => updateOrderMutation.mutate({ id: order.id, updates: { status: 'canceled' } })}
-                                  className="text-red-400 hover:text-red-300"
-                                  data-testid={`menu-cancel-${order.id}`}
-                                >
-                                  <XCircle className="w-4 h-4 mr-2" />
-                                  Cancel Order
-                                </DropdownMenuItem>
-                              )}
-                              {isAdmin && (
-                                <DropdownMenuItem 
-                                  onClick={() => { setOrderToDelete(order); setDeleteConfirmText(""); }}
-                                  className="text-red-400 hover:text-red-300"
-                                  data-testid={`menu-delete-${order.id}`}
-                                >
-                                  <Trash2 className="w-4 h-4 mr-2" />
-                                  Delete Order
-                                </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                {todayOrders?.map((order) => renderOrderRow(order))}
                 {(!todayOrders || todayOrders.length === 0) && (
                   <TableRow className="border-slate-800">
-                    <TableCell colSpan={10} className="text-center text-slate-500 py-8">
+                    <TableCell colSpan={orderColSpan} className="text-center text-slate-500 py-8">
                       No orders for today
                     </TableCell>
                   </TableRow>
@@ -998,207 +949,12 @@ export default function OrdersPage() {
             {/* Table view – Monthly */}
             <div className="table-scroll-wrapper">
             <Table>
-              <TableHeader className="bg-slate-900/50">
-                <TableRow className="border-slate-800">
-                  <TableHead className="text-slate-400">Date Placed</TableHead>
-                  <TableHead className="text-slate-400">Order ID</TableHead>
-                  <TableHead className="text-slate-400">Client</TableHead>
-                  <TableHead className="text-slate-400">Contact</TableHead>
-                  <TableHead className="text-slate-400">Services</TableHead>
-                  {!isDesigner && <TableHead className="text-slate-400">Designer</TableHead>}
-                  <TableHead className="text-slate-400">Status</TableHead>
-                  {!isDesigner && <TableHead className="text-slate-400">Adv. Payment</TableHead>}
-                  <TableHead className="text-slate-400">Payment</TableHead>
-                  {canSeeAmounts && <TableHead className="text-slate-400 text-right">Advance</TableHead>}
-                  {canSeeAmounts && <TableHead className="text-slate-400 text-right">Remaining</TableHead>}
-                  <TableHead className="text-right text-slate-400">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
+              {orderTableHead}
               <TableBody>
-                {monthlyOrders?.map((order) => {
-                  const isDesignerUser = user?.role === 'designer';
-                  // All roles can see all status options
-                  const getMonthlyStatusOptions = () => {
-                    if (isDesignerUser) {
-                      // Permanently locked once delivered
-                      if (order.status === 'delivered') return [{ value: "delivered", label: "Delivered" }];
-                      const hasNoRemaining = (order.remainingAmount ?? 0) === 0;
-                      // If ready and no remaining balance, allow marking delivered
-                      if (order.status === 'ready') {
-                        if (hasNoRemaining) return [{ value: "ready", label: "Ready" }, { value: "delivered", label: "Delivered" }];
-                        return [{ value: "ready", label: "Ready" }];
-                      }
-                      // In-progress: can go up to ready, and to delivered if fully paid
-                      const opts = [
-                        { value: "new", label: "New" },
-                        { value: "working", label: "Working" },
-                        { value: "ready", label: "Ready" },
-                      ];
-                      if (hasNoRemaining) opts.push({ value: "delivered", label: "Delivered" });
-                      return opts;
-                    }
-                    return [
-                      { value: "new", label: "New" },
-                      { value: "working", label: "Working" },
-                      { value: "ready", label: "Ready" },
-                      { value: "delivered", label: "Delivered" },
-                      { value: "canceled", label: "Canceled" },
-                    ];
-                  };
-                  
-                  return (
-                  <TableRow key={order.id} className="border-slate-800" data-testid={`row-monthly-order-${order.id}`}>
-                    <TableCell className="text-slate-400 text-xs">{format(new Date(order.createdAt!), "MMM dd")}</TableCell>
-                    <TableCell className="font-mono text-xs text-blue-400">{order.orderNumber}</TableCell>
-                    <TableCell className="text-white font-medium">{order.clientName}</TableCell>
-                    <TableCell>
-                      {order.clientPhone ? (
-                        <div className="flex items-center gap-1">
-                          <span className="text-slate-300 text-sm">{order.clientPhone}</span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-slate-400 hover:text-white"
-                            onClick={() => copyPhone(order.id, order.clientPhone!)}
-                          >
-                            {copiedPhone === order.id ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-                          </Button>
-                        </div>
-                      ) : (
-                        <span className="text-slate-500 text-sm">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-slate-300 text-sm">{getServicesDisplay(order)}</TableCell>
-                    {!isDesigner && <TableCell className="text-slate-300">{order.assignee?.name || "Unassigned"}</TableCell>}
-                    <TableCell>
-                      <Select 
-                        defaultValue={order.status} 
-                        onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { status: val } })}
-                      >
-                        <SelectTrigger className="w-32 bg-transparent border-0 h-auto p-0 focus:ring-0 shadow-none hover:bg-white/5 rounded px-2 py-1" data-testid={`select-monthly-status-${order.id}`}>
-                          <SelectValue>{getStatusBadge(order.status)}</SelectValue>
-                        </SelectTrigger>
-                        <SelectContent className="bg-slate-900 border-slate-800">
-                          {getMonthlyStatusOptions().map(opt => (
-                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    {!isDesigner && (
-                      <TableCell>
-                        {isAdmin ? (
-                          <Select 
-                            defaultValue={order.advancePaymentStatus || "pending"} 
-                            onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { advancePaymentStatus: val } })}
-                          >
-                            <SelectTrigger className="w-32 bg-transparent border-0 h-auto p-0 focus:ring-0 shadow-none hover:bg-white/5 rounded px-2 py-1" data-testid={`select-monthly-adv-payment-${order.id}`}>
-                              <SelectValue>{getAdvancePaymentStatusBadge(order.advancePaymentStatus)}</SelectValue>
-                            </SelectTrigger>
-                            <SelectContent className="bg-slate-900 border-slate-800">
-                              <SelectItem value="pending">Pending</SelectItem>
-                              <SelectItem value="approved">Approved</SelectItem>
-                              <SelectItem value="disapproved">Disapproved</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          getAdvancePaymentStatusBadge(order.advancePaymentStatus)
-                        )}
-                      </TableCell>
-                    )}
-                    <TableCell>
-                      {isAdmin ? (
-                        <Select 
-                          defaultValue={order.paymentStatus || "pending"} 
-                          onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { paymentStatus: val } })}
-                        >
-                          <SelectTrigger className="w-28 bg-transparent border-0 h-auto p-0 focus:ring-0 shadow-none hover:bg-white/5 rounded px-2 py-1" data-testid={`select-monthly-payment-${order.id}`}>
-                            <SelectValue>
-                              <Badge 
-                                variant="outline" 
-                                className={cn("border-0", order.paymentStatus === 'paid' ? "text-green-500" : "text-yellow-500")}
-                              >
-                                {order.paymentStatus === 'paid' ? "Paid" : "Pending"}
-                              </Badge>
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent className="bg-slate-900 border-slate-800">
-                            <SelectItem value="pending">Pending</SelectItem>
-                            <SelectItem value="paid">Paid</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <Badge 
-                          variant="outline" 
-                          className={cn("border-0", order.paymentStatus === 'paid' ? "text-green-500" : "text-yellow-500")}
-                          data-testid={`badge-monthly-payment-${order.id}`}
-                        >
-                          {order.paymentStatus === 'paid' ? "Paid" : "Pending"}
-                        </Badge>
-                      )}
-                    </TableCell>
-                    {canSeeAmounts && (
-                      <TableCell className="text-green-400 font-medium text-right">
-                        ₨{Math.round((order.advanceAmount || 0) / 100).toLocaleString()}
-                      </TableCell>
-                    )}
-                    {canSeeAmounts && (
-                      <TableCell className="text-red-400 font-medium text-right">
-                        ₨{Math.round((order.remainingAmount || 0) / 100).toLocaleString()}
-                      </TableCell>
-                    )}
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-white">
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="bg-slate-900 border-slate-800">
-                          <DropdownMenuItem onClick={() => openOrderDetails(order)} className="text-slate-300 hover:text-white">
-                            <FileText className="w-4 h-4 mr-2" />
-                            View Details
-                          </DropdownMenuItem>
-                          {isAdmin && (
-                            <DropdownMenuItem onClick={() => { setOrderToEdit(order); setEditSheetOpen(true); }} className="text-slate-300 hover:text-white" data-testid={`menu-edit-monthly-${order.id}`}>
-                              <Pencil className="w-4 h-4 mr-2" />
-                              Edit Order
-                            </DropdownMenuItem>
-                          )}
-                          {(isAdmin || isSupport) && order.status !== 'canceled' && (
-                            <>
-                              <DropdownMenuSeparator className="bg-slate-800" />
-                              <DropdownMenuItem 
-                                onClick={() => updateOrderMutation.mutate({ id: order.id, updates: { status: 'canceled' } })}
-                                className="text-red-400 hover:text-red-300"
-                              >
-                                <XCircle className="w-4 h-4 mr-2" />
-                                Cancel Order
-                              </DropdownMenuItem>
-                            </>
-                          )}
-                          {isAdmin && (
-                            <>
-                              <DropdownMenuSeparator className="bg-slate-800" />
-                              <DropdownMenuItem 
-                                onClick={() => { setOrderToDelete(order); setDeleteConfirmText(""); }}
-                                className="text-red-400 hover:text-red-300"
-                                data-testid={`menu-delete-monthly-${order.id}`}
-                              >
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                Delete Order
-                              </DropdownMenuItem>
-                            </>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                  );
-                })}
+                {monthlyOrders?.map((order) => renderOrderRow(order))}
                 {(!monthlyOrders || monthlyOrders.length === 0) && (
                   <TableRow className="border-slate-800">
-                    <TableCell colSpan={10} className="text-center text-slate-500 py-8">
+                    <TableCell colSpan={orderColSpan} className="text-center text-slate-500 py-8">
                       No orders for this month
                     </TableCell>
                   </TableRow>

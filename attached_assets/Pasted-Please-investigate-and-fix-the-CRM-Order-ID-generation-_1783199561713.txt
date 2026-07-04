@@ -1,0 +1,156 @@
+Please investigate and fix the CRM Order ID generation issue.
+
+Project Context:
+This is Pixely_CRM for Pixely Careers. The CRM generates Order IDs in this format:
+
+PX-YYMM-XXX
+
+Example:
+PX-2607-415
+
+Current Issue:
+There are 746 total active orders ever placed in the CRM, but the latest generated Order ID is:
+
+PX-2607-415
+
+This seems wrong because if the CRM has 746 active orders, the latest order sequence should be:
+
+PX-2607-746
+
+or the next new order should continue from the total global sequence.
+
+Required Investigation:
+Please inspect the current Order ID generation logic and identify why the sequence is not matching the total active orders count.
+
+Check these possible causes:
+1. Order ID sequence may be resetting monthly.
+2. Order ID sequence may be counting only current month orders.
+3. Order ID sequence may be counting only visible orders.
+4. Order ID sequence may be ignoring imported/older orders.
+5. Order ID sequence may be using deleted order count incorrectly.
+6. Order ID sequence may be using database row ID instead of global order count.
+7. Order ID sequence may be using wrong query filters.
+8. Order ID sequence may be affected by Supabase sorting issue.
+9. Order ID sequence may be generating based on last order of selected month instead of latest global order.
+10. Order ID sequence may be reading only first 100/1000 records depending on Supabase query limit.
+
+VERY IMPORTANT DATA SAFETY:
+Do not delete, reset, overwrite, truncate, or modify existing order data.
+Do not regenerate existing order IDs automatically.
+Do not change old order IDs without explicit approval.
+Do not run destructive migrations.
+Do not touch live CRM data except safe read-only investigation and safe code fixes.
+
+Required Behavior:
+Order ID numbering should be based on global CRM order sequence, not selected month and not only current month.
+
+If total active orders ever placed are 746, then the latest active order should logically have sequence 746, and the next new order should become 747.
+
+Order ID format should remain:
+PX-YYMM-SEQUENCE
+
+Where:
+PX = fixed prefix
+YYMM = year and month when order is created
+SEQUENCE = global lifetime order number
+
+Example:
+If the 746th order is created in July 2026:
+PX-2607-746
+
+If the next 747th order is also created in July 2026:
+PX-2607-747
+
+If the next 748th order is created in August 2026:
+PX-2608-748
+
+Important:
+The YYMM part should represent the month/year of order creation.
+The final number should represent the global lifetime order count/sequence.
+
+Do not reset the final sequence number every month.
+
+Required Fix:
+1. Inspect how Order ID is currently generated.
+2. Confirm whether the sequence is monthly or global.
+3. Update logic so future Order IDs use a global lifetime sequence.
+4. Use the highest existing order sequence number from all orders, then add 1.
+5. Do not depend only on total count if deleted orders exist, because deleted orders can create duplicate IDs if the count goes down.
+6. Safer logic:
+   Find the maximum numeric sequence from all existing Order IDs.
+   Next sequence = max sequence + 1
+
+Example:
+Existing highest Order ID sequence = 415
+But active order count says 746.
+This mismatch must be investigated carefully before changing logic.
+
+Possible Fix Options:
+Option A:
+Use max existing Order ID sequence + 1 for future IDs.
+
+Option B:
+Use a separate database sequence/counter table to safely generate unique global order numbers.
+
+Recommended:
+Use a safe database-backed counter or transaction-safe max sequence logic to prevent duplicate order IDs when multiple users create orders at the same time.
+
+Critical Requirement:
+Order IDs must never duplicate.
+
+Technical Requirements:
+1. Search all orders in Supabase, not just selected month.
+2. Extract numeric sequence from order_id.
+3. Find the highest numeric sequence.
+4. Generate next sequence as highest + 1.
+5. Generate YYMM from current order creation date.
+6. Format sequence without accidentally truncating numbers.
+7. Ensure new order IDs are unique.
+8. Add backend validation to prevent duplicate order_id.
+9. If possible, add a unique constraint on order_id only if it is safe and does not conflict with existing data.
+10. Before adding a unique constraint, check for duplicate order IDs first.
+11. If duplicates exist, stop and report them. Do not auto-fix duplicates without approval.
+
+Concurrency Requirement:
+If two orders are created at the same time, they should not receive the same Order ID.
+
+Suggested Safer Implementation:
+Create or use a dedicated order_sequence table/counter:
+- current_sequence
+- updated_at
+
+When creating new order:
+1. Atomically increment the counter.
+2. Use the incremented number as the global sequence.
+3. Combine with current YYMM to create order ID.
+
+If this is too much for current structure, at least make the current max-sequence query reliable and add duplicate prevention.
+
+Required Investigation Output:
+Before applying any risky fix, tell me:
+1. Current total orders count in database.
+2. Current active orders count.
+3. Highest existing order ID sequence number.
+4. Latest order by created_at.
+5. Latest order_id by created_at.
+6. Whether any duplicate order IDs exist.
+7. Whether order ID currently resets monthly.
+8. Recommended safest fix.
+
+Important:
+Do not change existing order IDs automatically unless I approve.
+For now, fix the generation logic for future orders safely.
+
+Acceptance Criteria:
+1. Order ID generation is investigated.
+2. The reason for mismatch between 746 total active orders and PX-2607-415 is identified.
+3. New orders use global lifetime sequence, not monthly sequence.
+4. Next generated order ID should continue safely from the correct global sequence.
+5. Order IDs remain in format PX-YYMM-SEQUENCE.
+6. Existing order IDs are not changed without approval.
+7. No CRM data is deleted, reset, or overwritten.
+8. Duplicate order IDs are prevented.
+9. Supabase query checks all orders, not only selected month.
+10. If duplicates or schema issues are found, report them before making risky changes.
+
+Please investigate first, explain what you found, then apply only the safe future Order ID generation fix.
