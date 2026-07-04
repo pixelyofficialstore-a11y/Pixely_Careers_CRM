@@ -1,0 +1,123 @@
+I want you to modify my existing CRM search module without breaking any current functionality.
+
+Project Context:
+This is Pixely_CRM for Pixely Careers. The CRM has an Orders Management page where orders are shown under Today's Orders and Monthly Orders. Currently, there is a search bar at the top with placeholder text like "Search Order ID or Client..." but the search is limited to the currently selected month or currently loaded data. I want to improve this search so it can search from the complete orders database.
+
+Change Required:
+Improve the Orders Management search module and make it a universal search across all CRM orders.
+
+Current Problem:
+Right now, when I select a month such as July, the search only searches inside July orders. If I search for an order that belongs to June, May, or any other month, it does not appear. This makes it difficult to find older orders.
+
+Required New Behavior:
+The search bar on the Orders Management page should search across the complete orders database, not only the selected month.
+
+The search must work by:
+1. Order ID
+2. Client Name
+3. Client Phone Number
+
+Search Logic Requirements:
+1. Universal Search:
+   When the user types in the search bar, search should run across all orders from all months and all years.
+
+2. Order ID Search:
+   If the user enters a full or partial order ID, matching orders should appear.
+   Example:
+   Searching "2607" should show orders like PX-2607-413.
+
+3. Client Name Search:
+   If the user enters a full or partial client name, matching orders should appear.
+   Search should be case-insensitive.
+   Example:
+   Searching "adnan" should show client "Adnan".
+
+4. Client Phone Number Search:
+   If the user enters a full or partial phone number, matching orders should appear.
+   Search should work even if the phone number has spaces, plus signs, or formatting differences.
+   Example:
+   Searching "3218984900" should match "+92 321 8984900".
+   Searching "8984900" should also show the same client.
+
+5. Partial Search:
+   The search should support partial values for order ID, name, and phone number.
+
+6. Case Insensitive:
+   Search should not depend on uppercase or lowercase letters.
+
+7. Ignore Formatting:
+   For phone numbers, remove spaces, plus signs, hyphens, brackets, or other symbols before matching.
+
+8. Month Filter Should Not Affect Search:
+   If the search bar has any value, ignore the selected month and year filters.
+   The selected month and year filters should only apply when the search bar is empty.
+
+9. Reset Behavior:
+   When the search bar is cleared, the page should return to normal selected month or today's orders view.
+
+10. Search Results Should Clearly Show Order Month:
+   In search results, show the order date/month/year clearly so we can identify which month the order belongs to.
+
+Display Requirements:
+When search results appear, show the same order table/card structure currently used, but make sure the following fields are visible:
+
+Order ID
+Client Name
+Client Phone Number
+Service/Package
+Designer Name
+Order Status
+Payment Status
+Date Placed
+Month and Year
+
+UI/UX Requirements:
+1. Keep the current design style of the CRM.
+2. Do not change the dark theme layout.
+3. Do not remove existing buttons such as Export PDF or Create Order.
+4. Do not break Today's Orders and Monthly Orders tabs.
+5. Add a small label or heading when search is active, for example:
+   "Search Results"
+   or
+   "Showing results from all orders"
+6. If no matching order is found, show a clean message:
+   "No matching orders found."
+
+Technical Implementation Instructions:
+1. Find the Orders Management page/component.
+2. Find the current search input state and filtering logic.
+3. Update the logic so that when searchQuery is not empty, it filters from the full orders list instead of the selected month list.
+4. Make sure all orders are fetched or available for search. If the frontend currently only fetches selected month orders, update the backend/API query or frontend data fetching so universal search can access all orders.
+5. Do not remove existing monthly filter logic. Just bypass it when search is active.
+6. Use normalized values for searching:
+   - Convert text to lowercase
+   - Trim spaces
+   - For phone numbers, remove all non-numeric characters
+7. Make sure the search works smoothly and does not crash if any field is empty or null.
+
+Suggested Filtering Logic:
+- searchQueryNormalized = searchQuery.toLowerCase().trim()
+- phoneSearchQuery = searchQuery.replace all non-digits with empty string
+- For each order:
+  - orderIdMatch = order.orderId lowercase includes searchQueryNormalized
+  - clientNameMatch = order.clientName lowercase includes searchQueryNormalized
+  - clientPhoneNormalized = order.clientPhone remove all non-digits
+  - phoneMatch = clientPhoneNormalized includes phoneSearchQuery
+- Return order if any of these match.
+
+Important:
+Before making changes, inspect the existing structure and use the existing variable names, database fields, API routes, and styling system. Do not create duplicate pages or unnecessary new components unless required.
+
+Acceptance Criteria:
+1. I can search PX-2607-413 and the correct order appears.
+2. I can search 2607 and all matching order IDs appear.
+3. I can search Adnan and the order appears.
+4. I can search 3218984900 and the order appears even if the CRM stores it as +92 321 8984900.
+5. I can search 8984900 and the order appears.
+6. If July is selected but the searched order belongs to June, it should still appear.
+7. The result should show the order date/month clearly.
+8. When I clear the search bar, the page should return to the selected monthly orders view.
+9. Existing filters, tabs, order creation, export, payment status, designer assignment, and order status should continue working.
+10. No existing data should be deleted or changed.
+
+Please implement this carefully and test the Orders Management page after making the changes.

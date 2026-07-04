@@ -190,18 +190,30 @@ export default function OrdersPage() {
     setDetailsSheetOpen(true);
   };
 
-  const filteredOrders = orders?.filter(order => {
-    const matchesSearch = 
-      (order.orderNumber?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
-      order.clientName.toLowerCase().includes(search.toLowerCase());
-    return matchesSearch;
-  });
-
   // All roles only see approved orders in the Orders Page
   // Unapproved orders are reviewed exclusively in the Payments page
-  const visibleOrders = filteredOrders?.filter(order => order.advancePaymentStatus === 'approved') || [];
+  const visibleOrders = orders?.filter(order => order.advancePaymentStatus === 'approved') || [];
   const approvedOrders = visibleOrders;
-  
+
+  const normalizePhoneValue = (value?: string | null) => (value || "").replace(/\D/g, "");
+
+  const searchQueryNormalized = search.trim().toLowerCase();
+  const phoneSearchQuery = search.replace(/\D/g, "");
+  const isSearchActive = searchQueryNormalized.length > 0;
+
+  // Universal search: searches across ALL orders (every month/year), not just the
+  // currently selected month. Matches order ID, client name, and client phone
+  // (phone numbers are compared with formatting characters stripped out).
+  const universalSearchResults = isSearchActive
+    ? visibleOrders.filter(order => {
+        const orderIdMatch = (order.orderNumber?.toLowerCase() ?? "").includes(searchQueryNormalized);
+        const clientNameMatch = (order.clientName?.toLowerCase() ?? "").includes(searchQueryNormalized);
+        const clientPhoneNormalized = normalizePhoneValue(order.clientPhone);
+        const phoneMatch = phoneSearchQuery.length > 0 && clientPhoneNormalized.includes(phoneSearchQuery);
+        return orderIdMatch || clientNameMatch || phoneMatch;
+      }).sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime())
+    : [];
+
   const todayOrders = visibleOrders.filter(order => {
     const createdDate = new Date(order.createdAt!);
     // Only show orders created today
@@ -422,6 +434,68 @@ export default function OrdersPage() {
         </div>
       )}
 
+      {isSearchActive ? (
+        <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden" data-testid="panel-search-results">
+          <div className="p-6 border-b border-slate-800">
+            <h3 className="text-lg font-bold text-white">Search Results</h3>
+            <p className="text-sm text-slate-500">Showing results from all orders — month/year filters are ignored while searching</p>
+          </div>
+          <div className="table-scroll-wrapper">
+            <Table>
+              <TableHeader className="bg-slate-900/50">
+                <TableRow className="border-slate-800 hover:bg-transparent">
+                  <TableHead className="text-slate-400">Order ID</TableHead>
+                  <TableHead className="text-slate-400">Date Placed</TableHead>
+                  <TableHead className="text-slate-400">Client</TableHead>
+                  <TableHead className="text-slate-400">Contact</TableHead>
+                  <TableHead className="text-slate-400">Services</TableHead>
+                  {!isDesigner && <TableHead className="text-slate-400">Designer</TableHead>}
+                  <TableHead className="text-slate-400">Status</TableHead>
+                  <TableHead className="text-slate-400">Payment</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {universalSearchResults.map((order) => (
+                  <TableRow
+                    key={order.id}
+                    className="border-slate-800 hover:bg-slate-900/50 cursor-pointer"
+                    onClick={() => openOrderDetails(order)}
+                    data-testid={`row-search-order-${order.id}`}
+                  >
+                    <TableCell className="font-mono text-xs text-blue-400">{order.orderNumber}</TableCell>
+                    <TableCell className="text-slate-400 text-xs">
+                      {format(new Date(order.createdAt!), "MMM dd, yyyy")}
+                      <span className="block text-slate-500">{format(new Date(order.createdAt!), "MMMM yyyy")}</span>
+                    </TableCell>
+                    <TableCell className="text-white font-medium">{order.clientName}</TableCell>
+                    <TableCell className="text-slate-300 text-sm">{order.clientPhone || "-"}</TableCell>
+                    <TableCell className="text-slate-300 text-sm">{getServicesDisplay(order)}</TableCell>
+                    {!isDesigner && (
+                      <TableCell className="text-slate-300 text-sm">{order.assignee?.name || "Unassigned"}</TableCell>
+                    )}
+                    <TableCell>{getStatusBadge(order.status)}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={cn("border-0", order.paymentStatus === 'paid' ? "text-green-500" : "text-yellow-500")}
+                      >
+                        {order.paymentStatus === 'paid' ? "Paid" : "Pending"}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {universalSearchResults.length === 0 && (
+                  <TableRow className="border-slate-800">
+                    <TableCell colSpan={8} className="text-center text-slate-500 py-8" data-testid="text-no-search-results">
+                      No matching orders found.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      ) : (
       <Tabs defaultValue="today" className="w-full">
         <TabsList className="bg-slate-900 border border-slate-800 p-1 mb-6">
           <TabsTrigger value="today" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white" data-testid="tab-today-orders">Today's Orders</TabsTrigger>
@@ -899,6 +973,7 @@ export default function OrdersPage() {
           </div>
         </TabsContent>
       </Tabs>
+      )}
 
       <Sheet open={detailsSheetOpen} onOpenChange={setDetailsSheetOpen}>
         <SheetContent className="bg-slate-900 border-slate-800 w-full sm:max-w-xl overflow-y-auto">
