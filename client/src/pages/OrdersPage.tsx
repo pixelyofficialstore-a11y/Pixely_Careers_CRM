@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { OrdersSkeleton } from "@/components/PageSkeleton";
@@ -1322,7 +1322,9 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
   const [creative, setCreative] = useState("");
   const [notes, setNotes] = useState("");
   const [packageType, setPackageType] = useState<string>("");
-  const [services, setServices] = useState([{ serviceType: "", quantity: 1, instructions: "" }]);
+  const serviceIdRef = useRef(1);
+  const [services, setServices] = useState([{ id: 0, serviceType: "", quantity: 1, instructions: "" }]);
+  const customServicesTopRef = useRef<HTMLDivElement | null>(null);
   
   // Payment verification fields
   const [paymentType, setPaymentType] = useState<"advance" | "full">("advance");
@@ -1344,19 +1346,21 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
   });
 
   const addService = () => {
-    setServices([...services, { serviceType: "", quantity: 1, instructions: "" }]);
+    const newService = { id: serviceIdRef.current++, serviceType: "", quantity: 1, instructions: "" };
+    setServices((prev) => [newService, ...prev]);
+    requestAnimationFrame(() => {
+      customServicesTopRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      const trigger = customServicesTopRef.current?.querySelector<HTMLButtonElement>('[data-testid^="select-service-type-"]');
+      trigger?.focus();
+    });
   };
 
-  const removeService = (index: number) => {
-    if (services.length > 1) {
-      setServices(services.filter((_, i) => i !== index));
-    }
+  const removeService = (id: number) => {
+    setServices((prev) => (prev.length > 1 ? prev.filter((s) => s.id !== id) : prev));
   };
 
-  const updateService = (index: number, field: string, value: any) => {
-    const updated = [...services];
-    (updated[index] as any)[field] = value;
-    setServices(updated);
+  const updateService = (id: number, field: string, value: any) => {
+    setServices((prev) => prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1526,7 +1530,7 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
               onClick={() => {
                 setPackageType(pkg.value);
                 if (pkg.value !== "custom") {
-                  setServices([{ serviceType: "", quantity: 1, instructions: "" }]);
+                  setServices([{ id: serviceIdRef.current++, serviceType: "", quantity: 1, instructions: "" }]);
                 }
               }}
               className={`p-4 rounded-xl border-2 text-center transition-all ${
@@ -1548,7 +1552,7 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
       </div>
 
       {packageType === "custom" && (
-        <div className="space-y-4">
+        <div className="space-y-4" ref={customServicesTopRef}>
           <div className="flex items-center justify-between">
             <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Custom Services</h4>
             <Button type="button" variant="ghost" size="sm" onClick={addService} className="text-blue-400 hover:text-blue-300" data-testid="button-add-service">
@@ -1557,18 +1561,18 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
           </div>
           
           {services.map((service, index) => (
-            <div key={index} className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-3">
+            <div key={service.id} className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-slate-400">Service {index + 1}</span>
                 {services.length > 1 && (
-                  <Button type="button" variant="ghost" size="icon" onClick={() => removeService(index)} className="h-6 w-6 text-red-400 hover:text-red-300" data-testid={`button-remove-service-${index}`}>
+                  <Button type="button" variant="ghost" size="icon" onClick={() => removeService(service.id)} className="h-6 w-6 text-red-400 hover:text-red-300" data-testid={`button-remove-service-${index}`}>
                     <Trash2 className="w-3 h-3" />
                   </Button>
                 )}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="md:col-span-2">
-                  <Select value={service.serviceType} onValueChange={(val) => updateService(index, 'serviceType', val)}>
+                  <Select value={service.serviceType} onValueChange={(val) => updateService(service.id, 'serviceType', val)}>
                     <SelectTrigger className="bg-slate-900 border-slate-700 text-white" data-testid={`select-service-type-${index}`}>
                       <SelectValue placeholder="Select service type" />
                     </SelectTrigger>
@@ -1584,7 +1588,7 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
                     type="number" 
                     min="1" 
                     value={service.quantity} 
-                    onChange={(e) => updateService(index, 'quantity', parseInt(e.target.value) || 1)} 
+                    onChange={(e) => updateService(service.id, 'quantity', parseInt(e.target.value) || 1)} 
                     className="bg-slate-900 border-slate-700 text-white"
                     placeholder="Qty"
                     data-testid={`input-quantity-${index}`}
@@ -1593,7 +1597,7 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
               </div>
               <Textarea 
                 value={service.instructions} 
-                onChange={(e) => updateService(index, 'instructions', e.target.value)} 
+                onChange={(e) => updateService(service.id, 'instructions', e.target.value)} 
                 className="bg-slate-900 border-slate-700 text-white resize-none"
                 placeholder="Special instructions for this service..."
                 rows={2}

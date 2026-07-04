@@ -1,0 +1,95 @@
+I want to improve the Custom Order service fields layout in the Create Order form.
+
+Project Context:
+This is Pixely_CRM for Pixely Careers. In the Orders Management page, when I click Create Order and select Custom Order, there is a Custom Services section. When I add new services, each service box appears one after another.
+
+Current Problem:
+When I click Add Service and add Service 2, Service 3, etc., the new service field appears lower/down in the form. Because the modal is scrollable, I have to scroll down to find the newly added service.
+
+Required Change:
+When a new custom service is added, the newly added service field should appear at the top/up of the Custom Services list instead of appearing at the bottom.
+
+Required Behavior:
+1. In Custom Order mode, when I click Add Service, the new service block should be inserted at the top of the custom services list.
+2. The newest service should appear first.
+3. Older services should move down.
+4. The user should not need to scroll down to find the newly added service.
+5. The newly added service input should be visible immediately.
+6. Preferably, the newly added service type dropdown should be focused automatically.
+7. The scroll position should move to the newly added service if needed.
+
+Example:
+Current behavior:
+Service 1
+Service 2
+New Service 3 appears at bottom
+
+Required behavior:
+New Service 3 appears at top
+Service 2
+Service 1
+
+Important:
+Do not break existing custom service functionality.
+
+Each service block should still include:
+Service Type dropdown
+Quantity field
+Special Instructions field
+Delete service button
+
+Service numbering should remain clean and logical.
+
+Preferred Display:
+If newest service is shown on top, label it clearly as:
+Service 1
+Service 2
+Service 3
+
+Or if existing logic uses original service numbers, keep it consistent but make sure the newest service appears on top.
+
+Technical Instructions:
+1. Find the Create Order modal/component.
+2. Find the Custom Order section.
+3. Find the Add Service button logic.
+4. Currently, new service is probably added using array push or append logic.
+5. Change the logic so the new service is added at the beginning of the services array instead of the end.
+
+Example:
+Instead of:
+setCustomServices([...customServices, newService])
+
+Use:
+setCustomServices([newService, ...customServices])
+
+6. Make sure delete service still deletes the correct service.
+7. Make sure updating service type, quantity, and instructions still updates the correct service.
+8. Use stable unique IDs for each service item if not already used.
+9. Do not use array index as the only key if it causes update/delete issues.
+10. Make sure form submission sends all custom services correctly.
+11. Make sure total amount/charges calculation still works correctly.
+12. Make sure validation still works correctly.
+13. Do not change the existing CRM dark theme or modal design.
+14. Do not break package selection, client details, payment details, or order creation.
+
+UI/UX Requirements:
+1. Keep the current design style.
+2. Keep the Add Service button in the same section.
+3. New service should appear instantly at the top.
+4. Newly added service should be easy to identify.
+5. Optional: Add a small smooth scroll to the top of the custom services section after adding a new service.
+6. Optional: Auto-focus the service type dropdown of the newly added service.
+
+Acceptance Criteria:
+1. I select Custom Order.
+2. I click Add Service.
+3. The new service block appears at the top of the Custom Services list.
+4. I do not have to scroll down to find the new service.
+5. I can select service type, quantity, and instructions normally.
+6. I can delete any service without wrong service being deleted.
+7. Custom order submission still saves all services correctly.
+8. Total amount/charges still calculate correctly.
+9. Existing order form design does not break.
+10. Existing package orders are not affected.
+
+Please implement this carefully and test the Create Order form in Custom Order mode.
