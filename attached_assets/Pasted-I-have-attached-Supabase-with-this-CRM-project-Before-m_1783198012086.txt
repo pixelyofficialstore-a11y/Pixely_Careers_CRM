@@ -1,0 +1,237 @@
+I have attached Supabase with this CRM project. Before making changes, please inspect the current Supabase database structure carefully.
+
+VERY IMPORTANT SAFETY INSTRUCTION:
+Do not delete, overwrite, reset, truncate, migrate destructively, or remove any existing CRM data.
+
+This CRM already has live data, orders, payments, users, designers, notifications, and finance records. Make sure no data is lost.
+
+Project Context:
+This is Pixely_CRM for Pixely Careers. The CRM uses Supabase/database for storing orders, users, payments, notifications, and related CRM data.
+
+Main Task:
+1. First fix the Export Report/PDF design and remove unwanted lines/clutter from the report.
+2. Then check Supabase/database schema.
+3. Add only the required missing columns safely.
+4. Do not touch or delete existing data.
+
+PART 1: FIX EXPORT REPORT FIRST
+
+Current Problem:
+The export report/PDF has unwanted lines, clutter, and incomplete formatting. The report should look clean and professional.
+
+Required Export Report Fix:
+1. Remove unnecessary extra lines from the report.
+2. Remove unwanted borders/clutter if they make the report look messy.
+3. Keep the report clean and readable.
+4. Keep the header professional.
+5. Use proper spacing between title, summary, and table.
+6. Keep table lines minimal and clean.
+7. Use readable font size.
+8. Use landscape layout if needed.
+9. Long service details should wrap properly.
+10. Amount columns should be clearly readable.
+11. Avoid text overlap.
+12. Avoid broken phone number formatting.
+13. Repeat table header on new pages if possible.
+
+Report Header Should Include:
+Pixely Careers Orders Report
+Selected Month and Year OR Search Results if search is active
+Generated Date and Time
+
+Summary Section Should Include:
+Total Orders
+Monthly Revenue
+Collected Amount
+Remaining Amount
+Delivered Orders
+Pending Orders
+
+Table Columns Should Include:
+Order ID
+Date Placed
+Client Name
+Client Phone Number
+Service / Package
+Designer Name
+Order Status
+Payment Status
+Total Bill
+Advance Paid
+Remaining
+Payment Screenshot / Proof if available
+Notes / Remarks if available
+
+If there is not enough space, use compact columns and landscape format.
+
+PART 2: CHECK SUPABASE DATABASE
+
+After fixing the export report UI/code, inspect the Supabase tables and columns.
+
+Check tables related to:
+orders
+payments
+users
+profiles
+notifications
+order_services
+custom_services
+payment_verifications
+attachments
+activity_logs
+
+Use the existing table names and structure. Do not assume names. Inspect first.
+
+PART 3: ADD REQUIRED MISSING COLUMNS SAFELY
+
+Only add missing columns if they do not already exist.
+
+Required order/finance fields may include:
+
+total_bill
+advance_paid
+remaining_amount
+payment_screenshot_url
+payment_screenshot_path
+payment_status
+payment_verified
+payment_verified_by
+payment_verified_at
+notes
+updated_at
+
+Required custom service fields may include:
+
+order_id
+service_type
+quantity
+special_instructions
+service_number
+created_at
+
+Required notification fields may include:
+
+type
+title
+message
+order_id
+client_name
+amount
+performed_by
+priority
+is_read
+created_at
+
+Important:
+Before adding any column, check if an equivalent column already exists with another name, such as:
+totalAmount
+total_amount
+packageAmount
+package_amount
+advancePayment
+advance_payment
+remaining
+remainingAmount
+screenshotUrl
+proofUrl
+
+If an equivalent column already exists, do not create duplicate columns.
+
+Use the current naming convention of the database.
+
+PART 4: DATABASE SAFETY RULES
+
+Strictly follow these rules:
+
+1. Do not delete any table.
+2. Do not delete any column.
+3. Do not delete any row.
+4. Do not reset database.
+5. Do not truncate database.
+6. Do not drop database.
+7. Do not rename columns unless absolutely required.
+8. Do not overwrite existing values.
+9. Do not run destructive migrations.
+10. Do not change existing data types if it can risk data loss.
+11. Only use safe ALTER TABLE ADD COLUMN IF NOT EXISTS type changes.
+12. If adding a required field, make it nullable first or give a safe default.
+13. Do not add NOT NULL constraints on existing tables unless every old row has valid data.
+14. Do not break existing orders.
+15. Do not break existing users.
+16. Do not break existing payments.
+17. Do not break existing notifications.
+18. Do not break login/authentication.
+
+PART 5: BACKUP / CHECK BEFORE CHANGES
+
+Before making database changes:
+1. Inspect the schema.
+2. List what columns already exist.
+3. Identify only missing required columns.
+4. Create a safe migration plan.
+5. Apply only non-destructive changes.
+6. After changes, confirm existing records are still present.
+
+If possible, create or suggest a backup before applying migration.
+
+PART 6: EXPORT REPORT DATA MAPPING
+
+Export report should use existing data fields where available.
+
+Suggested mapping:
+Total Bill = total_bill / totalAmount / total_amount / packageAmount
+Advance Paid = advance_paid / advancePayment / advance_payment
+Remaining = remaining_amount / remaining / remainingAmount
+Payment Screenshot = payment_screenshot_url / proof_url / screenshotUrl
+Notes = notes / remarks
+
+Use whichever field already exists in the CRM/database.
+
+Do not break the report if a field is missing. Use fallback values:
+Amount missing = Rs0
+Text missing = Not Specified
+Screenshot missing = No Proof Uploaded
+
+PART 7: PAYMENT SCREENSHOT STORAGE
+
+If payment screenshot upload was added or needs database support:
+1. Check if Supabase Storage bucket already exists.
+2. Do not delete any existing bucket or files.
+3. If required, use or create a safe bucket for payment proofs.
+4. Save file URL/path in the correct order/payment record.
+5. Do not overwrite existing screenshots.
+6. Allow viewing proof later from order details/payment verification area.
+
+PART 8: TESTING REQUIRED
+
+After changes, test:
+
+1. Existing orders still load.
+2. Existing order IDs are still present.
+3. Existing users can still log in.
+4. Existing payments are still present.
+5. Orders page still works.
+6. Payments page still works.
+7. Export PDF works.
+8. Export report is cleaner with no unwanted lines.
+9. Export includes finance fields.
+10. Total Bill, Advance Paid, and Remaining show correctly.
+11. Missing finance fields show safe fallback values.
+12. Payment screenshot upload still works if implemented.
+13. No CRM data was deleted or changed.
+
+Acceptance Criteria:
+1. Export report/PDF looks clean and professional.
+2. Unwanted extra lines/clutter are removed from export report.
+3. Export includes complete required finance fields.
+4. Supabase schema is inspected before changes.
+5. Required missing columns are added safely.
+6. No duplicate columns are created.
+7. No existing data is deleted.
+8. No existing data is overwritten.
+9. No destructive migration is used.
+10. Existing CRM functions continue working.
+11. Existing orders, users, payments, notifications, and finance records remain safe.
+12. If any database change is risky, stop and explain before applying it.
+
+Please be extremely careful. This CRM has live data. Fix the export report first, then inspect Supabase, then add only missing safe columns without touching existing data.

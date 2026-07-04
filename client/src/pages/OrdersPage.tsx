@@ -79,7 +79,7 @@ import {
 } from "@/components/ui/tooltip";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { OrderWithServices, User, SupportDesignerAssignment, ServiceCatalogItem, PackageConfig, PlatformCatalogItem } from "@shared/schema";
+import type { OrderWithServices, User, SupportDesignerAssignment, ServiceCatalogItem, PackageConfig, PlatformCatalogItem, PaymentVerification } from "@shared/schema";
 
 const FALLBACK_SERVICE_TYPES = [
   "ATS CV",
@@ -139,6 +139,11 @@ export default function OrdersPage() {
   const { data: packageConfigs = [] } = useQuery<PackageConfig[]>({
     queryKey: ["/api/package-configs"],
     staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: paymentVerifications = [] } = useQuery<PaymentVerification[]>({
+    queryKey: ["/api/payment-verifications"],
+    staleTime: 30 * 1000,
   });
 
   const activeServiceTypes = servicesCatalog.filter(s => s.isActive).map(s => s.name);
@@ -378,45 +383,51 @@ export default function OrdersPage() {
       : (order.services?.map(s => `${s.quantity}x ${s.serviceType}`).join(", ") || "Not Specified");
   };
 
-  const getFullServiceDetails = (order: OrderWithServices) => {
-    if (order.packageType && order.packageType !== "custom") {
-      return packageLabels[order.packageType] || order.packageType;
-    }
-    if (order.services && order.services.length > 0) {
-      return order.services
-        .map(s => `${s.quantity}x ${s.serviceType}${s.instructions ? ` (${s.instructions})` : ""}`)
-        .join("; ");
-    }
-    return "Not Specified";
-  };
-
   const exportOrdersPDF = () => {
     let exportOrders: OrderWithServices[];
-    let reportTitle: string;
+    let reportSubtitle: string;
 
     if (isSearchActive) {
       exportOrders = universalSearchResults;
-      reportTitle = "Search Results Export";
+      reportSubtitle = "Search Results";
     } else if (activeOrdersTab === "today") {
       exportOrders = todayOrders;
-      reportTitle = `Pixely Careers Orders Report - Today (${format(new Date(), "MMM dd, yyyy")})`;
+      reportSubtitle = `Today — ${format(new Date(), "MMMM dd, yyyy")}`;
     } else {
-      const monthName = format(new Date(parseInt(selectedYear), parseInt(selectedMonth), 1), "MMMM yyyy");
       exportOrders = monthlyOrders;
-      reportTitle = `Pixely Careers Orders Report - ${monthName}`;
+      reportSubtitle = format(new Date(parseInt(selectedYear), parseInt(selectedMonth), 1), "MMMM yyyy");
     }
 
     const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth();
+    const marginX = 32;
 
-    doc.setFontSize(16);
+    const BRAND: [number, number, number] = [37, 99, 235];
+    const INK: [number, number, number] = [30, 41, 59];
+    const MUTED: [number, number, number] = [100, 116, 139];
+    const LINE: [number, number, number] = [226, 232, 240];
+
+    // ---- Header ----
     doc.setFont("helvetica", "bold");
-    doc.text(reportTitle, 28, 30);
+    doc.setFontSize(18);
+    doc.setTextColor(...INK);
+    doc.text("Pixely Careers Orders Report", marginX, 42);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.setTextColor(...BRAND);
+    doc.text(reportSubtitle, marginX, 60);
 
     doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Generated: ${format(new Date(), "MMM dd, yyyy h:mm a")}`, 28, 44);
+    doc.setTextColor(...MUTED);
+    doc.text(`Generated: ${format(new Date(), "MMMM dd, yyyy · h:mm a")}`, marginX, 74);
 
+    // thin separator line under header
+    doc.setDrawColor(...LINE);
+    doc.setLineWidth(0.8);
+    doc.line(marginX, 84, pageWidth - marginX, 84);
+
+    // ---- Summary stats ----
     const approvedExportOrders = exportOrders.filter(o => o.advancePaymentStatus === 'approved');
     const totalOrders = exportOrders.length;
     const revenue = approvedExportOrders.reduce((sum, o) => sum + (Number(o.totalPrice) || 0), 0);
@@ -425,74 +436,106 @@ export default function OrdersPage() {
     const delivered = exportOrders.filter(o => o.status === 'delivered').length;
     const pending = exportOrders.filter(o => o.status === 'new' || o.status === 'working' || o.status === 'ready').length;
 
-    let summaryY = 60;
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    doc.text("Summary", 28, summaryY);
-    doc.setFont("helvetica", "normal");
-    summaryY += 14;
-    const summaryLine1 = `Total Orders: ${totalOrders}     Monthly Revenue: ${formatRs(revenue)}     Collected: ${formatRs(collected)}`;
-    const summaryLine2 = `Remaining: ${formatRs(remaining)}     Delivered: ${delivered}     Pending: ${pending}`;
-    doc.text(summaryLine1, 28, summaryY);
-    summaryY += 14;
-    doc.text(summaryLine2, 28, summaryY);
-    summaryY += 10;
+    const stats: { label: string; value: string }[] = [
+      { label: "Total Orders", value: String(totalOrders) },
+      { label: "Monthly Revenue", value: formatRs(revenue) },
+      { label: "Collected Amount", value: formatRs(collected) },
+      { label: "Remaining Amount", value: formatRs(remaining) },
+      { label: "Delivered Orders", value: String(delivered) },
+      { label: "Pending Orders", value: String(pending) },
+    ];
 
+    const statCols = 3;
+    const statColW = (pageWidth - marginX * 2) / statCols;
+    const statRowH = 34;
+    const statTop = 104;
+    stats.forEach((stat, i) => {
+      const col = i % statCols;
+      const row = Math.floor(i / statCols);
+      const x = marginX + col * statColW;
+      const y = statTop + row * statRowH;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(...MUTED);
+      doc.text(stat.label.toUpperCase(), x, y);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.setTextColor(...INK);
+      doc.text(stat.value, x, y + 15);
+    });
+    const tableStartY = statTop + Math.ceil(stats.length / statCols) * statRowH + 6;
+
+    // ---- Proof lookup (order id -> has screenshot) ----
+    const proofOrderIds = new Set(
+      paymentVerifications
+        .filter(v => (v.screenshotUrl && v.screenshotUrl.trim()) || (v.screenshotData && v.screenshotData.trim()))
+        .map(v => v.orderId)
+    );
+
+    // ---- Table ----
     const tableData = exportOrders.length > 0 ? exportOrders.map(order => {
-      const monthYear = order.createdAt ? format(new Date(order.createdAt), "MMMM yyyy") : "Not Specified";
-      const finalPayable = Math.max(0, (Number(order.totalPrice) || 0) - (Number(order.discountAmount) || 0));
-      const collectedAmount = Number(order.advanceAmount) || 0;
-      const remainingAmount = Number(order.remainingAmount) || 0;
+      const statusLabel = order.status ? order.status.charAt(0).toUpperCase() + order.status.slice(1) : "Not Specified";
+      const paymentLabel = order.paymentStatus === "paid"
+        ? "Paid"
+        : (order.paymentStatus ? order.paymentStatus.charAt(0).toUpperCase() + order.paymentStatus.slice(1) : "Pending");
 
       return [
         order.orderNumber || "Not Specified",
         formatDateSafe(order.createdAt),
-        monthYear,
         order.clientName || "Not Specified",
-        order.clientPhone || "Not Specified",
+        order.clientPhone && order.clientPhone.trim() ? order.clientPhone.trim() : "Not Specified",
         getServicesLabel(order),
-        getFullServiceDetails(order),
         order.assignee?.name || "Unassigned",
-        order.status ? order.status.charAt(0).toUpperCase() + order.status.slice(1) : "Not Specified",
-        order.paymentStatus === "paid" ? "Paid" : (order.paymentStatus ? order.paymentStatus.charAt(0).toUpperCase() + order.paymentStatus.slice(1) : "Pending"),
+        statusLabel,
+        paymentLabel,
         formatRs(order.totalPrice),
-        formatRs(order.discountAmount),
-        formatRs(finalPayable),
         formatRs(order.advanceAmount),
-        formatRs(collectedAmount),
-        formatRs(remainingAmount),
-        order.paymentMethod ? (paymentMethodLabels[order.paymentMethod] || order.paymentMethod) : "Not Specified",
-        formatDateSafe(order.paymentDate),
-        formatDateSafe(order.deliveredAt),
-        order.notes && order.notes.trim() ? order.notes : "Not Specified",
+        formatRs(order.remainingAmount),
+        proofOrderIds.has(order.id) ? "Uploaded" : "No Proof Uploaded",
+        order.notes && order.notes.trim() ? order.notes.trim() : "Not Specified",
       ];
-    }) : [["No orders found.", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]];
+    }) : [["No orders found.", "", "", "", "", "", "", "", "", "", "", "", ""]];
 
     autoTable(doc, {
-      startY: summaryY + 6,
+      startY: tableStartY,
       head: [[
-        "Order ID", "Date Placed", "Month/Year", "Client Name", "Phone",
-        "Package/Services", "Full Service Details", "Designer", "Order Status", "Payment Status",
-        "Total Amount", "Discount", "Final Payable", "Advance Paid", "Collected",
-        "Remaining", "Payment Method", "Payment Date", "Delivered On", "Notes"
+        "Order ID", "Date Placed", "Client Name", "Phone", "Service / Package",
+        "Designer", "Status", "Payment", "Total Bill", "Advance Paid",
+        "Remaining", "Payment Proof", "Notes / Remarks"
       ]],
       body: tableData,
-      styles: { fontSize: 6.5, cellPadding: 3, overflow: "linebreak" },
-      headStyles: { fillColor: [37, 99, 235], fontSize: 6.5, halign: "center" },
+      theme: "striped",
+      styles: {
+        font: "helvetica",
+        fontSize: 8,
+        cellPadding: 5,
+        overflow: "linebreak",
+        valign: "middle",
+        textColor: INK,
+        lineWidth: 0,
+      },
+      headStyles: {
+        fillColor: BRAND,
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+        fontSize: 8,
+        halign: "left",
+        cellPadding: 6,
+      },
+      alternateRowStyles: { fillColor: [246, 248, 251] },
       columnStyles: {
-        10: { halign: "right" },
-        11: { halign: "right" },
-        12: { halign: "right" },
-        13: { halign: "right" },
-        14: { halign: "right" },
-        15: { halign: "right" },
+        2: { cellWidth: 82 },
+        3: { cellWidth: 74 },
+        4: { cellWidth: 100 },
+        5: { cellWidth: 66 },
+        8: { halign: "right", cellWidth: 56 },
+        9: { halign: "right", cellWidth: 56 },
+        10: { halign: "right", cellWidth: 56 },
+        11: { cellWidth: 56, halign: "center" },
+        12: { cellWidth: 92 },
       },
-      margin: { left: 20, right: 20 },
-      tableWidth: pageWidth - 40,
+      margin: { left: marginX, right: marginX },
       showHead: "everyPage",
-      didDrawPage: () => {
-        // header repeats via showHead: 'everyPage'
-      },
     });
 
     const fileSuffix = isSearchActive

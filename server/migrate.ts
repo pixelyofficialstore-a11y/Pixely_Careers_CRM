@@ -216,7 +216,11 @@ export async function runMigrations() {
         ADD COLUMN IF NOT EXISTS ad_set                 TEXT,
         ADD COLUMN IF NOT EXISTS creative               TEXT,
         ADD COLUMN IF NOT EXISTS package_type           TEXT,
-        ADD COLUMN IF NOT EXISTS internal_notes         TEXT
+        ADD COLUMN IF NOT EXISTS internal_notes         TEXT,
+        ADD COLUMN IF NOT EXISTS discount_amount        INTEGER DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS payment_method         TEXT,
+        ADD COLUMN IF NOT EXISTS payment_date           TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS delivered_at           TIMESTAMP
     `);
 
     await client.query(`
