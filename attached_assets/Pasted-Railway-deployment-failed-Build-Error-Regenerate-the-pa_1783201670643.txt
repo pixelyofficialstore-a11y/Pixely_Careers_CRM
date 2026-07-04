@@ -1,0 +1,44 @@
+Railway deployment failed — Build Error
+
+Regenerate the package-lock.json outside of Replit to fix this build failure. The lockfile was generated inside Replit and contains internal registry URLs (package-firewall.replit.local) that are unreachable on Railway. When npm ci runs during the build, it tries to download packages from those Replit-only URLs and fails with a DNS error.
+
+Repository: https://github.com/pixelyofficialstore-a11y/Pixely_Careers_CRM
+Branch: main · Commit: cc5be15 — Improve npm build reliability on deployment platforms
+
+Add an .npmrc file to configure npm with increased retries and timeouts for package downloads, enhancing build stability on deployment environments.
+
+Replit-Commit-Author: Agent
+Replit-Commit-Session-Id: 9822917e-99c4-4be4-bc62-2c9cf0ba7538
+Replit-Commit-Checkpoint-Type: full_checkpoint
+Replit-Commit-Event-Id: b5a77321-1b0e-403e-a3a0-170945d4b249
+Replit-Commit-Screenshot-Url: https://storage.googleapis.com/screenshot-production-us-central1/18a52f21-8161-42d0-a533-ef415f579bed/9822917e-99c4-4be4-bc62-2c9cf0ba7538/wyaN1hb
+Replit-Helium-Checkpoint-Created: true
+Deployment ID: f387f8a2-bb01-422c-82ba-9b87a339ec0a
+Service ID: 321437b3-d38c-426a-bb2e-762c587f1947
+Environment ID: a49ca29f-1eef-4f42-911c-9a8b43fb61ea
+
+---
+
+## Problem
+The build fails at the npm ci step with ENOTFOUND package-firewall.replit.local. The package-lock.json contains resolved URLs pointing to Replit's internal package proxy (http://package-firewall.replit.local/npm/...), which is only accessible within Replit's infrastructure. On Railway, these URLs cannot be resolved, causing DNS lookup failures.
+
+Build log error:
+```
+npm error network request to http://package-firewall.replit.local/npm/xml-naming/-/xml-naming-0.1.0.tgz failed, reason: getaddrinfo ENOTFOUND package-firewall.replit.local
+```
+
+The Nixpacks builder runs npm ci as its install step (stage-0 11/15) before the user's buildCommand is executed. npm ci strictly uses the resolved URLs from package-lock.json, ignoring the .npmrc registry setting.
+
+## Diagnosis
+The package-lock.json was generated inside Replit, which routes npm traffic through an internal proxy (package-firewall.replit.local). This proxy hostname is baked into every package's resolved field in the lockfile. When Railway's build runs npm ci, it attempts to download packages from these Replit-internal URLs, which fail DNS resolution outside Replit. The .npmrc file added in this commit correctly sets registry=https://registry.npmjs.org/, but npm ci does not use the registry config for resolution — it uses the exact URLs from the lockfile. The previous deployment (75c4578e) failed with the identical error, confirming this is persistent.
+
+## Fix
+1. **File:** package-lock.json (repo root)
+2. **Current content:** Contains resolved URLs like http://package-firewall.replit.local/npm/... throughout the file for every dependency.
+3. **Required change:** Regenerate the entire file by running npm install in a standard environment (not Replit). This will produce a lockfile with standard https://registry.npmjs.org/... URLs.
+4. **Steps:**
+   - Clone the repo locally (or use any non-Replit environment)
+   - Delete node_modules/ and package-lock.json
+   - Run npm install — this generates a fresh package-lock.json with standard registry URLs
+   - Commit and push the new package-lock.json
+5. **Why this fixes it:** With standard registry URLs in the lockfile, npm ci will download packages from registry.npmjs.org, which is accessible from Railway's build environment.
