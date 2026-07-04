@@ -32,8 +32,18 @@ function useAuthMutation() {
       });
       
       if (!res.ok) {
-        if (res.status === 401) throw new Error("Invalid username or password");
-        throw new Error("Login failed");
+        let serverMessage = "";
+        try {
+          const data = await res.json();
+          serverMessage = data?.message || "";
+        } catch {
+          serverMessage = "";
+        }
+        if (res.status === 403) {
+          throw new Error(serverMessage || "Your account has been disabled. Please contact the admin.");
+        }
+        if (res.status === 401) throw new Error(serverMessage || "Invalid username or password");
+        throw new Error(serverMessage || "Login failed");
       }
       
       return api.auth.login.responses[200].parse(await res.json());

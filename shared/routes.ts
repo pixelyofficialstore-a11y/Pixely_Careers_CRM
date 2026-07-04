@@ -15,6 +15,9 @@ export const errorSchemas = {
   unauthorized: z.object({
     message: z.string(),
   }),
+  forbidden: z.object({
+    message: z.string(),
+  }),
 };
 
 export const api = {
@@ -29,6 +32,7 @@ export const api = {
       responses: {
         200: z.custom<typeof users.$inferSelect>(),
         401: errorSchemas.unauthorized,
+        403: errorSchemas.forbidden,
       },
     },
     logout: {

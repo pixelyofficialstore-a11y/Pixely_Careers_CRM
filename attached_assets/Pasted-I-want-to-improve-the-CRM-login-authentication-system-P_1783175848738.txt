@@ -1,0 +1,91 @@
+I want to improve the CRM login authentication system.
+
+Project Context:
+This is Pixely_CRM for Pixely Careers. The CRM has user accounts for admin, designers, and team members. Some users can be disabled from the CRM, but currently I want to make sure disabled users cannot log in at all, even if their email/username and password are correct.
+
+Change Required:
+Disabled users should not be able to log in to the CRM.
+
+Current Problem:
+If a user account is disabled, that user should be completely blocked from accessing the CRM. Even if they enter the correct email/username and correct password, the CRM should not allow login.
+
+Required Behavior:
+1. During login, after verifying the user exists, check the user's account status.
+2. If the user is disabled/inactive, block login immediately.
+3. Do not create a session/token for disabled users.
+4. Do not allow disabled users to access dashboard, orders, payments, team, analytics, settings, or any protected CRM page.
+5. If a disabled user already has an active session, the system should also block access and force logout or redirect them to the login page.
+6. Only active/enabled users should be allowed to log in.
+
+User Status Logic:
+Use the existing user status field if available.
+
+Possible field names may be:
+isActive
+isDisabled
+status
+accountStatus
+enabled
+disabled
+
+Before making changes, inspect the existing user database schema and use the correct existing field name.
+
+Expected Status Rules:
+If user status is Active or Enabled:
+Allow login.
+
+If user status is Disabled, Inactive, Blocked, or Suspended:
+Do not allow login.
+
+Login Error Message:
+Show a clean and professional message:
+"Your account has been disabled. Please contact the admin."
+
+Do not show technical errors.
+
+Security Requirements:
+1. Disabled users must not receive JWT/session/auth token.
+2. Disabled users must not be allowed through frontend-only checks.
+3. The check must happen on the backend/login API as well.
+4. Protected routes should verify that the logged-in user is still active.
+5. If a user's status is changed to disabled while they are logged in, they should lose access on refresh or next API request.
+6. Do not reveal whether the password was correct or incorrect for security, but still show a simple disabled account message if the account is disabled after user lookup.
+
+Frontend Requirements:
+1. Show a clear error message on the login page:
+   "Your account has been disabled. Please contact the admin."
+2. Do not redirect disabled users to the dashboard.
+3. Keep the existing login page design.
+4. Do not break login for admin or active users.
+
+Backend Requirements:
+1. Find the login/authentication API route.
+2. After finding the user and before generating any token/session, check the disabled/active status.
+3. If disabled, return an error response such as 403 Forbidden.
+4. Add active user validation in auth middleware if protected routes use middleware.
+5. If the system uses JWT, make sure middleware checks the latest user status from the database, not only the old token data.
+6. If the system uses sessions, destroy or invalidate the session for disabled users.
+
+Admin/Team Management Requirement:
+If there is already a Team/User Management page where admin can disable users, make sure that toggle/status actually affects login access.
+When admin disables a user:
+- User cannot log in again
+- Existing access should be blocked
+- User should not be able to use protected pages
+
+Do not remove the user from the database. Only block access.
+
+Acceptance Criteria:
+1. Active users can log in normally.
+2. Disabled users cannot log in even with correct password.
+3. Disabled users do not receive token/session.
+4. Disabled users cannot access dashboard through direct URL.
+5. Disabled users cannot access orders, payments, team, analytics, or settings pages.
+6. If a logged-in user is disabled by admin, they are blocked on refresh or next protected request.
+7. Login page shows:
+   "Your account has been disabled. Please contact the admin."
+8. Existing admin login continues working.
+9. Existing designer/team login continues working if their account is active.
+10. No existing users or order data should be deleted or modified.
+
+Please implement this carefully and test login with both active and disabled users.

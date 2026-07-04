@@ -130,6 +130,10 @@ export async function registerRoutes(
         if (!user || !(await comparePasswords(password, user.password))) {
           return done(null, false);
         }
+        // Block disabled/inactive accounts even with a correct password.
+        if (!user.isActive) {
+          return done(null, false, { message: "account_disabled" });
+        }
         return done(null, user);
       } catch (err) {
         return done(err);
@@ -141,14 +145,31 @@ export async function registerRoutes(
   passport.deserializeUser(async (id, done) => {
     try {
       const user = await storage.getUser(id as number);
+      // If the account was disabled after the session was created, treat it as
+      // logged out so protected routes reject the request on the next call.
+      if (!user || !user.isActive) {
+        return done(null, false);
+      }
       done(null, user);
     } catch (err) {
       done(err);
     }
   });
 
-  app.post(api.auth.login.path, passport.authenticate("local"), (req, res) => {
-    res.json(req.user);
+  app.post(api.auth.login.path, (req, res, next) => {
+    passport.authenticate("local", (err: any, user: Express.User | false, info: { message?: string } | undefined) => {
+      if (err) return next(err);
+      if (!user) {
+        if (info?.message === "account_disabled") {
+          return res.status(403).json({ message: "Your account has been disabled. Please contact the admin." });
+        }
+        return res.status(401).json({ message: "Invalid username or password." });
+      }
+      req.logIn(user, (loginErr) => {
+        if (loginErr) return next(loginErr);
+        return res.json(user);
+      });
+    })(req, res, next);
   });
 
   app.post(api.auth.logout.path, (req, res, next) => {
