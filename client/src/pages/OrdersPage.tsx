@@ -1479,7 +1479,7 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
                   </Select>
                 </div>
                 <div>
-                  <Input type="number" min="1" value={service.quantity} onChange={(e) => updateService(service.id, 'quantity', parseInt(e.target.value) || 1)} className="bg-slate-900 border-slate-700 text-white" placeholder="Qty" data-testid={`edit-input-quantity-${index}`} />
+                  <Input type="number" min="1" value={service.quantity} onChange={(e) => updateService(service.id, 'quantity', parseInt(e.target.value) || 1)} onWheel={(e) => e.currentTarget.blur()} className="bg-slate-900 border-slate-700 text-white" placeholder="Qty" data-testid={`edit-input-quantity-${index}`} />
                 </div>
               </div>
               <Textarea value={service.instructions} onChange={(e) => updateService(service.id, 'instructions', e.target.value)} className="bg-slate-900 border-slate-700 text-white resize-none" placeholder="Special instructions for this service..." rows={2} data-testid={`edit-input-instructions-${index}`} />
@@ -1493,11 +1493,11 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-2">
             <Label className="text-slate-300">Total Bill (₨)</Label>
-            <Input type="number" min="0" step="1" value={totalBill} onChange={(e) => setTotalBill(e.target.value.replace(/[^0-9]/g, ''))} className="bg-slate-950 border-slate-800 text-white" placeholder="0" data-testid="edit-input-total-bill" />
+            <Input type="number" min="0" step="1" value={totalBill} onChange={(e) => setTotalBill(e.target.value.replace(/[^0-9]/g, ''))} onWheel={(e) => e.currentTarget.blur()} className="bg-slate-950 border-slate-800 text-white" placeholder="0" data-testid="edit-input-total-bill" />
           </div>
           <div className="space-y-2">
             <Label className="text-slate-300">Advance / Collected (₨)</Label>
-            <Input type="number" min="0" step="1" value={advanceAmount} onChange={(e) => setAdvanceAmount(e.target.value.replace(/[^0-9]/g, ''))} className="bg-slate-950 border-slate-800 text-white" placeholder="0" data-testid="edit-input-advance-amount" />
+            <Input type="number" min="0" step="1" value={advanceAmount} onChange={(e) => setAdvanceAmount(e.target.value.replace(/[^0-9]/g, ''))} onWheel={(e) => e.currentTarget.blur()} className="bg-slate-950 border-slate-800 text-white" placeholder="0" data-testid="edit-input-advance-amount" />
           </div>
           <div className="space-y-2">
             <Label className="text-slate-300">Remaining</Label>
@@ -1889,6 +1889,7 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
                     min="1" 
                     value={service.quantity} 
                     onChange={(e) => updateService(service.id, 'quantity', parseInt(e.target.value) || 1)} 
+                    onWheel={(e) => e.currentTarget.blur()}
                     className="bg-slate-900 border-slate-700 text-white"
                     placeholder="Qty"
                     data-testid={`input-quantity-${index}`}
@@ -1919,6 +1920,7 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
               step="1"
               value={totalBill} 
               onChange={(e) => setTotalBill(e.target.value.replace(/[^0-9]/g, ''))} 
+              onWheel={(e) => e.currentTarget.blur()}
               className="bg-slate-950 border-slate-800 text-white"
               placeholder="0"
               data-testid="input-total-bill"
@@ -1932,6 +1934,7 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
               step="1"
               value={advanceAmount} 
               onChange={(e) => setAdvanceAmount(e.target.value.replace(/[^0-9]/g, ''))} 
+              onWheel={(e) => e.currentTarget.blur()}
               className="bg-slate-950 border-slate-800 text-white"
               placeholder="0"
               data-testid="input-advance-amount"
