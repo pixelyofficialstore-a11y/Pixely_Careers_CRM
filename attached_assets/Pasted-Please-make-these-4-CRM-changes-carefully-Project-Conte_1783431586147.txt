@@ -1,0 +1,258 @@
+Please make these 4 CRM changes carefully.
+
+Project Context:
+This is Pixely_CRM for Pixely Careers. The CRM has Admin, Customer Support / Support Members, and Designers. Orders are created, assigned to designers, searched, edited, cancelled, delivered, and tracked with finance data.
+
+VERY IMPORTANT SAFETY:
+Do not delete, reset, overwrite, or damage any existing CRM data.
+Do not remove any orders, users, payments, notifications, or finance records.
+Only update permissions, UI visibility, search behavior, and performance safely.
+
+CHANGE 1: DISABLED DESIGNERS SHOULD NOT SHOW IN CREATE ORDER FORM
+
+Current Problem:
+Disabled designers are still appearing in the Assigned Designer dropdown inside the Create Order form.
+
+Required Behavior:
+Disabled designers should not appear in the Assigned Designer dropdown when creating or editing an order.
+
+Rules:
+1. Only active/enabled designers should appear in the designer dropdown.
+2. Disabled/inactive designers should be hidden from new order assignment.
+3. If an old order is already assigned to a designer who later becomes disabled, do not break the existing order.
+4. Existing old orders can still display the disabled designer name for history.
+5. But disabled designers should not be selectable for new assignments.
+6. This should apply to Create Order and Edit Order designer selection.
+
+Check user status fields like:
+isActive
+isDisabled
+status
+accountStatus
+enabled
+disabled
+
+Use the correct existing field after inspecting the schema.
+
+Acceptance:
+Disabled designer does not show in Create Order dropdown.
+Disabled designer does not show in Edit Order reassignment dropdown.
+Existing orders assigned to disabled designers still display safely.
+
+CHANGE 2: SUPPORT MEMBERS PERMISSIONS
+
+Current Problem:
+Support members need better access to client/order data, but they should not have full admin delete permission.
+
+Required Behavior:
+Support members should be able to see complete client/order data from all months, search the full database like admin, and edit/cancel orders, but they must not be able to delete orders.
+
+Support Members Should Be Able To:
+1. View orders from all months.
+2. View complete client data.
+3. Use universal search across the full orders database.
+4. Search by Order ID.
+5. Search by Client Name.
+6. Search by Client Phone Number.
+7. View finance data such as Total Bill, Advance Paid, Remaining, Payment Status.
+8. Edit orders like admin, including:
+   - Update client details if existing edit supports it
+   - Change package/services
+   - Add/remove services
+   - Update billing fields
+   - Update assigned designer
+   - Update order status
+   - Update payment status if existing workflow allows it
+9. Cancel orders.
+10. View exported/search results if already allowed.
+
+Support Members Should NOT Be Able To:
+1. Permanently delete orders.
+2. Access hard delete buttons.
+3. Use DELETE order API.
+4. Delete users.
+5. Change high-level admin settings if not already allowed.
+
+Cancel Order vs Delete Order:
+Support members can cancel an order by changing status to Cancelled.
+Support members cannot permanently delete the order from the database.
+
+Required UI:
+1. Hide Delete Order button for support members.
+2. Show Cancel Order option for support members.
+3. Admin can still delete orders.
+4. Admin can still cancel orders.
+5. Designer should not get support/admin-level edit permissions unless already allowed.
+
+Required Backend Security:
+This must not be frontend-only.
+Backend API must block support members from deleting orders.
+Only Admin can permanently delete orders.
+
+Acceptance:
+Support members can view all months.
+Support members can search all database.
+Support members can edit/cancel orders.
+Support members cannot delete orders.
+Delete button is hidden for support members.
+DELETE API rejects support members.
+Admin delete still works.
+
+CHANGE 3: DESIGNERS SHOULD BE ABLE TO SEARCH ONLY THEIR ASSIGNED ORDERS
+
+Current Problem:
+Designers need search functionality, but they should only search inside orders assigned to them.
+
+Required Behavior:
+Designers should have a search bar/search module, but search must be limited to their assigned orders only.
+
+Designer Search Should Work By:
+1. Order ID
+2. Client Name
+3. Client Phone Number
+4. Package/Service if possible
+
+Rules:
+1. Designers should not search all CRM orders.
+2. Designers should not see orders assigned to other designers.
+3. Designers should not see unassigned orders unless existing workflow allows it.
+4. Search must filter only from designerAssignedOrders.
+5. Backend/API must also enforce designer access rules.
+6. Direct URL or API calls should not expose other designers’ orders.
+
+Designer Search Results Should Show:
+Order ID
+Date Placed
+Client Name
+Client Phone
+Services / Package
+Order Status
+Payment Status if designer already sees it
+Assigned Designer
+Relevant actions allowed for designer
+
+Designers Should Not Be Able To:
+1. Delete orders.
+2. Edit billing unless already allowed.
+3. See admin-only finance actions unless already allowed.
+4. Access all database search.
+
+Acceptance:
+Designer can search assigned orders.
+Designer cannot search orders assigned to other designers.
+Designer cannot access all database results.
+Search works by order ID, name, and phone number.
+Backend prevents unauthorized access.
+
+CHANGE 4: MAKE SEARCHING MODULE SMOOTH AND PREVENT CRM FREEZING
+
+Current Problem:
+When searching in the CRM, the UI feels frozen or stuck. Search should be smooth.
+
+Required Change:
+Optimize the search module performance.
+
+Required Behavior:
+1. Search input should remain responsive while typing.
+2. CRM should not freeze during search.
+3. Add debounce to search input.
+4. Avoid heavy filtering on every keystroke without delay.
+5. Avoid unnecessary full-page re-renders.
+6. Show a small loading/searching indicator if search takes time.
+7. Keep results smooth and fast.
+
+Recommended Search Optimization:
+1. Use debounce of around 300ms.
+2. Use memoization for filtered results.
+3. Normalize searchable fields once if possible.
+4. Avoid filtering huge data repeatedly on every render.
+5. If frontend dataset is large, use server-side search API.
+6. Limit returned search results if needed, for example first 50 or 100 results, with clear result count.
+7. Cancel previous search request when new query is typed if using API.
+8. Use React useMemo/useDeferredValue if React is used.
+9. Use indexed database query if Supabase is used.
+10. Add indexes in Supabase safely if needed.
+
+Search Matching Rules:
+Search should still work by:
+Order ID
+Client Name
+Client Phone Number
+
+Phone number matching should ignore:
+spaces
+plus signs
+hyphens
+brackets
+formatting differences
+
+Example:
+Searching 3218984900 should match +92 321 8984900.
+Searching 8984900 should also match the same client.
+
+Role-Based Search Scope:
+Admin:
+Search all orders.
+
+Support Member:
+Search all orders.
+
+Designer:
+Search only assigned orders.
+
+Search Result Table:
+Search results should use the complete normal order table where allowed by role.
+
+Admin:
+Full table with finance and actions including delete.
+
+Support Member:
+Full table with finance and edit/cancel actions but no delete.
+
+Designer:
+Designer-allowed table/actions only.
+
+Backend Requirements:
+1. Add role-based search scope.
+2. Admin/support can query all orders.
+3. Designer query must filter by assigned_designer_id or equivalent field.
+4. Disabled users should not access search.
+5. Search API should be optimized and not return unnecessary data.
+6. Add safe indexes if needed.
+
+Possible Supabase Indexes:
+Before adding indexes, inspect actual table and column names.
+
+Possible helpful indexes:
+order_number / order_id
+client_name
+client_phone
+assigned_designer_id
+created_at
+status
+
+Important:
+Only add non-destructive indexes.
+Do not delete or alter existing data.
+
+Acceptance Criteria:
+1. Search typing is smooth.
+2. CRM does not freeze while searching.
+3. Search has debounce.
+4. Admin search still searches all orders.
+5. Support search searches all orders.
+6. Designer search searches only assigned orders.
+7. Search by phone number still ignores formatting.
+8. Search results still show complete allowed table/actions by role.
+9. No existing data is deleted.
+10. No existing functionality breaks.
+
+FINAL REMINDER:
+Implement these changes carefully:
+1. Hide disabled designers from assignment dropdowns.
+2. Give support members full view/search/edit/cancel access but no delete access.
+3. Give designers search only inside their assigned orders.
+4. Optimize search so CRM does not freeze.
+
+Do not touch or delete existing CRM data.
+Test as Admin, Support Member, and Designer before finalizing.

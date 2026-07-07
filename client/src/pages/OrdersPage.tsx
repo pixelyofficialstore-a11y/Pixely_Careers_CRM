@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { OrdersSkeleton } from "@/components/PageSkeleton";
@@ -34,6 +34,7 @@ import { Label } from "@/components/ui/label";
 import { format, isToday, isPast, startOfMonth } from "date-fns";
 import { 
   Search, 
+  Loader2,
   Eye, 
   UserPlus, 
   CheckCircle2, 
@@ -102,6 +103,7 @@ export default function OrdersPage() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth().toString());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [activeOrdersTab, setActiveOrdersTab] = useState<"today" | "monthly">("today");
@@ -113,6 +115,12 @@ export default function OrdersPage() {
   const [editSheetOpen, setEditSheetOpen] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<OrderWithServices | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+
+  // Debounce the search input (300ms) so typing stays smooth on large order lists.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const { data: orders, isLoading } = useQuery<OrderWithServices[]>({
     queryKey: ["/api/orders"],
@@ -186,17 +194,45 @@ export default function OrdersPage() {
     },
   });
 
+  const SEARCH_RESULT_LIMIT = 100;
+  const searchQueryNormalized = debouncedSearch.trim().toLowerCase();
+  const phoneSearchQuery = debouncedSearch.replace(/\D/g, "");
+  const isSearchActive = searchQueryNormalized.length > 0;
+  const isSearchSettling = search.trim() !== debouncedSearch.trim();
+
+  // Universal search: debounced + memoized so the UI never freezes while typing.
+  // Searches across ALL orders (every month/year). Matches order ID, client name,
+  // and client phone (formatting characters stripped on both sides).
+  // Designers are additionally limited to their own assigned orders.
+  const { results: universalSearchResults, totalMatches: searchTotalMatches } = useMemo(() => {
+    if (!isSearchActive) return { results: [] as OrderWithServices[], totalMatches: 0 };
+    const matches = (orders || [])
+      .filter(order => {
+        if (order.advancePaymentStatus !== 'approved') return false;
+        if (user?.role === 'designer' && order.assignedToId !== user.id) return false;
+        const orderIdMatch = (order.orderNumber?.toLowerCase() ?? "").includes(searchQueryNormalized);
+        const clientNameMatch = (order.clientName?.toLowerCase() ?? "").includes(searchQueryNormalized);
+        const clientPhoneNormalized = (order.clientPhone || "").replace(/\D/g, "");
+        const phoneMatch = phoneSearchQuery.length > 0 && clientPhoneNormalized.includes(phoneSearchQuery);
+        return orderIdMatch || clientNameMatch || phoneMatch;
+      })
+      .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+    return { results: matches.slice(0, SEARCH_RESULT_LIMIT), totalMatches: matches.length };
+  }, [orders, isSearchActive, searchQueryNormalized, phoneSearchQuery, user?.role, user?.id]);
+
   if (isLoading) return <OrdersSkeleton />;
 
   const isAdmin = user?.role === "admin";
   const isSupport = user?.role === "support";
   const isDesigner = user?.role === "designer";
   const canSeeFinance = isAdmin;
-  const canSeeAmounts = isAdmin || isDesigner;
+  const canSeeAmounts = isAdmin || isDesigner || isSupport;
   const canCreateOrder = isAdmin || isSupport;
 
   const getAvailableDesigners = () => {
-    const allDesigners = teamMembers?.filter(u => u.role === 'designer') || [];
+    // Disabled designers are hidden from assignment dropdowns (existing orders still
+    // display their name for history — only new assignments are restricted).
+    const allDesigners = teamMembers?.filter(u => u.role === 'designer' && u.isActive) || [];
     if (isSupport) {
       if (!designerAssignments) return [];
       const assignedIds = designerAssignments.map(a => a.designerUserId);
@@ -222,25 +258,6 @@ export default function OrdersPage() {
   // Unapproved orders are reviewed exclusively in the Payments page
   const visibleOrders = orders?.filter(order => order.advancePaymentStatus === 'approved') || [];
   const approvedOrders = visibleOrders;
-
-  const normalizePhoneValue = (value?: string | null) => (value || "").replace(/\D/g, "");
-
-  const searchQueryNormalized = search.trim().toLowerCase();
-  const phoneSearchQuery = search.replace(/\D/g, "");
-  const isSearchActive = searchQueryNormalized.length > 0;
-
-  // Universal search: searches across ALL orders (every month/year), not just the
-  // currently selected month. Matches order ID, client name, and client phone
-  // (phone numbers are compared with formatting characters stripped out).
-  const universalSearchResults = isSearchActive
-    ? visibleOrders.filter(order => {
-        const orderIdMatch = (order.orderNumber?.toLowerCase() ?? "").includes(searchQueryNormalized);
-        const clientNameMatch = (order.clientName?.toLowerCase() ?? "").includes(searchQueryNormalized);
-        const clientPhoneNormalized = normalizePhoneValue(order.clientPhone);
-        const phoneMatch = phoneSearchQuery.length > 0 && clientPhoneNormalized.includes(phoneSearchQuery);
-        return orderIdMatch || clientNameMatch || phoneMatch;
-      }).sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime())
-    : [];
 
   const todayOrders = visibleOrders.filter(order => {
     const createdDate = new Date(order.createdAt!);
@@ -736,7 +753,7 @@ export default function OrdersPage() {
                 <FileText className="w-4 h-4 mr-2" />
                 View Details
               </DropdownMenuItem>
-              {isAdmin && (
+              {(isAdmin || isSupport) && (
                 <DropdownMenuItem onClick={() => { setOrderToEdit(order); setEditSheetOpen(true); }} className="text-slate-300 hover:text-white" data-testid={`menu-edit-${order.id}`}>
                   <Pencil className="w-4 h-4 mr-2" />
                   Edit Order
@@ -793,6 +810,9 @@ export default function OrdersPage() {
               onChange={(e) => setSearch(e.target.value)}
               data-testid="input-search-orders"
             />
+            {isSearchSettling && (
+              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 animate-spin" data-testid="icon-search-loading" />
+            )}
           </div>
           
           {isAdmin && (
@@ -863,7 +883,11 @@ export default function OrdersPage() {
         <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden" data-testid="panel-search-results">
           <div className="p-6 border-b border-slate-800">
             <h3 className="text-lg font-bold text-white">Search Results</h3>
-            <p className="text-sm text-slate-500">Showing results from all orders — month/year filters are ignored while searching</p>
+            <p className="text-sm text-slate-500" data-testid="text-search-result-count">
+              {searchTotalMatches > universalSearchResults.length
+                ? `Showing first ${universalSearchResults.length} of ${searchTotalMatches} matching orders — refine your search to see the rest`
+                : `${searchTotalMatches} matching order${searchTotalMatches === 1 ? "" : "s"} — month/year filters are ignored while searching`}
+            </p>
           </div>
           <div className="table-scroll-wrapper">
             <Table>

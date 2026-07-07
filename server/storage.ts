@@ -109,7 +109,8 @@ export class DatabaseStorage implements IStorage {
     if (role === "admin") {
       orderList = await db.select().from(orders).where(ne(orders.status, "pending_payment")).orderBy(desc(orders.createdAt));
     } else if (role === "support") {
-      orderList = await db.select().from(orders).where(and(eq(orders.createdById, userId), ne(orders.status, "pending_payment"))).orderBy(desc(orders.createdAt));
+      // Support can view all orders (all months), like admin. Deleting remains admin-only.
+      orderList = await db.select().from(orders).where(ne(orders.status, "pending_payment")).orderBy(desc(orders.createdAt));
     } else {
       orderList = await db.select().from(orders).where(and(eq(orders.assignedToId, userId), ne(orders.status, "pending_payment"))).orderBy(desc(orders.createdAt));
     }

@@ -429,9 +429,9 @@ export async function registerRoutes(
     
     const sanitizedOrders = orders.map(o => ({
       ...o,
-      totalPrice: user.role === 'admin' ? o.totalPrice : undefined,
-      advanceAmount: (user.role === 'admin' || user.role === 'designer') ? o.advanceAmount : undefined,
-      remainingAmount: (user.role === 'admin' || user.role === 'designer') ? o.remainingAmount : undefined,
+      totalPrice: (user.role === 'admin' || user.role === 'support') ? o.totalPrice : undefined,
+      advanceAmount: (user.role === 'admin' || user.role === 'support' || user.role === 'designer') ? o.advanceAmount : undefined,
+      remainingAmount: (user.role === 'admin' || user.role === 'support' || user.role === 'designer') ? o.remainingAmount : undefined,
     }));
 
     res.json(sanitizedOrders);
@@ -569,15 +569,11 @@ export async function registerRoutes(
     if (user.role === 'designer' && order.assignedToId !== user.id) {
       return res.sendStatus(403);
     }
-    if (user.role === 'support' && order.createdById !== user.id) {
-      return res.sendStatus(403);
-    }
-
     const sanitized = {
       ...order,
-      totalPrice: user.role === 'admin' ? order.totalPrice : undefined,
-      advanceAmount: (user.role === 'admin' || user.role === 'designer') ? order.advanceAmount : undefined,
-      remainingAmount: (user.role === 'admin' || user.role === 'designer') ? order.remainingAmount : undefined,
+      totalPrice: (user.role === 'admin' || user.role === 'support') ? order.totalPrice : undefined,
+      advanceAmount: (user.role === 'admin' || user.role === 'support' || user.role === 'designer') ? order.advanceAmount : undefined,
+      remainingAmount: (user.role === 'admin' || user.role === 'support' || user.role === 'designer') ? order.remainingAmount : undefined,
     };
 
     res.json(sanitized);
@@ -597,15 +593,21 @@ export async function registerRoutes(
 
     const oldAssignedToId = existingOrder.assignedToId;
 
-    if (user.role === 'support' && existingOrder.createdById !== user.id) {
-      return res.sendStatus(403);
-    }
-
-    if (user.role === 'support' && updates.assignedToId) {
+    // Support can edit any order (like admin), but may only *reassign* to one of
+    // their designated designers. Keeping the current assignee is always allowed.
+    if (user.role === 'support' && updates.assignedToId && updates.assignedToId !== existingOrder.assignedToId) {
       const assignments = await storage.getDesignerAssignments(user.id);
       const assignedDesignerIds = assignments.map(a => a.designerUserId);
       if (!assignedDesignerIds.includes(updates.assignedToId)) {
         return res.status(403).json({ message: "You can only assign to your designated designers" });
+      }
+    }
+
+    // Block new assignments to disabled designers (existing assignees may stay).
+    if (updates.assignedToId && updates.assignedToId !== existingOrder.assignedToId) {
+      const targetDesigner = await storage.getUser(updates.assignedToId);
+      if (!targetDesigner || targetDesigner.role !== 'designer' || !targetDesigner.isActive) {
+        return res.status(400).json({ message: "Cannot assign to a disabled or invalid designer" });
       }
     }
 
@@ -645,10 +647,10 @@ export async function registerRoutes(
       }
     }
     
-    // Finance, package, service and payment-status edits are admin-only. Strip these
-    // fields from any non-admin (support) request so they cannot escalate via PATCH.
+    // Finance, package, service and payment-status edits are allowed for admin and
+    // support. Strip these fields from any other role so they cannot escalate.
     // (Designers are already constrained by the strict allowlist above.)
-    if (user.role !== 'admin' && user.role !== 'designer') {
+    if (user.role !== 'admin' && user.role !== 'support' && user.role !== 'designer') {
       for (const f of ['totalPrice', 'discountAmount', 'advanceAmount', 'remainingAmount', 'packageType', 'paymentStatus']) {
         delete updates[f];
       }
@@ -674,7 +676,7 @@ export async function registerRoutes(
 
     // When admin edits finance fields, recompute amounts consistently to avoid NaN/negative values.
     const financeKeys = ['totalPrice', 'discountAmount', 'advanceAmount'];
-    const hasFinanceEdit = user.role === 'admin' && financeKeys.some(k => k in updates);
+    const hasFinanceEdit = (user.role === 'admin' || user.role === 'support') && financeKeys.some(k => k in updates);
     if (hasFinanceEdit) {
       const total = Number(updates.totalPrice ?? existingOrder.totalPrice ?? 0) || 0;
       const discount = Number(updates.discountAmount ?? existingOrder.discountAmount ?? 0) || 0;
@@ -692,7 +694,7 @@ export async function registerRoutes(
     const updatedOrder = await storage.updateOrder(orderId, updates);
 
     // Admin can replace the order's services (add / remove / edit quantity & instructions).
-    if (incomingServices && user.role === 'admin') {
+    if (incomingServices && (user.role === 'admin' || user.role === 'support')) {
       const cleanedServices = incomingServices
         .filter((s: any) => s && s.serviceType)
         .map((s: any) => ({
@@ -903,7 +905,7 @@ export async function registerRoutes(
       const sanitizedOrder = order ? {
         orderNumber: order.orderNumber,
         clientName: order.clientName,
-        totalPrice: user.role === 'admin' ? order.totalPrice : undefined,
+        totalPrice: (user.role === 'admin' || user.role === 'support') ? order.totalPrice : undefined,
       } : null;
       return { ...v, order: sanitizedOrder };
     }));
