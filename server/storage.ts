@@ -214,6 +214,8 @@ export class DatabaseStorage implements IStorage {
   async getStats(): Promise<any> {
     const allOrdersRaw = await db.select().from(orders);
     const allOrders = allOrdersRaw.filter(o => o.advancePaymentStatus === 'approved');
+    const allPaymentVerifications = await db.select().from(paymentVerifications);
+    const allUsers = await db.select().from(users);
     
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -236,6 +238,29 @@ export class DatabaseStorage implements IStorage {
 
     const totalRevenue = allOrders.reduce((acc, curr) => acc + (curr.advanceAmount || 0), 0);
     const pendingPayments = allOrders.reduce((acc, curr) => acc + (curr.remainingAmount || 0), 0);
+    const adminUserIds = new Set(allUsers.filter(user => user.role === "admin").map(user => user.id));
+    const approvedPaymentsToday = allPaymentVerifications.filter(payment =>
+      payment.status === "approved" &&
+      payment.reviewedAt &&
+      new Date(payment.reviewedAt) >= today
+    );
+    const approvedAdvancePaymentsToday = approvedPaymentsToday
+      .filter(payment => payment.paymentType === "advance" || payment.paymentType === "full")
+    const verifiedAdvanceOrderIdsToday = new Set(approvedAdvancePaymentsToday.map(payment => payment.orderId));
+    const verifiedAdvanceToday = approvedAdvancePaymentsToday
+      .reduce((sum, payment) => sum + (payment.amount || 0), 0);
+    const directAdminAdvanceToday = allOrders
+      .filter(order =>
+        adminUserIds.has(order.createdById || -1) &&
+        order.createdAt &&
+        new Date(order.createdAt) >= today &&
+        !verifiedAdvanceOrderIdsToday.has(order.id)
+      )
+      .reduce((sum, order) => sum + (order.advanceAmount || 0), 0);
+    const remainingReceivedToday = approvedPaymentsToday
+      .filter(payment => payment.paymentType === "remaining")
+      .reduce((sum, payment) => sum + (payment.amount || 0), 0);
+    const advanceReceivedToday = verifiedAdvanceToday + directAdminAdvanceToday;
 
     return {
       orders: orderStats,
@@ -243,6 +268,11 @@ export class DatabaseStorage implements IStorage {
         totalRevenue,
         monthlyRevenue: monthlyOrders.reduce((acc, curr) => acc + (curr.advanceAmount || 0), 0),
         pendingPayments,
+        todayCashFlow: {
+          advance: advanceReceivedToday,
+          remaining: remainingReceivedToday,
+          total: advanceReceivedToday + remainingReceivedToday,
+        },
       },
     };
   }

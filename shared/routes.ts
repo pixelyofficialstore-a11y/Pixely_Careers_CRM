@@ -155,6 +155,11 @@ export const api = {
             totalRevenue: z.number().optional(),
             monthlyRevenue: z.number().optional(),
             pendingPayments: z.number().optional(),
+            todayCashFlow: z.object({
+              advance: z.number(),
+              remaining: z.number(),
+              total: z.number(),
+            }).optional(),
           }).optional(),
         }),
       },
