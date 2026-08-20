@@ -4,6 +4,13 @@
 
 PixelCRM is an internal agency management platform for Pixely Careers, designed to streamline the management of orders for ATS CV, LinkedIn optimization, and Cover Letter services. It features role-based access control (Admin, Support, Designer), comprehensive order tracking with payment verification workflow, team management, and business analytics.
 
+## Running on Replit
+
+- Start the app from the **Start application** workflow, which runs `npm run dev` and serves the web preview on port 5000.
+- The app requires a PostgreSQL connection through Replit's managed `DATABASE_URL` (or an optional `SUPABASE_DATABASE_URL` secret). Startup runs the existing database migrations and seed routine.
+- `SESSION_SECRET` is required for session authentication.
+- Cloudinary and Web Push (VAPID) credentials are optional; without them, uploads use database storage and background push notifications are disabled.
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
