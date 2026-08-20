@@ -1,0 +1,25 @@
+# Source-control and workspace metadata do not belong in the deployment image.
+.git
+.github
+.agents
+.local
+.cache
+.replit
+replit.md
+
+# Dependencies and build output are recreated by the Dockerfile.
+node_modules
+dist
+*.log
+
+# Keep user avatars for existing profile-image URLs. Other local media is not
+# used by the deployment and would otherwise make every Railway upload large.
+uploads/*
+!uploads/avatars/
+!uploads/avatars/**
+
+# Vite imports these two files while building the frontend. Other attached
+# images are workspace uploads and are not needed in the image.
+attached_assets/*
+!attached_assets/rr__1500_x_500_px_-removebg-preview_1769447899946.png
+!attached_assets/rr__1500_x_500_px_-removebg-preview_1769451275347.png
