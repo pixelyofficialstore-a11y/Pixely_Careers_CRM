@@ -1,0 +1,138 @@
+Important Supabase Database Instructions
+
+I have added the Supabase URL and connected the database.
+
+IMPORTANT:
+Do not modify, remove, rewrite, or delete any existing database structure, code, tables, columns, or existing data.
+
+Do NOT:
+
+Delete any existing columns
+Rename any existing columns
+Remove any existing functions
+Change existing workflows
+Break existing integrations
+Rewrite existing database logic
+
+The only required action is:
+
+Add New Required Columns / Fields According to Implemented CRM Fixes
+
+Only create additional columns, tables, or relationships that are required for the new features.
+
+Required additions:
+
+1. Order Creator Tracking
+
+Add a new field in Orders table:
+
+created_by
+
+Purpose:
+Store which Admin or Support member created the order.
+
+Example:
+
+Admin name/user ID
+Support member name/user ID
+2. Client Type
+
+Add a new field in Orders table:
+
+client_type
+
+Values:
+
+National
+International
+
+Purpose:
+Different pricing and reporting requirements.
+
+3. Package + Add-ons Structure
+
+Do not replace the current package system.
+
+Extend it to support:
+
+Main Package:
+
+ATS Career Package
+International Career Pro
+Executive Career Branding
+
+Add-ons:
+Allow multiple add-ons per order.
+
+Examples:
+
+Additional CV
+Cover Letter
+LinkedIn Optimization
+Indeed Optimization
+Naukri Gulf Optimization
+Bio Statement
+Digital Contact Card
+
+Use a proper relationship/table if required, but keep existing package data intact.
+
+4. Payment Tracking For Cash Flow
+
+Add only required fields to track:
+
+Payment received date
+Payment approved date
+Payment amount
+Payment type/source
+
+Required for:
+
+Today's Cash Flow dashboard calculation.
+
+Sources:
+
+New order payment
+Remaining payment
+Designer payment approval
+Support payment approval
+Admin-created order payments
+5. Notification System Fields
+
+Do not remove existing notification data.
+
+Only add required fields if missing:
+
+User role
+Notification recipient
+Notification type
+Related order ID
+Read status
+
+Purpose:
+Enable role-based notifications:
+
+Designer:
+
+Assigned orders
+Payment approval
+
+Support:
+
+Own payment approval only
+
+Admin:
+
+New orders
+Payment requests
+Important activities
+Database Safety Rule
+
+Before making any changes:
+
+Review current Supabase schema.
+Identify existing tables and columns.
+Add only missing fields.
+Preserve all existing data.
+Do not run destructive migrations.
+
+The goal is to extend the existing CRM system, not rebuild or modify the current structure.
