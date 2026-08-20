@@ -12,12 +12,6 @@ node_modules
 dist
 *.log
 
-# Keep user avatars for existing profile-image URLs. Other local media is not
-# used by the deployment and would otherwise make every Railway upload large.
-uploads/*
-!uploads/avatars/
-!uploads/avatars/**
-
 # Vite imports these two files while building the frontend. Other attached
 # images are workspace uploads and are not needed in the image.
 attached_assets/*
