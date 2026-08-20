@@ -440,31 +440,33 @@ export default function OrdersPage() {
     const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth();
     const marginX = 32;
+    const contentWidth = pageWidth - marginX * 2;
 
     const BRAND: [number, number, number] = [37, 99, 235];
+    const BRAND_DARK: [number, number, number] = [22, 60, 140];
     const INK: [number, number, number] = [30, 41, 59];
     const MUTED: [number, number, number] = [100, 116, 139];
     const LINE: [number, number, number] = [226, 232, 240];
+    const SOFT_BLUE: [number, number, number] = [239, 246, 255];
 
     // ---- Header ----
+    doc.setFillColor(...SOFT_BLUE);
+    doc.roundedRect(marginX, 24, contentWidth, 64, 8, 8, "F");
+    doc.setFillColor(...BRAND);
+    doc.roundedRect(marginX, 24, 7, 64, 3, 3, "F");
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
+    doc.setFontSize(19);
     doc.setTextColor(...INK);
-    doc.text("Pixely Careers Orders Report", marginX, 42);
+    doc.text("Pixely Careers", marginX + 20, 50);
 
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
-    doc.setTextColor(...BRAND);
-    doc.text(reportSubtitle, marginX, 60);
+    doc.setFontSize(10);
+    doc.setTextColor(...BRAND_DARK);
+    doc.text(`Orders Report  •  ${reportSubtitle}`, marginX + 20, 68);
 
-    doc.setFontSize(9);
+    doc.setFontSize(8.5);
     doc.setTextColor(...MUTED);
-    doc.text(`Generated: ${format(new Date(), "MMMM dd, yyyy · h:mm a")}`, marginX, 74);
-
-    // thin separator line under header
-    doc.setDrawColor(...LINE);
-    doc.setLineWidth(0.8);
-    doc.line(marginX, 84, pageWidth - marginX, 84);
+    doc.text(`Generated ${format(new Date(), "MMM dd, yyyy · h:mm a")}`, pageWidth - marginX, 68, { align: "right" });
 
     // ---- Summary stats ----
     const approvedExportOrders = exportOrders.filter(o => o.advancePaymentStatus === 'approved');
@@ -484,25 +486,27 @@ export default function OrdersPage() {
       { label: "Pending Orders", value: String(pending) },
     ];
 
-    const statCols = 3;
-    const statColW = (pageWidth - marginX * 2) / statCols;
-    const statRowH = 34;
-    const statTop = 104;
+    const statCols = stats.length;
+    const statColW = contentWidth / statCols;
+    const statTop = 112;
     stats.forEach((stat, i) => {
-      const col = i % statCols;
-      const row = Math.floor(i / statCols);
-      const x = marginX + col * statColW;
-      const y = statTop + row * statRowH;
+      const x = marginX + i * statColW;
+      const y = statTop;
+      if (i > 0) {
+        doc.setDrawColor(...LINE);
+        doc.setLineWidth(0.6);
+        doc.line(x - 12, y - 9, x - 12, y + 25);
+      }
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(8);
+      doc.setFontSize(7.5);
       doc.setTextColor(...MUTED);
       doc.text(stat.label.toUpperCase(), x, y);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(13);
+      doc.setFontSize(12);
       doc.setTextColor(...INK);
       doc.text(stat.value, x, y + 15);
     });
-    const tableStartY = statTop + Math.ceil(stats.length / statCols) * statRowH + 6;
+    const tableStartY = statTop + 42;
 
     // ---- Proof lookup (order id -> has screenshot) ----
     const proofOrderIds = new Set(
@@ -513,10 +517,14 @@ export default function OrdersPage() {
 
     // ---- Table ----
     const tableData = exportOrders.length > 0 ? exportOrders.map(order => {
-      const statusLabel = order.status ? order.status.charAt(0).toUpperCase() + order.status.slice(1) : "Not Specified";
+      const statusLabel = order.status
+        ? order.status.replace(/_/g, " ").replace(/\b\w/g, char => char.toUpperCase())
+        : "Not Specified";
       const paymentLabel = order.paymentStatus === "paid"
         ? "Paid"
-        : (order.paymentStatus ? order.paymentStatus.charAt(0).toUpperCase() + order.paymentStatus.slice(1) : "Pending");
+        : (order.paymentStatus
+          ? order.paymentStatus.replace(/_/g, " ").replace(/\b\w/g, char => char.toUpperCase())
+          : "Pending");
 
       return [
         order.orderNumber || "Not Specified",
@@ -535,50 +543,98 @@ export default function OrdersPage() {
         proofOrderIds.has(order.id) ? "Uploaded" : "No Proof Uploaded",
         order.notes && order.notes.trim() ? order.notes.trim() : "Not Specified",
       ];
-    }) : [["No orders found.", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]];
+    }) : [["No orders found.", "", "", "", "", "", "", "", "", "", "", "", "", ""]];
 
+    const tableBaseStyles = {
+      font: "helvetica",
+      fontSize: 7.5,
+      cellPadding: 4,
+      overflow: "linebreak" as const,
+      valign: "middle" as const,
+      textColor: INK,
+      lineColor: LINE,
+      lineWidth: 0.35,
+    };
+    const tableHeadStyles = {
+      fillColor: BRAND,
+      textColor: [255, 255, 255] as [number, number, number],
+      fontStyle: "bold" as const,
+      fontSize: 7.5,
+      halign: "left" as const,
+      cellPadding: 5,
+      valign: "middle" as const,
+    };
+    const tableBodyStyles = { fillColor: [255, 255, 255] as [number, number, number] };
+    const tableAlternateStyles = { fillColor: [248, 250, 252] as [number, number, number] };
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(...INK);
+    doc.text("Order details", marginX, tableStartY);
     autoTable(doc, {
-      startY: tableStartY,
+      startY: tableStartY + 10,
       head: [[
-        "Order ID", "Created By", "Date Placed", "Client Name", "Client Type", "Phone", "Service / Package",
-        "Designer", "Status", "Payment", "Total Bill", "Advance Paid",
-        "Remaining", "Payment Proof", "Notes / Remarks"
+        "Order ID", "Created By", "Date Placed", "Client Name", "Client Type",
+        "Phone", "Service / Package", "Designer", "Status",
       ]],
-      body: tableData,
-      theme: "striped",
-      styles: {
-        font: "helvetica",
-        fontSize: 8,
-        cellPadding: 5,
-        overflow: "linebreak",
-        valign: "middle",
-        textColor: INK,
-        lineWidth: 0,
-      },
-      headStyles: {
-        fillColor: BRAND,
-        textColor: [255, 255, 255],
-        fontStyle: "bold",
-        fontSize: 8,
-        halign: "left",
-        cellPadding: 6,
-      },
-      alternateRowStyles: { fillColor: [246, 248, 251] },
+      body: tableData.map(row => row.slice(0, 9)),
+      theme: "grid",
+      styles: tableBaseStyles,
+      headStyles: tableHeadStyles,
+      bodyStyles: tableBodyStyles,
+      alternateRowStyles: tableAlternateStyles,
       columnStyles: {
-        1: { cellWidth: 76 },
-        3: { cellWidth: 82 },
-        4: { cellWidth: 58 },
-        5: { cellWidth: 74 },
-        6: { cellWidth: 100 },
-        7: { cellWidth: 66 },
-        10: { halign: "right", cellWidth: 56 },
-        11: { halign: "right", cellWidth: 56 },
-        12: { halign: "right", cellWidth: 56 },
-        13: { cellWidth: 56, halign: "center" },
-        14: { cellWidth: 92 },
+        0: { cellWidth: 70 },
+        1: { cellWidth: 92 },
+        2: { cellWidth: 70 },
+        3: { cellWidth: 94 },
+        4: { cellWidth: 65 },
+        5: { cellWidth: 76 },
+        6: { cellWidth: 132 },
+        7: { cellWidth: 82 },
+        8: { cellWidth: 64 },
       },
       margin: { left: marginX, right: marginX },
       showHead: "everyPage",
+    });
+
+    const detailsEndY = (doc as any).lastAutoTable?.finalY || tableStartY + 40;
+    const financeStartY = detailsEndY + 22;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(...INK);
+    doc.text("Payment and notes", marginX, financeStartY);
+    autoTable(doc, {
+      startY: financeStartY + 10,
+      head: [["Order ID", "Payment", "Total Bill", "Advance Paid", "Remaining", "Payment Proof", "Notes / Remarks"]],
+      body: tableData.map(row => [row[0], row[9], row[10], row[11], row[12], row[13], row[14]]),
+      theme: "grid",
+      styles: tableBaseStyles,
+      headStyles: tableHeadStyles,
+      bodyStyles: tableBodyStyles,
+      alternateRowStyles: tableAlternateStyles,
+      columnStyles: {
+        0: { cellWidth: 80 },
+        1: { cellWidth: 80 },
+        2: { cellWidth: 88, halign: "right" },
+        3: { cellWidth: 88, halign: "right" },
+        4: { cellWidth: 88, halign: "right" },
+        5: { cellWidth: 95, halign: "center" },
+        6: { cellWidth: 240 },
+      },
+      margin: { left: marginX, right: marginX },
+      showHead: "everyPage",
+      didDrawPage: () => {
+        const pageNumber = doc.getNumberOfPages();
+        doc.setDrawColor(...LINE);
+        doc.setLineWidth(0.5);
+        doc.line(marginX, doc.internal.pageSize.getHeight() - 28, pageWidth - marginX, doc.internal.pageSize.getHeight() - 28);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor(...MUTED);
+        doc.text("Pixely Careers • Confidential order report", marginX, doc.internal.pageSize.getHeight() - 14);
+        doc.text(`Page ${pageNumber}`, pageWidth - marginX, doc.internal.pageSize.getHeight() - 14, { align: "right" });
+      },
     });
 
     const fileSuffix = isSearchActive
@@ -1418,7 +1474,7 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
     setServices((prev) => {
       const nextNumber = prev.reduce((m, s) => Math.max(m, s.serviceNumber), 0) + 1;
       const newService = { id: serviceIdRef.current++, serviceNumber: nextNumber, serviceType: "", quantity: 1, instructions: "" };
-      return [...prev, newService];
+      return [newService, ...prev];
     });
     requestAnimationFrame(() => {
       customServicesTopRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -1773,7 +1829,7 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
     setServices((prev) => {
       const nextNumber = prev.reduce((m, s) => Math.max(m, s.serviceNumber), 0) + 1;
       const newService = { id: serviceIdRef.current++, serviceNumber: nextNumber, serviceType: "", quantity: 1, instructions: "" };
-      return [...prev, newService];
+      return [newService, ...prev];
     });
     requestAnimationFrame(() => {
       customServicesTopRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
