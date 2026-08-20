@@ -25,6 +25,14 @@ interface User {
   isActive: boolean;
 }
 
+interface DashboardPaymentVerification {
+  amount: number;
+  paymentType: "advance" | "full" | "remaining";
+  status: "pending_confirmation" | "approved" | "disapproved";
+  reviewedAt: string | null;
+  submittedBy?: { id: number; name: string; role: string } | null;
+}
+
 function StatCard({ 
   title, 
   value, 
@@ -78,6 +86,69 @@ function StatCard({
   );
 }
 
+function CashFlowCard({
+  total,
+  newOrders,
+  remainingPayments,
+  designerPayments,
+  supportPayments,
+  adminCreatedOrders,
+}: {
+  total: number;
+  newOrders: number;
+  remainingPayments: number;
+  designerPayments: number;
+  supportPayments: number;
+  adminCreatedOrders: number;
+}) {
+  const formatAmount = (amount: number) => `₨${Math.round(amount / 100).toLocaleString()}`;
+
+  return (
+    <div className="glass-panel p-6 rounded-2xl" data-testid="stat-today-cash-flow">
+      <div className="flex items-start justify-between mb-5">
+        <div className="flex items-center gap-3">
+          <div className="p-3 rounded-xl bg-green-500/10 text-green-500">
+            <DollarSign className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold font-display text-white">Today's Cash Flow</h3>
+            <p className="text-xs text-slate-500">Approved and received today</p>
+          </div>
+        </div>
+        <span className="text-xl font-bold text-green-400">{formatAmount(total)}</span>
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Payment Sources</p>
+        <div className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
+          <span className="text-sm text-slate-300">New Orders</span>
+          <span className="text-sm font-semibold text-white">+{formatAmount(newOrders)}</span>
+        </div>
+        <div className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
+          <span className="text-sm text-slate-300">Remaining Payments</span>
+          <span className="text-sm font-semibold text-white">+{formatAmount(remainingPayments)}</span>
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-2 border-t border-slate-800 pt-4">
+        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Included by requester</p>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-slate-400">Designer Payments</span>
+          <span className="text-slate-300">+{formatAmount(designerPayments)}</span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-slate-400">Support Payments</span>
+          <span className="text-slate-300">+{formatAmount(supportPayments)}</span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-slate-400">Admin Created Orders</span>
+          <span className="text-slate-300">+{formatAmount(adminCreatedOrders)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const { user } = useAuth();
   
@@ -90,6 +161,13 @@ export default function DashboardPage() {
   const { data: teamMembers } = useQuery<User[]>({
     queryKey: ["/api/users"],
     staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: paymentVerifications = [] } = useQuery<DashboardPaymentVerification[]>({
+    queryKey: ["/api/payment-verifications"],
+    enabled: user?.role === "admin",
+    refetchInterval: 30 * 1000,
+    staleTime: 15 * 1000,
   });
 
   if (isLoading) return <DashboardSkeleton />;
@@ -136,6 +214,39 @@ export default function DashboardPage() {
   const monthlyRemaining = monthlyApprovedOrders
     .filter(o => o.status !== 'canceled')
     .reduce((acc, o) => acc + (o.remainingAmount || 0), 0);
+
+  const adminUserIds = new Set(
+    (teamMembers || []).filter(member => member.role === "admin").map(member => member.id)
+  );
+  const approvedPaymentsToday = paymentVerifications.filter(payment =>
+    payment.status === "approved" &&
+    Boolean(payment.reviewedAt) &&
+    isToday(new Date(payment.reviewedAt!))
+  );
+  const approvedVerificationCashFlow = approvedPaymentsToday.reduce(
+    (sum, payment) => sum + (Number(payment.amount) || 0),
+    0
+  );
+  const adminCreatedOrderCashFlow = approvedOrders
+    .filter(order =>
+      adminUserIds.has(order.createdById || -1) &&
+      Boolean(order.createdAt) &&
+      isToday(new Date(order.createdAt!))
+    )
+    .reduce((sum, order) => sum + (Number(order.advanceAmount) || 0), 0);
+  const todayCashFlow = approvedVerificationCashFlow + adminCreatedOrderCashFlow;
+  const newOrderCashFlow = approvedPaymentsToday
+    .filter(payment => payment.paymentType === "advance" || payment.paymentType === "full")
+    .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0) + adminCreatedOrderCashFlow;
+  const remainingPaymentCashFlow = approvedPaymentsToday
+    .filter(payment => payment.paymentType === "remaining")
+    .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
+  const designerPaymentCashFlow = approvedPaymentsToday
+    .filter(payment => payment.submittedBy?.role === "designer")
+    .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
+  const supportPaymentCashFlow = approvedPaymentsToday
+    .filter(payment => payment.submittedBy?.role === "support")
+    .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
 
   // Designer Dashboard
   if (isDesigner) {
@@ -353,6 +464,14 @@ export default function DashboardPage() {
 
       {/* Finance Section - Admin Only */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <CashFlowCard
+          total={todayCashFlow}
+          newOrders={newOrderCashFlow}
+          remainingPayments={remainingPaymentCashFlow}
+          designerPayments={designerPaymentCashFlow}
+          supportPayments={supportPaymentCashFlow}
+          adminCreatedOrders={adminCreatedOrderCashFlow}
+        />
         <div className="glass-panel p-6 rounded-2xl">
           <h3 className="text-lg font-bold font-display text-white mb-6">Financial Summary</h3>
           <div className="space-y-4">

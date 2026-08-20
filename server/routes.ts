@@ -69,8 +69,14 @@ async function sendWebPushToUser(userId: number, title: string, body: string, pr
 
 async function notifyUser(
   userId: number, type: string, title: string, message: string,
-  priority: string, relatedId?: number, relatedType?: string
+  priority: string, relatedId?: number, relatedType?: string,
+  allowedRoles?: string[]
 ) {
+  if (allowedRoles?.length) {
+    const recipient = await storage.getUser(userId);
+    if (!recipient || !allowedRoles.includes(recipient.role)) return null;
+  }
+
   const notification = await storage.createNotification(userId, type, title, message, priority, relatedId, relatedType);
   sendWebPushToUser(userId, title, message, priority).catch(() => {});
   emitNotification(userId, { event: "notification", id: notification.id, count: 1 });
@@ -80,14 +86,24 @@ async function notifyUser(
 // Notify several unique recipients at once (skips falsy/duplicate ids and any excluded ids).
 async function notifyMany(
   userIds: (number | null | undefined)[], type: string, title: string, message: string,
-  priority: string, relatedId?: number, relatedType?: string, exclude: (number | null | undefined)[] = []
+  priority: string, relatedId?: number, relatedType?: string,
+  exclude: (number | null | undefined)[] = [], allowedRoles: string[] = []
 ) {
   const excludeSet = new Set(exclude.filter((id): id is number => typeof id === "number"));
-  const recipients = Array.from(
+  const candidateRecipients = Array.from(
     new Set(userIds.filter((id): id is number => typeof id === "number" && !excludeSet.has(id)))
   );
-  for (const id of recipients) {
-    await notifyUser(id, type, title, message, priority, relatedId, relatedType);
+  const allowedRecipientIds = allowedRoles.length
+    ? new Set(
+        (await storage.getUsers())
+          .filter(user => allowedRoles.includes(user.role))
+          .map(user => user.id)
+      )
+    : null;
+
+  for (const id of candidateRecipients) {
+    if (allowedRecipientIds && !allowedRecipientIds.has(id)) continue;
+    await notifyUser(id, type, title, message, priority, relatedId, relatedType, allowedRoles);
   }
 }
 
@@ -308,7 +324,8 @@ export async function registerRoutes(
             `${targetName}'s CRM access was enabled by ${actorName}.`,
             "update",
             userId, "user",
-            [actor.id]
+            [actor.id],
+            ["admin"]
           );
         } else {
           await notifyMany(
@@ -317,7 +334,8 @@ export async function registerRoutes(
             `${targetName}'s CRM access was disabled by ${actorName}.`,
             "action_required",
             userId, "user",
-            [actor.id]
+            [actor.id],
+            ["admin"]
           );
         }
       }
@@ -463,6 +481,7 @@ export async function registerRoutes(
         clientName: z.string().min(1, "Client name is required"),
         clientPhone: z.string().min(1, "Phone number is required"),
         clientEmail: z.string().email().optional().nullable(),
+        clientType: z.enum(["national", "international"]),
         assignedToId: z.number().int().positive().optional().nullable(),
         paymentStatus: z.enum(["pending", "paid"]).optional(),
         totalPrice: z.number().int().optional(),
@@ -510,7 +529,8 @@ export async function registerRoutes(
           `New order of ${fmtRs(totalPrice)} placed by ${user.name} for ${orderData.clientName}. Order ${orderRef({ orderNumber })}.`,
           "update",
           order.id, "order",
-          [user.id]
+           [user.id],
+           ["admin"]
         );
 
         // Notify assigned designer (never notify the actor about their own assignment)
@@ -520,7 +540,8 @@ export async function registerRoutes(
             "Order Assigned",
             `${orderRef({ orderNumber })} for ${orderData.clientName} has been assigned to you. You can start working on it.`,
             "action_required",
-            order.id, "order"
+            order.id, "order",
+            ["designer"]
           );
         }
 
@@ -549,7 +570,9 @@ export async function registerRoutes(
         "Payment Verification Required",
         `${fmtRs(totalPrice)} order placed by ${user.name} for ${orderData.clientName}. Verify the payment before approval.`,
         "action_required",
-        order.id, "order"
+         order.id, "order",
+         [],
+         ["admin"]
       );
 
       res.status(201).json(order);
@@ -587,19 +610,45 @@ export async function registerRoutes(
     const existingOrder = await storage.getOrder(orderId);
     if (!existingOrder) return res.sendStatus(404);
 
-    // Services are stored in a separate table; pull them out of the column updates.
+    if ("clientType" in updates && !["national", "international"].includes(updates.clientType)) {
+      return res.status(400).json({ message: "Client type must be national or international" });
+    }
+
+    // Services are stored in a separate table; preserve their presence for role checks.
+    const hasIncomingServices = 'services' in updates;
     const incomingServices = Array.isArray(updates.services) ? updates.services : undefined;
     delete updates.services;
 
     const oldAssignedToId = existingOrder.assignedToId;
 
-    // Support can edit any order (like admin), but may only *reassign* to one of
-    // their designated designers. Keeping the current assignee is always allowed.
-    if (user.role === 'support' && updates.assignedToId && updates.assignedToId !== existingOrder.assignedToId) {
-      const assignments = await storage.getDesignerAssignments(user.id);
-      const assignedDesignerIds = assignments.map(a => a.designerUserId);
-      if (!assignedDesignerIds.includes(updates.assignedToId)) {
-        return res.status(403).json({ message: "You can only assign to your designated designers" });
+    if (user.role === 'support') {
+      // Support can create and monitor orders, but cannot change client, package,
+      // pricing, payment, or other order-detail fields after creation.
+      const allowedUpdates = ['status', 'assignedToId'];
+      const keys = Object.keys(updates);
+      if (hasIncomingServices || keys.some(key => !allowedUpdates.includes(key))) {
+        return res.status(403).json({ message: "Support can only update operational order status and designer assignment" });
+      }
+
+      if (updates.status === 'canceled') {
+        return res.status(403).json({ message: "Only admins can cancel orders" });
+      }
+
+      if (updates.status && !['new', 'working', 'ready', 'delivered'].includes(updates.status)) {
+        return res.status(400).json({ message: "Invalid operational order status" });
+      }
+
+      if (existingOrder.status === 'canceled' && updates.status) {
+        return res.status(403).json({ message: "Support cannot change a canceled order" });
+      }
+
+      // Support may only reassign to one of their designated designers.
+      if (updates.assignedToId && updates.assignedToId !== existingOrder.assignedToId) {
+        const assignments = await storage.getDesignerAssignments(user.id);
+        const assignedDesignerIds = assignments.map(a => a.designerUserId);
+        if (!assignedDesignerIds.includes(updates.assignedToId)) {
+          return res.status(403).json({ message: "You can only assign to your designated designers" });
+        }
       }
     }
 
@@ -614,12 +663,16 @@ export async function registerRoutes(
     if (user.role === 'designer') {
       if (existingOrder.assignedToId !== user.id) return res.sendStatus(403);
       
-      const allowedUpdates = ['status', 'paymentStatus'];
+      const allowedUpdates = ['status'];
       const keys = Object.keys(updates);
-      if (keys.some(k => !allowedUpdates.includes(k))) return res.sendStatus(403);
+      if (hasIncomingServices || keys.some(k => !allowedUpdates.includes(k))) return res.sendStatus(403);
       
       if (updates.status && updates.status === 'canceled') {
         return res.status(403).json({ message: "Designers cannot cancel orders" });
+      }
+
+      if (updates.status && !['new', 'working', 'ready', 'delivered'].includes(updates.status)) {
+        return res.status(400).json({ message: "Invalid production status" });
       }
 
       // Anti-gaming: once delivered, status is permanently locked
@@ -647,15 +700,6 @@ export async function registerRoutes(
       }
     }
     
-    // Finance, package, service and payment-status edits are allowed for admin and
-    // support. Strip these fields from any other role so they cannot escalate.
-    // (Designers are already constrained by the strict allowlist above.)
-    if (user.role !== 'admin' && user.role !== 'support' && user.role !== 'designer') {
-      for (const f of ['totalPrice', 'discountAmount', 'advanceAmount', 'remainingAmount', 'packageType', 'paymentStatus']) {
-        delete updates[f];
-      }
-    }
-
     if (updates.status === 'ready' && existingOrder.status !== 'ready') {
       updates.readyDate = new Date();
     }
@@ -676,7 +720,7 @@ export async function registerRoutes(
 
     // When admin edits finance fields, recompute amounts consistently to avoid NaN/negative values.
     const financeKeys = ['totalPrice', 'discountAmount', 'advanceAmount'];
-    const hasFinanceEdit = (user.role === 'admin' || user.role === 'support') && financeKeys.some(k => k in updates);
+    const hasFinanceEdit = user.role === 'admin' && financeKeys.some(k => k in updates);
     if (hasFinanceEdit) {
       const total = Number(updates.totalPrice ?? existingOrder.totalPrice ?? 0) || 0;
       const discount = Number(updates.discountAmount ?? existingOrder.discountAmount ?? 0) || 0;
@@ -693,8 +737,8 @@ export async function registerRoutes(
 
     const updatedOrder = await storage.updateOrder(orderId, updates);
 
-    // Admin can replace the order's services (add / remove / edit quantity & instructions).
-    if (incomingServices && (user.role === 'admin' || user.role === 'support')) {
+    // Only admins can replace an order's services (add / remove / edit quantity & instructions).
+    if (incomingServices && user.role === 'admin') {
       const cleanedServices = incomingServices
         .filter((s: any) => s && s.serviceType)
         .map((s: any) => ({
@@ -714,24 +758,26 @@ export async function registerRoutes(
 
       if ('assignedToId' in updates && updates.assignedToId !== oldAssignedToId) {
         await notifyMany(
-          [...editAdmins.map(a => a.id), oldAssignedToId, updates.assignedToId], "assignment",
+          [...editAdmins.map(a => a.id), updates.assignedToId], "assignment",
           "Order Reassigned",
           `${orderRef(existingOrder)} for ${clientName} was reassigned from ${nameOf(oldAssignedToId)} to ${nameOf(updates.assignedToId)} by ${user.name}.`,
           "update",
           orderId, "order",
-          [user.id]
+          [user.id],
+          ["admin", "designer"]
         );
       }
 
       const packageChanged = ('packageType' in updates && updates.packageType !== existingOrder.packageType);
       if (incomingServices || packageChanged) {
         await notifyMany(
-          [...editAdmins.map(a => a.id), updatedOrder.assignedToId], "order",
+          editAdmins.map(a => a.id), "order",
           "Order Package Updated",
           `${orderRef(existingOrder)} package/services for ${clientName} were updated by ${user.name}.`,
           "update",
           orderId, "order",
-          [user.id]
+          [user.id],
+          ["admin"]
         );
       }
 
@@ -743,7 +789,8 @@ export async function registerRoutes(
           `${orderRef(existingOrder)} bill for ${clientName} was updated by ${user.name}. New payable amount: ${fmtRs(finalPayable)}.`,
           "update",
           orderId, "order",
-          [user.id]
+          [user.id],
+          ["admin"]
         );
       }
     }
@@ -751,43 +798,20 @@ export async function registerRoutes(
     // Notify relevant parties when the order status actually changes.
     if (updates.status && updates.status !== existingOrder.status) {
       const statusAdmins = await storage.getAdmins();
-      const recipients = [
-        ...statusAdmins.map(a => a.id),
-        existingOrder.assignedToId,
-        existingOrder.createdById,
-      ];
+      const recipients = statusAdmins.map(a => a.id);
       const clientName = existingOrder.clientName || "this client";
 
-      if (updates.status === 'delivered') {
-        await notifyMany(
-          recipients, "order",
-          "Order Delivered",
-          `${orderRef(existingOrder)} for ${clientName} was marked as delivered by ${user.name}.`,
-          "confirmation",
-          orderId, "order",
-          [user.id]
-        );
-      } else {
+      // Delivered is intentionally silent; the delivery state is visible in
+      // Orders and does not require a separate notification.
+      if (updates.status !== 'delivered') {
         await notifyMany(
           recipients, "order",
           "Order Status Updated",
           `${orderRef(existingOrder)} for ${clientName} changed from ${statusLabel(existingOrder.status)} to ${statusLabel(updates.status)} by ${user.name}.`,
           "update",
           orderId, "order",
-          [user.id]
-        );
-      }
-
-      // Flag any outstanding balance when an order reaches ready/delivered.
-      const remaining = updatedOrder.remainingAmount || 0;
-      if ((updates.status === 'ready' || updates.status === 'delivered') && remaining > 0) {
-        await notifyMany(
-          statusAdmins.map(a => a.id), "payment",
-          "Remaining Payment Pending",
-          `${clientName} still has ${fmtRs(remaining)} remaining for ${orderRef(existingOrder)}.`,
-          "action_required",
-          orderId, "order",
-          [user.id]
+          [user.id],
+          ["admin"]
         );
       }
     }
@@ -815,7 +839,8 @@ export async function registerRoutes(
       `${orderLabel} for ${clientName} was permanently deleted by ${user.name}.`,
       "action_required",
       undefined, undefined,
-      [user.id]
+      [user.id],
+      ["admin"]
     );
 
     res.json({ success: true });
@@ -1028,7 +1053,8 @@ export async function registerRoutes(
           "action_required",
           verification.id,
           "payment_verification",
-          [user.id]
+          [user.id],
+          ["admin"]
         );
       }
       
@@ -1087,7 +1113,8 @@ export async function registerRoutes(
           "Order Assigned",
           `${orderRef({ orderNumber })} for ${order.clientName} is approved and assigned to you. You can start working on it.`,
           "action_required",
-          order.id, "order"
+          order.id, "order",
+          ["designer"]
         );
       }
 
@@ -1100,7 +1127,16 @@ export async function registerRoutes(
         `${fmtRs(verification.amount)} advance payment for ${orderRef({ orderNumber })} (${order.clientName}) was approved by ${user.name}.${advBalanceNote}`,
         "confirmation",
         order.id, "order",
-        [user.id]
+        [user.id],
+        ["admin"]
+      );
+      await notifyUser(
+        verification.submittedById, "payment",
+        "Payment Approved",
+        `Your advance payment request for ${orderRef({ orderNumber })} (${order.clientName}) was approved.`,
+        "confirmation",
+        order.id, "order",
+        ["support"]
       );
     } else if (verification.paymentType === 'full') {
       const orderNumber = await storage.generateOrderNumber();
@@ -1122,7 +1158,8 @@ export async function registerRoutes(
           "Order Assigned",
           `${orderRef({ orderNumber })} for ${order.clientName} is approved and assigned to you. You can start working on it.`,
           "action_required",
-          order.id, "order"
+          order.id, "order",
+          ["designer"]
         );
       }
 
@@ -1134,7 +1171,16 @@ export async function registerRoutes(
         `${fmtRs(verification.amount)} full payment for ${orderRef({ orderNumber })} (${order.clientName}) was approved by ${user.name}. Order fully paid.`,
         "confirmation",
         order.id, "order",
-        [user.id]
+        [user.id],
+        ["admin"]
+      );
+      await notifyUser(
+        verification.submittedById, "payment",
+        "Payment Approved",
+        `Your full payment request for ${orderRef({ orderNumber })} (${order.clientName}) was approved.`,
+        "confirmation",
+        order.id, "order",
+        ["support"]
       );
     } else if (verification.paymentType === 'remaining') {
       const newRemaining = Math.max(0, currentRemaining - verification.amount);
@@ -1147,30 +1193,21 @@ export async function registerRoutes(
         ...(isFullyPaid ? { status: "delivered", deliveredAt: new Date(), paymentDate: new Date() } : {}),
       });
 
-      // Notify other admins and the assigned designer that the remaining payment cleared.
+      // Notify admins plus the assigned designer and the payment requester.
       const remainingAdmins = await storage.getAdmins();
       const balanceNote = isFullyPaid
         ? "Order fully paid."
         : `${fmtRs(newRemaining)} still remaining.`;
       await notifyMany(
-        [...remainingAdmins.map(a => a.id), order.assignedToId], "payment",
+        [...remainingAdmins.map(a => a.id), order.assignedToId, verification.submittedById], "payment",
         "Payment Approved",
         `${fmtRs(verification.amount)} remaining payment for ${orderRef(order)} (${order.clientName}) was approved by ${user.name}. ${balanceNote}`,
         "confirmation",
         order.id, "order",
-        [user.id]
+        [user.id],
+        ["admin", "designer", "support"]
       );
 
-      if (isFullyPaid) {
-        await notifyMany(
-          [...remainingAdmins.map(a => a.id), order.assignedToId], "order",
-          "Order Delivered",
-          `${orderRef(order)} for ${order.clientName} is fully paid and marked as delivered by ${user.name}.`,
-          "confirmation",
-          order.id, "order",
-          [user.id]
-        );
-      }
     }
     
     const updatedVerification = await storage.getPaymentVerifications("admin", 0);
@@ -1209,17 +1246,18 @@ export async function registerRoutes(
       }
     }
 
-    // Notify the person who submitted the payment and other admins that it was rejected.
+    // Notify only the payment requester and admins that it was rejected.
     if (rejectedOrder) {
       const typeLabel = verification.paymentType === 'remaining' ? 'remaining' : verification.paymentType;
       const rejectAdmins = await storage.getAdmins();
       await notifyMany(
-        [...rejectAdmins.map(a => a.id), verification.submittedById, rejectedOrder.createdById], "payment",
+        [...rejectAdmins.map(a => a.id), verification.submittedById], "payment",
         "Payment Rejected",
         `${fmtRs(verification.amount)} ${typeLabel} payment for ${orderRef(rejectedOrder)} (${rejectedOrder.clientName}) was rejected by ${user.name}. Please review the payment details.`,
         "action_required",
         rejectedOrder.id, "order",
-        [user.id]
+        [user.id],
+        ["admin", "designer", "support"]
       );
     }
     
@@ -1427,11 +1465,13 @@ async function seedDatabase() {
   if (existingServices.length === 0) {
     const defaultServices = [
       "ATS CV",
-      "Professional CV",
-      "Europass CV",
-      "LinkedIn Profile",
-      "Cover Letter (Professional)",
-      "Cover Letter (Europass)",
+      "Additional CV",
+      "Cover Letter",
+      "LinkedIn Optimization",
+      "Indeed Optimization",
+      "Naukri Gulf Optimization",
+      "Bio Statement",
+      "Digital Contact Card",
     ];
     for (let i = 0; i < defaultServices.length; i++) {
       await storage.createServiceCatalogItem({ name: defaultServices[i], isActive: true, sortOrder: i });
@@ -1441,9 +1481,9 @@ async function seedDatabase() {
   const existingPackages = await storage.getPackageConfigs();
   if (existingPackages.length === 0) {
     const defaultPackages = [
-      { key: "starter", label: "Starter", sortOrder: 0 },
-      { key: "professional", label: "Professional", sortOrder: 1 },
-      { key: "executive", label: "Executive", sortOrder: 2 },
+      { key: "ats_career", label: "ATS Career Package", sortOrder: 0 },
+      { key: "international_career_pro", label: "International Career Pro", sortOrder: 1 },
+      { key: "executive_career_branding", label: "Executive Career Branding", sortOrder: 2 },
     ];
     for (const pkg of defaultPackages) {
       await storage.createPackageConfig({ key: pkg.key, label: pkg.label, isActive: true, sortOrder: pkg.sortOrder });

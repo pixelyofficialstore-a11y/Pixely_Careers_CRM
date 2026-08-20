@@ -53,6 +53,7 @@ import {
   FileText,
   History,
   Download,
+  Filter,
   Star,
   Crown,
   Wrench,
@@ -84,19 +85,33 @@ import type { OrderWithServices, User, SupportDesignerAssignment, ServiceCatalog
 
 const FALLBACK_SERVICE_TYPES = [
   "ATS CV",
-  "Professional CV", 
-  "Europass CV",
-  "LinkedIn Profile",
-  "Cover Letter (Professional)",
-  "Cover Letter (Europass)",
+  "Additional CV",
+  "Cover Letter",
+  "LinkedIn Optimization",
+  "Indeed Optimization",
+  "Naukri Gulf Optimization",
+  "Bio Statement",
+  "Digital Contact Card",
 ];
 
 const FALLBACK_PACKAGE_LABELS: Record<string, string> = {
   starter: "Starter",
   professional: "Professional",
   executive: "Executive",
+  ats_career: "ATS Career Package",
+  international_career_pro: "International Career Pro",
+  executive_career_branding: "Executive Career Branding",
   custom: "Custom Order",
 };
+
+const ORDER_STATUS_FILTERS: Array<{ value: string; label: string; statuses: string[] }> = [
+  { value: "pending", label: "Pending", statuses: ["pending_payment", "new"] },
+  { value: "in_progress", label: "In Progress", statuses: ["working"] },
+  { value: "delivered", label: "Delivered", statuses: ["delivered"] },
+  { value: "canceled", label: "Cancelled", statuses: ["canceled"] },
+  // The existing "ready" workflow state represents a completed order before delivery.
+  { value: "completed", label: "Completed", statuses: ["ready"] },
+];
 
 export default function OrdersPage() {
   const { user } = useAuth();
@@ -107,6 +122,8 @@ export default function OrdersPage() {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth().toString());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [activeOrdersTab, setActiveOrdersTab] = useState<"today" | "monthly">("today");
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState("all");
+  const [selectedDesignerFilter, setSelectedDesignerFilter] = useState("all");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<OrderWithServices | null>(null);
   const [detailsSheetOpen, setDetailsSheetOpen] = useState(false);
@@ -210,6 +227,9 @@ export default function OrdersPage() {
       .filter(order => {
         if (order.advancePaymentStatus !== 'approved') return false;
         if (user?.role === 'designer' && order.assignedToId !== user.id) return false;
+        const statusFilter = ORDER_STATUS_FILTERS.find(filter => filter.value === selectedStatusFilter);
+        if (statusFilter && !statusFilter.statuses.includes(order.status)) return false;
+        if (selectedDesignerFilter !== "all" && String(order.assignedToId ?? "") !== selectedDesignerFilter) return false;
         const orderIdMatch = (order.orderNumber?.toLowerCase() ?? "").includes(searchQueryNormalized);
         const clientNameMatch = (order.clientName?.toLowerCase() ?? "").includes(searchQueryNormalized);
         const clientPhoneNormalized = (order.clientPhone || "").replace(/\D/g, "");
@@ -218,7 +238,7 @@ export default function OrdersPage() {
       })
       .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
     return { results: matches.slice(0, SEARCH_RESULT_LIMIT), totalMatches: matches.length };
-  }, [orders, isSearchActive, searchQueryNormalized, phoneSearchQuery, user?.role, user?.id]);
+  }, [orders, isSearchActive, searchQueryNormalized, phoneSearchQuery, user?.role, user?.id, selectedStatusFilter, selectedDesignerFilter]);
 
   if (isLoading) return <OrdersSkeleton />;
 
@@ -241,6 +261,10 @@ export default function OrdersPage() {
     return allDesigners;
   };
   const availableDesigners = getAvailableDesigners();
+  const filterableDesigners = (teamMembers || []).filter(u => u.role === 'designer');
+  const designerFilterOptions = isSupport
+    ? filterableDesigners.filter(d => (designerAssignments || []).some(a => a.designerUserId === d.id))
+    : filterableDesigners;
   
   const copyPhone = (orderId: number, phone: string) => {
     navigator.clipboard.writeText(phone);
@@ -256,17 +280,21 @@ export default function OrdersPage() {
 
   // All roles only see approved orders in the Orders Page
   // Unapproved orders are reviewed exclusively in the Payments page
-  const visibleOrders = orders?.filter(order => order.advancePaymentStatus === 'approved') || [];
+  const visibleOrders = orders?.filter(order => {
+    if (order.advancePaymentStatus !== 'approved') return false;
+    const statusFilter = ORDER_STATUS_FILTERS.find(filter => filter.value === selectedStatusFilter);
+    if (statusFilter && !statusFilter.statuses.includes(order.status)) return false;
+    if (isDesigner && order.assignedToId !== user?.id) return false;
+    if ((isAdmin || isSupport) && selectedDesignerFilter !== "all" && String(order.assignedToId ?? "") !== selectedDesignerFilter) return false;
+    return true;
+  }) || [];
   const approvedOrders = visibleOrders;
+  const hasActiveOrderFilters = selectedStatusFilter !== "all" || selectedDesignerFilter !== "all";
 
   const todayOrders = visibleOrders.filter(order => {
     const createdDate = new Date(order.createdAt!);
     // Only show orders created today
     if (!isToday(createdDate)) {
-      return false;
-    }
-    // Designers only see orders assigned to them (filter out unassigned)
-    if (isDesigner && order.assignedToId !== user?.id) {
       return false;
     }
     return true;
@@ -276,9 +304,6 @@ export default function OrdersPage() {
     const createdDate = new Date(order.createdAt!);
     const inMonth = createdDate.getMonth().toString() === selectedMonth;
     const inYear = createdDate.getFullYear().toString() === selectedYear;
-    if (isDesigner) {
-      return inMonth && inYear && order.assignedToId === user?.id;
-    }
     return inMonth && inYear;
   });
 
@@ -294,9 +319,7 @@ export default function OrdersPage() {
   }, 0);
 
   // Approved today's orders — for Total Revenue of the day
-  const approvedTodayOrders = (orders || []).filter(o =>
-    o.advancePaymentStatus === 'approved' && isToday(new Date(o.createdAt!))
-  );
+  const approvedTodayOrders = todayOrders;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -320,28 +343,35 @@ export default function OrdersPage() {
   };
 
   const getServicesDisplay = (order: OrderWithServices) => {
-    if (order.packageType && order.packageType !== "custom") {
-      const label = packageLabels[order.packageType] || order.packageType;
-      return (
-        <Badge variant="secondary" className="bg-blue-500/10 text-blue-400 border-blue-500/20">
-          {label}
-        </Badge>
-      );
-    }
-    
     const services = order.services;
-    if (!services || services.length === 0) return "-";
+    const hasPackage = order.packageType && order.packageType !== "custom";
+    const packageLabel = hasPackage ? (packageLabels[order.packageType!] || order.packageType) : null;
+    if (!services || services.length === 0) {
+      return packageLabel ? (
+        <Badge variant="secondary" className="bg-blue-500/10 text-blue-400 border-blue-500/20">
+          {packageLabel}
+        </Badge>
+      ) : "-";
+    }
     const totalServices = services.reduce((acc, s) => acc + (s.quantity || 1), 0);
-    const servicesList = services.map(s => `${s.quantity}x ${s.serviceType}`);
+    const servicesList = services.map(s => `${s.serviceType} (${s.quantity || 1})`);
     
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="cursor-pointer underline decoration-dotted underline-offset-2">
-            {totalServices} {totalServices === 1 ? "Service" : "Services"}
-          </span>
+          <div className="flex flex-wrap items-center gap-1.5 cursor-pointer">
+            {packageLabel && (
+              <Badge variant="secondary" className="bg-blue-500/10 text-blue-400 border-blue-500/20">
+                {packageLabel}
+              </Badge>
+            )}
+            <span className="text-slate-300 underline decoration-dotted underline-offset-2">
+              {packageLabel ? `+ ${totalServices} ${totalServices === 1 ? "add-on" : "add-ons"}` : `${totalServices} ${totalServices === 1 ? "Service" : "Services"}`}
+            </span>
+          </div>
         </TooltipTrigger>
         <TooltipContent className="bg-slate-800 border-slate-700 text-white">
+          {packageLabel && <p className="mb-2 font-medium text-blue-300">{packageLabel}</p>}
           <ul className="list-disc list-inside space-y-1">
             {servicesList.map((s, i) => (
               <li key={i} className="text-sm">{s}</li>
@@ -352,27 +382,6 @@ export default function OrdersPage() {
     );
   };
   
-  const canDelete = isAdmin || isSupport;
-
-  const getMobileStatusOptions = (order: OrderWithServices) => {
-    if (isDesigner) {
-      if (order.status === 'ready') return [{ value: "ready", label: "Ready" }];
-      if (order.status === 'delivered') return [{ value: "delivered", label: "Delivered" }];
-      return [
-        { value: "new", label: "New" },
-        { value: "working", label: "Working" },
-        { value: "ready", label: "Ready" },
-      ];
-    }
-    return [
-      { value: "new", label: "New" },
-      { value: "working", label: "Working" },
-      { value: "ready", label: "Ready" },
-      { value: "delivered", label: "Delivered" },
-      { value: "canceled", label: "Canceled" },
-    ];
-  };
-
   const formatRs = (value: number | null | undefined) => {
     const amount = Number(value);
     if (!Number.isFinite(amount)) return "Rs0";
@@ -395,10 +404,23 @@ export default function OrdersPage() {
   };
 
   const getServicesLabel = (order: OrderWithServices) => {
-    return (order.packageType && order.packageType !== "custom")
-      ? (packageLabels[order.packageType] || order.packageType)
-      : (order.services?.map(s => `${s.quantity}x ${s.serviceType}`).join(", ") || "Not Specified");
+    const servicesLabel = order.services?.map(s => `${s.serviceType} (${s.quantity || 1})`).join(" + ");
+    if (order.packageType && order.packageType !== "custom") {
+      const packageLabel = packageLabels[order.packageType] || order.packageType;
+      return servicesLabel ? `${packageLabel} + ${servicesLabel}` : packageLabel;
+    }
+    return servicesLabel || "Not Specified";
   };
+
+  const getCreatedByLabel = (order: OrderWithServices) => {
+    const creator = teamMembers?.find(member => member.id === order.createdById);
+    if (!creator) return order.createdById ? "Unknown user" : "Not Specified";
+    const roleLabel = creator.role.charAt(0).toUpperCase() + creator.role.slice(1);
+    return `${creator.name} (${roleLabel})`;
+  };
+
+  const getClientTypeLabel = (order: OrderWithServices) =>
+    order.clientType === "international" ? "International" : "National";
 
   const exportOrdersPDF = () => {
     let exportOrders: OrderWithServices[];
@@ -498,8 +520,10 @@ export default function OrdersPage() {
 
       return [
         order.orderNumber || "Not Specified",
+        getCreatedByLabel(order),
         formatDateSafe(order.createdAt),
         order.clientName || "Not Specified",
+        getClientTypeLabel(order),
         order.clientPhone && order.clientPhone.trim() ? order.clientPhone.trim() : "Not Specified",
         getServicesLabel(order),
         order.assignee?.name || "Unassigned",
@@ -511,12 +535,12 @@ export default function OrdersPage() {
         proofOrderIds.has(order.id) ? "Uploaded" : "No Proof Uploaded",
         order.notes && order.notes.trim() ? order.notes.trim() : "Not Specified",
       ];
-    }) : [["No orders found.", "", "", "", "", "", "", "", "", "", "", "", ""]];
+    }) : [["No orders found.", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]];
 
     autoTable(doc, {
       startY: tableStartY,
       head: [[
-        "Order ID", "Date Placed", "Client Name", "Phone", "Service / Package",
+        "Order ID", "Created By", "Date Placed", "Client Name", "Client Type", "Phone", "Service / Package",
         "Designer", "Status", "Payment", "Total Bill", "Advance Paid",
         "Remaining", "Payment Proof", "Notes / Remarks"
       ]],
@@ -541,15 +565,17 @@ export default function OrdersPage() {
       },
       alternateRowStyles: { fillColor: [246, 248, 251] },
       columnStyles: {
-        2: { cellWidth: 82 },
-        3: { cellWidth: 74 },
-        4: { cellWidth: 100 },
-        5: { cellWidth: 66 },
-        8: { halign: "right", cellWidth: 56 },
-        9: { halign: "right", cellWidth: 56 },
+        1: { cellWidth: 76 },
+        3: { cellWidth: 82 },
+        4: { cellWidth: 58 },
+        5: { cellWidth: 74 },
+        6: { cellWidth: 100 },
+        7: { cellWidth: 66 },
         10: { halign: "right", cellWidth: 56 },
-        11: { cellWidth: 56, halign: "center" },
-        12: { cellWidth: 92 },
+        11: { halign: "right", cellWidth: 56 },
+        12: { halign: "right", cellWidth: 56 },
+        13: { cellWidth: 56, halign: "center" },
+        14: { cellWidth: 92 },
       },
       margin: { left: marginX, right: marginX },
       showHead: "everyPage",
@@ -581,6 +607,14 @@ export default function OrdersPage() {
       if (hasNoRemaining) opts.push({ value: "delivered", label: "Delivered" });
       return opts;
     }
+    if (isSupport) {
+      return [
+        { value: "new", label: "New" },
+        { value: "working", label: "Working" },
+        { value: "ready", label: "Ready" },
+        { value: "delivered", label: "Delivered" },
+      ];
+    }
     return [
       { value: "new", label: "New" },
       { value: "working", label: "Working" },
@@ -590,14 +624,16 @@ export default function OrdersPage() {
     ];
   };
 
-  const orderColSpan = 8 + (!isDesigner ? 2 : 0) + (canSeeAmounts ? 3 : 0);
+  const orderColSpan = 9 + (!isDesigner ? 2 : 0) + (canSeeAmounts ? 3 : 0) + (isAdmin ? 1 : 0);
 
   const orderTableHead = (
     <TableHeader className="bg-slate-900/50">
       <TableRow className="border-slate-800 hover:bg-transparent">
         <TableHead className="text-slate-400">Order ID</TableHead>
+        {isAdmin && <TableHead className="text-slate-400">Created By</TableHead>}
         <TableHead className="text-slate-400">Date Placed</TableHead>
         <TableHead className="text-slate-400">Client</TableHead>
+        <TableHead className="text-slate-400">Client Type</TableHead>
         <TableHead className="text-slate-400">Contact</TableHead>
         <TableHead className="text-slate-400">Services / Package</TableHead>
         {!isDesigner && <TableHead className="text-slate-400">Designer</TableHead>}
@@ -615,8 +651,23 @@ export default function OrdersPage() {
   const renderOrderRow = (order: OrderWithServices) => (
     <TableRow key={order.id} className="border-slate-800 hover:bg-slate-900/50" data-testid={`row-order-${order.id}`}>
       <TableCell className="font-mono text-xs text-blue-400">{order.orderNumber || "—"}</TableCell>
+      {isAdmin && (
+        <TableCell>
+          <div className="min-w-28">
+            <p className="text-white text-sm font-medium">{getCreatedByLabel(order).split(" (")[0]}</p>
+            <p className="text-xs text-slate-500">
+              {getCreatedByLabel(order).match(/\(([^)]+)\)/)?.[1] || ""}
+            </p>
+          </div>
+        </TableCell>
+      )}
       <TableCell className="text-slate-400 text-xs">{order.createdAt ? format(new Date(order.createdAt), "MMM dd, yyyy") : "Not Specified"}</TableCell>
       <TableCell className="text-white font-medium">{order.clientName || "Not Specified"}</TableCell>
+      <TableCell>
+        <span className={order.clientType === "international" ? "text-purple-300 text-sm" : "text-blue-300 text-sm"}>
+          {getClientTypeLabel(order)}
+        </span>
+      </TableCell>
       <TableCell>
         {order.clientPhone ? (
           <div className="flex items-center gap-1">
@@ -753,13 +804,13 @@ export default function OrdersPage() {
                 <FileText className="w-4 h-4 mr-2" />
                 View Details
               </DropdownMenuItem>
-              {(isAdmin || isSupport) && (
+              {isAdmin && (
                 <DropdownMenuItem onClick={() => { setOrderToEdit(order); setEditSheetOpen(true); }} className="text-slate-300 hover:text-white" data-testid={`menu-edit-${order.id}`}>
                   <Pencil className="w-4 h-4 mr-2" />
                   Edit Order
                 </DropdownMenuItem>
               )}
-              {(isAdmin || isSupport) && order.status !== 'canceled' && (
+              {isAdmin && order.status !== 'canceled' && (
                 <>
                   <DropdownMenuSeparator className="bg-slate-800" />
                   <DropdownMenuItem
@@ -812,6 +863,52 @@ export default function OrdersPage() {
             />
             {isSearchSettling && (
               <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 animate-spin" data-testid="icon-search-loading" />
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap" data-testid="order-filters">
+            <Filter className="w-4 h-4 text-slate-500 hidden md:block" aria-hidden="true" />
+            <Select value={selectedStatusFilter} onValueChange={setSelectedStatusFilter}>
+              <SelectTrigger className="w-36 bg-slate-900 border-slate-800 text-white" data-testid="select-order-status-filter">
+                <SelectValue placeholder="All statuses" />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                <SelectItem value="all">All statuses</SelectItem>
+                {ORDER_STATUS_FILTERS.map(filter => (
+                  <SelectItem key={filter.value} value={filter.value}>{filter.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {(isAdmin || isSupport) && (
+              <Select value={selectedDesignerFilter} onValueChange={setSelectedDesignerFilter}>
+                <SelectTrigger className="w-40 bg-slate-900 border-slate-800 text-white" data-testid="select-order-designer-filter">
+                  <SelectValue placeholder="All designers" />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                  <SelectItem value="all">All designers</SelectItem>
+                  {designerFilterOptions.map(designer => (
+                    <SelectItem key={designer.id} value={designer.id.toString()}>{designer.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
+            {hasActiveOrderFilters && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSelectedStatusFilter("all");
+                  setSelectedDesignerFilter("all");
+                }}
+                className="text-slate-400 hover:text-white"
+                data-testid="button-clear-order-filters"
+              >
+                <X className="w-4 h-4 mr-1" />
+                Clear
+              </Button>
             )}
           </div>
           
@@ -886,7 +983,7 @@ export default function OrdersPage() {
             <p className="text-sm text-slate-500" data-testid="text-search-result-count">
               {searchTotalMatches > universalSearchResults.length
                 ? `Showing first ${universalSearchResults.length} of ${searchTotalMatches} matching orders — refine your search to see the rest`
-                : `${searchTotalMatches} matching order${searchTotalMatches === 1 ? "" : "s"} — month/year filters are ignored while searching`}
+                : `${searchTotalMatches} matching order${searchTotalMatches === 1 ? "" : "s"} — active filters apply while month/year filters are ignored during search`}
             </p>
           </div>
           <div className="table-scroll-wrapper">
@@ -897,7 +994,7 @@ export default function OrdersPage() {
                 {universalSearchResults.length === 0 && (
                   <TableRow className="border-slate-800">
                     <TableCell colSpan={orderColSpan} className="text-center text-slate-500 py-8" data-testid="text-no-search-results">
-                      No matching orders found.
+                      {hasActiveOrderFilters ? "No orders match the selected filters." : "No matching orders found."}
                     </TableCell>
                   </TableRow>
                 )}
@@ -927,7 +1024,7 @@ export default function OrdersPage() {
                 {(!todayOrders || todayOrders.length === 0) && (
                   <TableRow className="border-slate-800">
                     <TableCell colSpan={orderColSpan} className="text-center text-slate-500 py-8">
-                      No orders for today
+                      {hasActiveOrderFilters ? "No orders match the selected filters today." : "No orders for today"}
                     </TableCell>
                   </TableRow>
                 )}
@@ -979,7 +1076,7 @@ export default function OrdersPage() {
                 {(!monthlyOrders || monthlyOrders.length === 0) && (
                   <TableRow className="border-slate-800">
                     <TableCell colSpan={orderColSpan} className="text-center text-slate-500 py-8">
-                      No orders for this month
+                      {hasActiveOrderFilters ? "No orders match the selected filters this month." : "No orders for this month"}
                     </TableCell>
                   </TableRow>
                 )}
@@ -1017,6 +1114,10 @@ export default function OrdersPage() {
                     <p className="text-white font-medium">{selectedOrder.clientName}</p>
                   </div>
                   <div>
+                    <p className="text-xs text-slate-500">Client Type</p>
+                    <p className="text-white">{selectedOrder.clientType === "international" ? "International Client" : "National Client"}</p>
+                  </div>
+                  <div>
                     <p className="text-xs text-slate-500">Contact</p>
                     {selectedOrder.clientPhone ? (
                       <div className="flex items-center gap-2">
@@ -1051,15 +1152,33 @@ export default function OrdersPage() {
 
               <div className="space-y-3 p-4 bg-slate-950 rounded-lg border border-slate-800">
                 <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
-                  {selectedOrder.packageType && selectedOrder.packageType !== "custom" ? "Package" : "Services"}
+                  {selectedOrder.packageType && selectedOrder.packageType !== "custom" ? "Package & Add-ons" : "Services"}
                 </h4>
                 {selectedOrder.packageType && selectedOrder.packageType !== "custom" ? (
-                  <Badge variant="secondary" className="bg-blue-500/10 text-blue-400 border-blue-500/20 text-sm px-3 py-1">
-                    {packageLabels[selectedOrder.packageType] || selectedOrder.packageType}
-                  </Badge>
+                  <div className="space-y-3">
+                    <Badge variant="secondary" className="bg-blue-500/10 text-blue-400 border-blue-500/20 text-sm px-3 py-1">
+                      {packageLabels[selectedOrder.packageType] || selectedOrder.packageType}
+                    </Badge>
+                    {selectedOrder.services.length > 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Add-ons</p>
+                        {selectedOrder.services.map((service, idx) => (
+                          <div key={idx} className="flex justify-between items-center py-2 border-b border-slate-800 last:border-0">
+                            <div>
+                              <p className="text-white">+ {service.serviceType}</p>
+                              {service.instructions && <p className="text-xs text-slate-500">{service.instructions}</p>}
+                            </div>
+                            <Badge variant="outline" className="text-slate-300">x{service.quantity}</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-slate-500">No add-ons selected.</p>
+                    )}
+                  </div>
                 ) : (
                   <div className="space-y-2">
-                    {selectedOrder.services.map((service, idx) => (
+                    {selectedOrder.services.length > 0 ? selectedOrder.services.map((service, idx) => (
                       <div key={idx} className="flex justify-between items-center py-2 border-b border-slate-800 last:border-0">
                         <div>
                           <p className="text-white">{service.serviceType}</p>
@@ -1067,7 +1186,7 @@ export default function OrdersPage() {
                         </div>
                         <Badge variant="outline" className="text-slate-300">x{service.quantity}</Badge>
                       </div>
-                    ))}
+                    )) : <p className="text-sm text-slate-500">No services selected.</p>}
                   </div>
                 )}
               </div>
@@ -1269,6 +1388,7 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
 
   const [clientName, setClientName] = useState(order.clientName || "");
   const [clientPhone, setClientPhone] = useState(order.clientPhone || "");
+  const [clientType, setClientType] = useState<"national" | "international">(order.clientType || "national");
   const [assignedToId, setAssignedToId] = useState(order.assignedToId ? String(order.assignedToId) : "");
   const [totalBill, setTotalBill] = useState(toRupees(order.totalPrice));
   const [advanceAmount, setAdvanceAmount] = useState(toRupees(order.advanceAmount));
@@ -1289,7 +1409,7 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
       quantity: s.quantity || 1,
       instructions: s.instructions || "",
     }));
-    return existing.length > 0 ? existing : [{ id: serviceIdRef.current++, serviceNumber: 1, serviceType: "", quantity: 1, instructions: "" }];
+    return existing;
   });
   const customServicesTopRef = useRef<HTMLDivElement | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -1298,7 +1418,7 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
     setServices((prev) => {
       const nextNumber = prev.reduce((m, s) => Math.max(m, s.serviceNumber), 0) + 1;
       const newService = { id: serviceIdRef.current++, serviceNumber: nextNumber, serviceType: "", quantity: 1, instructions: "" };
-      return [newService, ...prev];
+      return [...prev, newService];
     });
     requestAnimationFrame(() => {
       customServicesTopRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -1308,7 +1428,7 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
   };
 
   const removeService = (id: number) => {
-    setServices((prev) => (prev.length > 1 ? prev.filter((s) => s.id !== id) : prev));
+    setServices((prev) => prev.filter((s) => s.id !== id));
   };
 
   const updateService = (id: number, field: string, value: any) => {
@@ -1321,6 +1441,7 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
     const missingFields: string[] = [];
     if (!clientName.trim()) missingFields.push("Client Name");
     if (!clientPhone.trim()) missingFields.push("Phone Number");
+    if (!clientType) missingFields.push("Client Type");
     if (!packageType) missingFields.push("Package");
     if (packageType === "custom" && services.every(s => !s.serviceType)) missingFields.push("At least one service");
 
@@ -1335,19 +1456,18 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
     const advanceValue = advanceAmount ? Math.round(parseFloat(advanceAmount) * 100) : 0;
     const remainingValue = Math.max(0, finalPayableValue - advanceValue);
 
-    const orderServices = packageType === "custom"
-      ? services.filter(s => s.serviceType).map(s => ({
-          serviceType: s.serviceType,
-          quantity: s.quantity || 1,
-          instructions: s.instructions || null,
-        }))
-      : [];
+    const orderServices = services.filter(s => s.serviceType).map(s => ({
+      serviceType: s.serviceType,
+      quantity: s.quantity || 1,
+      instructions: s.instructions || null,
+    }));
 
     setIsSaving(true);
     try {
       await apiRequest("PATCH", `/api/orders/${order.id}`, {
         clientName: clientName.trim(),
         clientPhone: clientPhone.trim(),
+        clientType,
         assignedToId: assignedToId ? parseInt(assignedToId) : null,
         totalPrice: totalPriceValue,
         discountAmount: discountValue,
@@ -1382,7 +1502,7 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
     <form onSubmit={handleSubmit} className="mt-6 space-y-6">
       <div className="space-y-4">
         <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Client Information</h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-2">
             <Label className="text-slate-300">Client Name *</Label>
             <Input value={clientName} onChange={(e) => setClientName(e.target.value)} className="bg-slate-950 border-slate-800 text-white" placeholder="Enter client name" data-testid="edit-input-client-name" />
@@ -1390,6 +1510,18 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
           <div className="space-y-2">
             <Label className="text-slate-300">Phone Number *</Label>
             <Input value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} className="bg-slate-950 border-slate-800 text-white" placeholder="+92 300 1234567" data-testid="edit-input-client-phone" />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-slate-300">Client Type *</Label>
+            <Select value={clientType} onValueChange={(value: "national" | "international") => setClientType(value)}>
+              <SelectTrigger className="bg-slate-950 border-slate-800 text-white" data-testid="edit-select-client-type">
+                <SelectValue placeholder="Select client type" />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                <SelectItem value="national">National Client</SelectItem>
+                <SelectItem value="international">International Client</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </div>
@@ -1424,9 +1556,6 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
               type="button"
               onClick={() => {
                 setPackageType(pkg.value);
-                if (pkg.value !== "custom") {
-                  setServices([{ id: serviceIdRef.current++, serviceNumber: 1, serviceType: "", quantity: 1, instructions: "" }]);
-                }
               }}
               className={`p-4 rounded-xl border-2 text-center transition-all ${
                 packageType === pkg.value
@@ -1446,24 +1575,33 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
         </div>
       </div>
 
-      {packageType === "custom" && (
+      {packageType && (
         <div className="space-y-4" ref={customServicesTopRef}>
           <div className="flex items-center justify-between">
-            <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Custom Services</h4>
+            <div>
+              <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+                {packageType === "custom" ? "Services *" : "Add-ons"}
+              </h4>
+              <p className="mt-1 text-xs text-slate-500">
+                {packageType === "custom" ? "Add the services included in this custom order." : "Optional — add as many additional services as this order needs."}
+              </p>
+            </div>
             <Button type="button" variant="ghost" size="sm" onClick={addService} className="text-blue-400 hover:text-blue-300" data-testid="edit-button-add-service">
-              <Plus className="w-4 h-4 mr-1" /> Add Service
+              <Plus className="w-4 h-4 mr-1" /> Add {packageType === "custom" ? "Service" : "Add-on"}
             </Button>
           </div>
 
-          {services.map((service, index) => (
+          {services.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-slate-700 bg-slate-950/60 px-4 py-5 text-sm text-slate-500">
+              {packageType === "custom" ? "Add at least one service for this custom order." : "No add-ons selected."}
+            </div>
+          ) : services.map((service, index) => (
             <div key={service.id} className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-400">Service {service.serviceNumber}</span>
-                {services.length > 1 && (
-                  <Button type="button" variant="ghost" size="icon" onClick={() => removeService(service.id)} className="h-6 w-6 text-red-400 hover:text-red-300" data-testid={`edit-button-remove-service-${index}`}>
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
-                )}
+                <span className="text-sm text-slate-400">{packageType === "custom" ? "Service" : "Add-on"} {service.serviceNumber}</span>
+                <Button type="button" variant="ghost" size="icon" onClick={() => removeService(service.id)} className="h-6 w-6 text-red-400 hover:text-red-300" data-testid={`edit-button-remove-service-${index}`}>
+                  <Trash2 className="w-3 h-3" />
+                </Button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="md:col-span-2">
@@ -1597,6 +1735,7 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
   const activePlatforms = platformsCatalogData.filter(p => p.isActive);
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
+  const [clientType, setClientType] = useState<"national" | "international">("national");
   const [assignedToId, setAssignedToId] = useState("");
   const [totalBill, setTotalBill] = useState("");
   const [advanceAmount, setAdvanceAmount] = useState("");
@@ -1609,7 +1748,7 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
   const [notes, setNotes] = useState("");
   const [packageType, setPackageType] = useState<string>("");
   const serviceIdRef = useRef(1);
-  const [services, setServices] = useState([{ id: 0, serviceNumber: 1, serviceType: "", quantity: 1, instructions: "" }]);
+  const [services, setServices] = useState<{ id: number; serviceNumber: number; serviceType: string; quantity: number; instructions: string }[]>([]);
   const customServicesTopRef = useRef<HTMLDivElement | null>(null);
   
   // Payment verification fields
@@ -1634,7 +1773,7 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
     setServices((prev) => {
       const nextNumber = prev.reduce((m, s) => Math.max(m, s.serviceNumber), 0) + 1;
       const newService = { id: serviceIdRef.current++, serviceNumber: nextNumber, serviceType: "", quantity: 1, instructions: "" };
-      return [newService, ...prev];
+      return [...prev, newService];
     });
     requestAnimationFrame(() => {
       customServicesTopRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -1644,7 +1783,7 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
   };
 
   const removeService = (id: number) => {
-    setServices((prev) => (prev.length > 1 ? prev.filter((s) => s.id !== id) : prev));
+    setServices((prev) => prev.filter((s) => s.id !== id));
   };
 
   const updateService = (id: number, field: string, value: any) => {
@@ -1664,6 +1803,7 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
     const missingFields: string[] = [];
     if (!clientName.trim()) missingFields.push("Client Name");
     if (!clientPhone.trim()) missingFields.push("Phone Number");
+    if (!clientType) missingFields.push("Client Type");
     if (!packageType) missingFields.push("Package");
     if (packageType === "custom" && services.every(s => !s.serviceType)) missingFields.push("At least one service");
     if (!totalBill.trim() || totalPriceValue <= 0) missingFields.push("Total Bill");
@@ -1695,18 +1835,17 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
 
     setIsUploading(true);
     try {
-      const orderServices = packageType === "custom" 
-        ? services.filter(s => s.serviceType).map(s => ({
-            serviceType: s.serviceType,
-            quantity: s.quantity || 1,
-            instructions: s.instructions || null,
-          }))
-        : [];
+      const orderServices = services.filter(s => s.serviceType).map(s => ({
+        serviceType: s.serviceType,
+        quantity: s.quantity || 1,
+        instructions: s.instructions || null,
+      }));
 
       const isAdmin = currentUser?.role === 'admin';
       const orderRes = await apiRequest("POST", "/api/orders", {
         clientName: clientName.trim(),
         clientPhone: clientPhone.trim(),
+        clientType,
         assignedToId: assignedToId ? parseInt(assignedToId) : null,
         paymentStatus: "pending",
         totalPrice: totalPriceValue,
@@ -1772,7 +1911,7 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="space-y-4">
         <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Client Information</h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-2">
             <Label className="text-slate-300">Client Name *</Label>
             <Input 
@@ -1792,6 +1931,18 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
               placeholder="+92 300 1234567"
               data-testid="input-client-phone"
             />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-slate-300">Client Type *</Label>
+            <Select value={clientType} onValueChange={(value: "national" | "international") => setClientType(value)}>
+              <SelectTrigger className="bg-slate-950 border-slate-800 text-white" data-testid="select-client-type">
+                <SelectValue placeholder="Select client type" />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                <SelectItem value="national">National Client</SelectItem>
+                <SelectItem value="international">International Client</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </div>
@@ -1829,9 +1980,6 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
               type="button"
               onClick={() => {
                 setPackageType(pkg.value);
-                if (pkg.value !== "custom") {
-                  setServices([{ id: serviceIdRef.current++, serviceNumber: 1, serviceType: "", quantity: 1, instructions: "" }]);
-                }
               }}
               className={`p-4 rounded-xl border-2 text-center transition-all ${
                 packageType === pkg.value
@@ -1851,24 +1999,33 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
         </div>
       </div>
 
-      {packageType === "custom" && (
+      {packageType && (
         <div className="space-y-4" ref={customServicesTopRef}>
           <div className="flex items-center justify-between">
-            <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Custom Services</h4>
+            <div>
+              <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+                {packageType === "custom" ? "Services *" : "Add-ons"}
+              </h4>
+              <p className="mt-1 text-xs text-slate-500">
+                {packageType === "custom" ? "Add the services included in this custom order." : "Optional — add as many additional services as this order needs."}
+              </p>
+            </div>
             <Button type="button" variant="ghost" size="sm" onClick={addService} className="text-blue-400 hover:text-blue-300" data-testid="button-add-service">
-              <Plus className="w-4 h-4 mr-1" /> Add Service
+              <Plus className="w-4 h-4 mr-1" /> Add {packageType === "custom" ? "Service" : "Add-on"}
             </Button>
           </div>
           
-          {services.map((service, index) => (
+          {services.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-slate-700 bg-slate-950/60 px-4 py-5 text-sm text-slate-500">
+              {packageType === "custom" ? "Add at least one service for this custom order." : "No add-ons selected."}
+            </div>
+          ) : services.map((service, index) => (
             <div key={service.id} className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-400">Service {service.serviceNumber}</span>
-                {services.length > 1 && (
-                  <Button type="button" variant="ghost" size="icon" onClick={() => removeService(service.id)} className="h-6 w-6 text-red-400 hover:text-red-300" data-testid={`button-remove-service-${index}`}>
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
-                )}
+                <span className="text-sm text-slate-400">{packageType === "custom" ? "Service" : "Add-on"} {service.serviceNumber}</span>
+                <Button type="button" variant="ghost" size="icon" onClick={() => removeService(service.id)} className="h-6 w-6 text-red-400 hover:text-red-300" data-testid={`button-remove-service-${index}`}>
+                  <Trash2 className="w-3 h-3" />
+                </Button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="md:col-span-2">

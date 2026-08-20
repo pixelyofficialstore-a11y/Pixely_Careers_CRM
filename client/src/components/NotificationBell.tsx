@@ -41,19 +41,6 @@ function playNotificationSound() {
   } catch (_) {}
 }
 
-function sendPushNotification(title: string, body: string, priority: string) {
-  if (!("Notification" in window) || Notification.permission !== "granted") return;
-  if (navigator.serviceWorker) {
-    navigator.serviceWorker.ready
-      .then(reg => {
-        if (reg.active) {
-          reg.active.postMessage({ type: "SHOW_NOTIFICATION", title, body, priority });
-        }
-      })
-      .catch(() => {});
-  }
-}
-
 async function subscribeToWebPush() {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
   if (Notification.permission !== "granted") return;
@@ -263,15 +250,14 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
     }
     if (unreadCount > prevCount.current) {
       playNotificationSound();
-      // Always fetch fresh notification data for push — don't rely on potentially stale notifsList
+      // The server is the single owner of browser push delivery. Fetch the
+      // latest record only to show one in-app alert and refresh the open panel.
       fetch('/api/notifications', { credentials: 'include' })
         .then(r => r.ok ? r.json() : [])
         .then((freshList: Notification[]) => {
           const newest = freshList.find(n => !n.read) ?? freshList[0];
           const notifTitle = newest?.title || "PixelCRM";
           const notifMsg = newest?.message ?? "You have a new notification";
-          const priority = newest?.priority ?? "update";
-          sendPushNotification(notifTitle, notifMsg, priority);
           toast({ title: notifTitle, description: notifMsg });
           // Also update the React Query cache so the panel shows fresh data
           queryClient.setQueryData(["/api/notifications"], freshList);

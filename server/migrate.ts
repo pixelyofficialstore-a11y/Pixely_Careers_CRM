@@ -79,6 +79,7 @@ export async function runMigrations() {
         client_name             TEXT NOT NULL,
         client_phone            TEXT,
         client_email            TEXT,
+        client_type             TEXT NOT NULL DEFAULT 'national',
         status                  TEXT NOT NULL DEFAULT 'new',
         priority                TEXT NOT NULL DEFAULT 'normal',
         assigned_to_id          INTEGER REFERENCES users(id),
@@ -220,7 +221,8 @@ export async function runMigrations() {
         ADD COLUMN IF NOT EXISTS discount_amount        INTEGER DEFAULT 0,
         ADD COLUMN IF NOT EXISTS payment_method         TEXT,
         ADD COLUMN IF NOT EXISTS payment_date           TIMESTAMP,
-        ADD COLUMN IF NOT EXISTS delivered_at           TIMESTAMP
+        ADD COLUMN IF NOT EXISTS delivered_at           TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS client_type            TEXT NOT NULL DEFAULT 'national'
     `);
 
     await client.query(`

@@ -32,10 +32,10 @@ export const packageConfigs = pgTable("package_configs", {
 export const userRoles = ["admin", "support", "designer"] as const;
 export const orderStatuses = ["pending_payment", "new", "working", "ready", "delivered", "canceled"] as const;
 export const priorities = ["normal", "high", "urgent"] as const;
-export const packageTypes = ["starter", "professional", "executive", "custom"] as const;
 export const paymentVerificationStatuses = ["pending_confirmation", "approved", "disapproved"] as const;
 export const paymentTypes = ["advance", "full", "remaining"] as const;
 export const advancePaymentStatuses = ["pending", "approved", "disapproved"] as const;
+export const clientTypes = ["national", "international"] as const;
 export const activityTypes = ["status_change", "payment_change", "assignment", "note", "verification"] as const;
 
 export const users = pgTable("users", {
@@ -56,6 +56,7 @@ export const orders = pgTable("orders", {
   clientName: text("client_name").notNull(),
   clientPhone: text("client_phone"),
   clientEmail: text("client_email"),
+  clientType: text("client_type", { enum: clientTypes }).notNull().default("national"),
   status: text("status", { enum: orderStatuses }).notNull().default("new"),
   priority: text("priority", { enum: priorities }).notNull().default("normal"),
   assignedToId: integer("assigned_to_id").references(() => users.id),
@@ -74,7 +75,9 @@ export const orders = pgTable("orders", {
   campaign: text("campaign"),
   adSet: text("ad_set"),
   creative: text("creative"),
-  packageType: text("package_type", { enum: packageTypes }),
+  // Package keys come from the admin-managed package catalog, so this must remain
+  // an unrestricted string rather than a fixed enum.
+  packageType: text("package_type"),
   notes: text("notes"),
   internalNotes: text("internal_notes"),
   createdById: integer("created_by_id").references(() => users.id),

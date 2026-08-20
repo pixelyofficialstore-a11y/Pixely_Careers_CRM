@@ -1,3 +1,4 @@
-- [Order PATCH role enforcement](order-patch-authorization.md) — finance/package/service/paymentStatus edits are admin-only; support fields stripped via deny-list, designers via allowlist.
+- [Order PATCH role enforcement](order-patch-authorization.md) — admin owns order details; support is limited to operational status/assignment, designers to assigned production status.
+- [Notification delivery ownership](notification-delivery-ownership.md) — the server alone sends browser push; clients show only one in-app alert per incoming notification.
 - [Vite HMR periodic refresh](vite-hmr-reload-loop.md) — dev-preview reloads on Vite HMR reconnect after dev-server blips/restarts; NOT an app bug, absent in prod; do NOT set hmr.clientPort in middleware mode
 - [DB schema sync](db-schema-sync.md) — new schema.ts columns must be mirrored in server/migrate.ts (ADD COLUMN IF NOT EXISTS); never drizzle push against live Supabase.
