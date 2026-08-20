@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { 
@@ -15,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { format, isToday, startOfMonth } from "date-fns";
 import type { OrderWithServices } from "@shared/schema";
+import { getMillisecondsUntilNextBusinessDay } from "@shared/business-time";
 import { DashboardSkeleton } from "@/components/PageSkeleton";
 
 interface User {
@@ -146,12 +148,27 @@ export default function DashboardPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const { data: dashboardStats } = useQuery<DashboardStats>({
+  const { data: dashboardStats, refetch: refetchDashboardStats } = useQuery<DashboardStats>({
     queryKey: ["/api/stats"],
     enabled: user?.role === "admin",
     refetchInterval: 60 * 1000,
     staleTime: 30 * 1000,
   });
+
+  useEffect(() => {
+    if (user?.role !== "admin") return;
+
+    let midnightTimer: number;
+    const scheduleMidnightRefresh = () => {
+      midnightTimer = window.setTimeout(() => {
+        void refetchDashboardStats();
+        scheduleMidnightRefresh();
+      }, getMillisecondsUntilNextBusinessDay() + 250);
+    };
+
+    scheduleMidnightRefresh();
+    return () => window.clearTimeout(midnightTimer);
+  }, [refetchDashboardStats, user?.role]);
 
   if (isLoading) return <DashboardSkeleton />;
 

@@ -12,6 +12,7 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, ne, desc, sql, and, isNotNull, inArray, asc } from "drizzle-orm";
+import { getStartOfBusinessDay, getStartOfBusinessMonth } from "@shared/business-time";
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -217,12 +218,9 @@ export class DatabaseStorage implements IStorage {
     const allPaymentVerifications = await db.select().from(paymentVerifications);
     const allUsers = await db.select().from(users);
     
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = getStartOfBusinessDay();
     const todayOrders = allOrders.filter(o => new Date(o.createdAt!) >= today);
-    const thisMonth = new Date();
-    thisMonth.setDate(1);
-    thisMonth.setHours(0, 0, 0, 0);
+    const thisMonth = getStartOfBusinessMonth();
     const monthlyOrders = allOrders.filter(o => new Date(o.createdAt!) >= thisMonth);
     
     const orderStats = {
