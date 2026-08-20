@@ -2,6 +2,7 @@
   "name": "rest-express",
   "version": "1.0.0",
   "type": "module",
+  "packageManager": "pnpm@10.26.1",
   "license": "MIT",
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
@@ -122,6 +123,11 @@
       "@esbuild-kit/esm-loader": "npm:tsx@^4.20.4"
     },
     "fast-xml-parser": "^5.9.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "sharp"
+    ]
   },
   "optionalDependencies": {
     "bufferutil": "^4.1.0"

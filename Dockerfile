@@ -1,38 +1,32 @@
-FROM node:20-bookworm-slim AS application-build
+FROM node:20.20.2-bookworm-slim AS build
 
 WORKDIR /app
-ARG BUILD_DEPENDENCY_EPOCH=20260820-1935-single-install
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 
-# Copy lockfiles first so Railway can reuse this dependency layer when only
-# application code changes.
-COPY package.json package-lock.json ./
-RUN echo "Installing build dependencies (epoch ${BUILD_DEPENDENCY_EPOCH})" \
-  && rm -rf node_modules \
-  && npm ci --include=dev --no-audit --no-fund \
-  --fetch-retries=2 --fetch-retry-factor=2 \
-  --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=10000 \
-  --fetch-timeout=120000 \
+# Railway's bundled npm 10.8.2 crashes while resolving this app's dependency
+# graph. Bootstrap the pinned pnpm release instead of invoking npm to install
+# or launch the application.
+RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile --prod=false --reporter=append-only \
   && test -x node_modules/.bin/tsx \
   && test -x node_modules/.bin/vite
 
 COPY . .
-RUN test -x node_modules/.bin/tsx && npm run build
-RUN npm prune --omit=dev --no-audit --no-fund
+RUN pnpm run build && pnpm prune --prod
 
-FROM node:20-bookworm-slim AS runtime
+FROM node:20.20.2-bookworm-slim AS runtime
 
 WORKDIR /app
 ENV NODE_ENV=production
 
-# The build stage prunes its verified dependency installation after compiling,
-# avoiding a second, concurrent npm install on constrained remote builders.
-COPY package.json package-lock.json ./
-COPY --from=application-build /app/node_modules ./node_modules
-COPY --from=application-build /app/dist ./dist
-COPY --from=application-build /app/uploads/avatars ./uploads/avatars
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/uploads/avatars ./uploads/avatars
 
 RUN chown -R node:node /app
 USER node
 
 EXPOSE 5000
-CMD ["npm", "start"]
+CMD ["node", "dist/index.cjs"]
