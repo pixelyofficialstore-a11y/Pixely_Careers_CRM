@@ -113,6 +113,27 @@ const ORDER_STATUS_FILTERS: Array<{ value: string; label: string; statuses: stri
   { value: "completed", label: "Completed", statuses: ["ready"] },
 ];
 
+type OrderFormService = {
+  id: number;
+  serviceNumber: number;
+  serviceType: string;
+  quantity: number;
+  instructions: string;
+};
+
+// Keep numbering tied to each card's creation identity: removing a card never
+// renumbers or reuses a label, while every new card is inserted first.
+const prependNumberedService = (
+  services: OrderFormService[],
+  id: number,
+  serviceNumber: number,
+): OrderFormService[] => {
+  return [
+    { id, serviceNumber, serviceType: "", quantity: 1, instructions: "" },
+    ...services,
+  ];
+};
+
 export default function OrdersPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -543,7 +564,7 @@ export default function OrdersPage() {
         proofOrderIds.has(order.id) ? "Uploaded" : "No Proof Uploaded",
         order.notes && order.notes.trim() ? order.notes.trim() : "Not Specified",
       ];
-    }) : [["No orders found.", "", "", "", "", "", "", "", "", "", "", "", "", ""]];
+    }) : [["No orders found.", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]];
 
     const tableBaseStyles = {
       font: "helvetica",
@@ -566,6 +587,18 @@ export default function OrdersPage() {
     };
     const tableBodyStyles = { fillColor: [255, 255, 255] as [number, number, number] };
     const tableAlternateStyles = { fillColor: [248, 250, 252] as [number, number, number] };
+    const drawReportFooter = () => {
+      const pageNumber = doc.getNumberOfPages();
+      const footerY = doc.internal.pageSize.getHeight() - 14;
+      doc.setDrawColor(...LINE);
+      doc.setLineWidth(0.5);
+      doc.line(marginX, footerY - 14, pageWidth - marginX, footerY - 14);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.5);
+      doc.setTextColor(...MUTED);
+      doc.text("Pixely Careers • Confidential order report", marginX, footerY);
+      doc.text(`Page ${pageNumber}`, pageWidth - marginX, footerY, { align: "right" });
+    };
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
@@ -583,6 +616,7 @@ export default function OrdersPage() {
       headStyles: tableHeadStyles,
       bodyStyles: tableBodyStyles,
       alternateRowStyles: tableAlternateStyles,
+      rowPageBreak: "avoid",
       columnStyles: {
         0: { cellWidth: 70 },
         1: { cellWidth: 92 },
@@ -594,12 +628,18 @@ export default function OrdersPage() {
         7: { cellWidth: 82 },
         8: { cellWidth: 64 },
       },
-      margin: { left: marginX, right: marginX },
+      margin: { left: marginX, right: marginX, bottom: 42 },
       showHead: "everyPage",
+      didDrawPage: drawReportFooter,
     });
 
     const detailsEndY = (doc as any).lastAutoTable?.finalY || tableStartY + 40;
-    const financeStartY = detailsEndY + 22;
+    const pageHeight = doc.internal.pageSize.getHeight();
+    let financeStartY = detailsEndY + 22;
+    if (financeStartY > pageHeight - 104) {
+      doc.addPage();
+      financeStartY = 42;
+    }
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
     doc.setTextColor(...INK);
@@ -613,6 +653,7 @@ export default function OrdersPage() {
       headStyles: tableHeadStyles,
       bodyStyles: tableBodyStyles,
       alternateRowStyles: tableAlternateStyles,
+      rowPageBreak: "avoid",
       columnStyles: {
         0: { cellWidth: 80 },
         1: { cellWidth: 80 },
@@ -622,19 +663,9 @@ export default function OrdersPage() {
         5: { cellWidth: 95, halign: "center" },
         6: { cellWidth: 240 },
       },
-      margin: { left: marginX, right: marginX },
+      margin: { left: marginX, right: marginX, bottom: 42 },
       showHead: "everyPage",
-      didDrawPage: () => {
-        const pageNumber = doc.getNumberOfPages();
-        doc.setDrawColor(...LINE);
-        doc.setLineWidth(0.5);
-        doc.line(marginX, doc.internal.pageSize.getHeight() - 28, pageWidth - marginX, doc.internal.pageSize.getHeight() - 28);
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(7.5);
-        doc.setTextColor(...MUTED);
-        doc.text("Pixely Careers • Confidential order report", marginX, doc.internal.pageSize.getHeight() - 14);
-        doc.text(`Page ${pageNumber}`, pageWidth - marginX, doc.internal.pageSize.getHeight() - 14, { align: "right" });
-      },
+      didDrawPage: drawReportFooter,
     });
 
     const fileSuffix = isSearchActive
@@ -1457,7 +1488,8 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
   const [notes, setNotes] = useState(order.notes || "");
   const [packageType, setPackageType] = useState<string>(order.packageType || "custom");
   const serviceIdRef = useRef(1);
-  const [services, setServices] = useState(() => {
+  const nextServiceNumberRef = useRef((order.services?.length || 0) + 1);
+  const [services, setServices] = useState<OrderFormService[]>(() => {
     const existing = (order.services || []).map((s, i) => ({
       id: serviceIdRef.current++,
       serviceNumber: i + 1,
@@ -1471,11 +1503,11 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
   const [isSaving, setIsSaving] = useState(false);
 
   const addService = () => {
-    setServices((prev) => {
-      const nextNumber = prev.reduce((m, s) => Math.max(m, s.serviceNumber), 0) + 1;
-      const newService = { id: serviceIdRef.current++, serviceNumber: nextNumber, serviceType: "", quantity: 1, instructions: "" };
-      return [newService, ...prev];
-    });
+    setServices((prev) => prependNumberedService(
+      prev,
+      serviceIdRef.current++,
+      nextServiceNumberRef.current++,
+    ));
     requestAnimationFrame(() => {
       customServicesTopRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       const trigger = customServicesTopRef.current?.querySelector<HTMLButtonElement>('[data-testid^="select-service-type-"]');
@@ -1804,7 +1836,8 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
   const [notes, setNotes] = useState("");
   const [packageType, setPackageType] = useState<string>("");
   const serviceIdRef = useRef(1);
-  const [services, setServices] = useState<{ id: number; serviceNumber: number; serviceType: string; quantity: number; instructions: string }[]>([]);
+  const nextServiceNumberRef = useRef(1);
+  const [services, setServices] = useState<OrderFormService[]>([]);
   const customServicesTopRef = useRef<HTMLDivElement | null>(null);
   
   // Payment verification fields
@@ -1826,11 +1859,11 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
   });
 
   const addService = () => {
-    setServices((prev) => {
-      const nextNumber = prev.reduce((m, s) => Math.max(m, s.serviceNumber), 0) + 1;
-      const newService = { id: serviceIdRef.current++, serviceNumber: nextNumber, serviceType: "", quantity: 1, instructions: "" };
-      return [newService, ...prev];
-    });
+    setServices((prev) => prependNumberedService(
+      prev,
+      serviceIdRef.current++,
+      nextServiceNumberRef.current++,
+    ));
     requestAnimationFrame(() => {
       customServicesTopRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       const trigger = customServicesTopRef.current?.querySelector<HTMLButtonElement>('[data-testid^="select-service-type-"]');
