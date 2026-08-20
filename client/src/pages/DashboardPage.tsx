@@ -114,7 +114,7 @@ function CashFlowCard({
         <span className="text-xl font-bold text-green-400">{formatAmount(total)}</span>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-3">
         <div className="flex items-center justify-between p-4 bg-slate-950/50 rounded-xl border border-slate-800">
           <p className="text-xs text-slate-400">Advance</p>
           <p className="font-bold text-white" data-testid="stat-today-cash-flow-advance">
