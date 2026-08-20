@@ -494,82 +494,21 @@ export default function OrdersPage() {
     doc.setTextColor(...MUTED);
     doc.text(`Generated ${format(new Date(), "MMM dd, yyyy · h:mm a")}`, pageWidth - marginX, 68, { align: "right" });
 
-    // ---- Summary stats ----
-    const approvedExportOrders = exportOrders.filter(o => o.advancePaymentStatus === 'approved');
-    const totalOrders = exportOrders.length;
-    const revenue = approvedExportOrders.reduce((sum, o) => sum + (Number(o.totalPrice) || 0), 0);
-    const collected = approvedExportOrders.reduce((sum, o) => sum + (Number(o.advanceAmount) || 0), 0);
-    const remaining = approvedExportOrders.filter(o => o.status !== 'canceled').reduce((sum, o) => sum + (Number(o.remainingAmount) || 0), 0);
-    const delivered = exportOrders.filter(o => o.status === 'delivered').length;
-    const pending = exportOrders.filter(o => o.status === 'new' || o.status === 'working' || o.status === 'ready').length;
+    const tableStartY = 112;
 
-    const stats: { label: string; value: string }[] = [
-      { label: "Total Orders", value: String(totalOrders) },
-      { label: "Monthly Revenue", value: formatRs(revenue) },
-      { label: "Collected Amount", value: formatRs(collected) },
-      { label: "Remaining Amount", value: formatRs(remaining) },
-      { label: "Delivered Orders", value: String(delivered) },
-      { label: "Pending Orders", value: String(pending) },
-    ];
-
-    const statCols = stats.length;
-    const statColW = contentWidth / statCols;
-    const statTop = 112;
-    stats.forEach((stat, i) => {
-      const x = marginX + i * statColW;
-      const y = statTop;
-      if (i > 0) {
-        doc.setDrawColor(...LINE);
-        doc.setLineWidth(0.6);
-        doc.line(x - 12, y - 9, x - 12, y + 25);
-      }
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(7.5);
-      doc.setTextColor(...MUTED);
-      doc.text(stat.label.toUpperCase(), x, y);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-      doc.setTextColor(...INK);
-      doc.text(stat.value, x, y + 15);
-    });
-    const tableStartY = statTop + 42;
-
-    // ---- Proof lookup (order id -> has screenshot) ----
-    const proofOrderIds = new Set(
-      paymentVerifications
-        .filter(v => (v.screenshotUrl && v.screenshotUrl.trim()) || (v.screenshotData && v.screenshotData.trim()))
-        .map(v => v.orderId)
-    );
-
-    // ---- Table ----
-    const tableData = exportOrders.length > 0 ? exportOrders.map(order => {
-      const statusLabel = order.status
-        ? order.status.replace(/_/g, " ").replace(/\b\w/g, char => char.toUpperCase())
-        : "Not Specified";
-      const paymentLabel = order.paymentStatus === "paid"
-        ? "Paid"
-        : (order.paymentStatus
-          ? order.paymentStatus.replace(/_/g, " ").replace(/\b\w/g, char => char.toUpperCase())
-          : "Pending");
-
-      return [
-        order.orderNumber || "Not Specified",
-        getCreatedByLabel(order),
-        formatDateSafe(order.createdAt),
-        order.clientName || "Not Specified",
-        getClientTypeLabel(order),
-        order.clientPhone && order.clientPhone.trim() ? order.clientPhone.trim() : "Not Specified",
-        getServicesLabel(order),
-        order.assignee?.name || "Unassigned",
-        statusLabel,
-        paymentLabel,
-        formatRs(order.totalPrice),
-        formatRs(order.advanceAmount),
-        formatRs(order.remainingAmount),
-        proofOrderIds.has(order.id) ? "Uploaded" : "No Proof Uploaded",
-        order.notes && order.notes.trim() ? order.notes.trim() : "Not Specified",
-      ];
-    }) : [["No orders found.", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]];
+    // Keep the export intentionally focused: one table with the nine requested
+    // order fields, rather than splitting order data across two tables.
+    const tableData = exportOrders.length > 0 ? exportOrders.map(order => [
+      order.orderNumber || "Not Specified",
+      formatDateSafe(order.createdAt),
+      order.clientName || "Not Specified",
+      getClientTypeLabel(order),
+      order.clientPhone && order.clientPhone.trim() ? order.clientPhone.trim() : "Not Specified",
+      getServicesLabel(order),
+      order.assignee?.name || "Unassigned",
+      formatRs(order.totalPrice),
+      formatRs(order.remainingAmount),
+    ]) : [["No orders found.", "", "", "", "", "", "", "", ""]];
 
     const tableBaseStyles = {
       font: "helvetica",
@@ -605,68 +544,30 @@ export default function OrdersPage() {
       doc.text(`Page ${pageNumber}`, pageWidth - marginX, footerY, { align: "right" });
     };
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.setTextColor(...INK);
-    doc.text("Order details", marginX, tableStartY);
     autoTable(doc, {
-      startY: tableStartY + 10,
+      startY: tableStartY,
       head: [[
-        "Order ID", "Created By", "Date Placed", "Client Name", "Client Type",
-         "Phone", "Services", "Designer", "Status",
+        "Order ID", "Date", "Client Name", "Type", "Phone",
+        "Service", "Designer", "Total Bill", "Remaining",
       ]],
-      body: tableData.map(row => row.slice(0, 9)),
+      body: tableData,
       theme: "grid",
+      tableWidth: "wrap",
       styles: tableBaseStyles,
       headStyles: tableHeadStyles,
       bodyStyles: tableBodyStyles,
       alternateRowStyles: tableAlternateStyles,
       rowPageBreak: "avoid",
       columnStyles: {
-        0: { cellWidth: 70 },
-        1: { cellWidth: 92 },
-        2: { cellWidth: 70 },
-        3: { cellWidth: 94 },
-        4: { cellWidth: 65 },
-        5: { cellWidth: 76 },
-        6: { cellWidth: 162 },
-        7: { cellWidth: 82 },
-        8: { cellWidth: 64 },
-      },
-      margin: { left: marginX, right: marginX, bottom: 42 },
-      showHead: "everyPage",
-      didDrawPage: drawReportFooter,
-    });
-
-    const detailsEndY = (doc as any).lastAutoTable?.finalY || tableStartY + 40;
-    const pageHeight = doc.internal.pageSize.getHeight();
-    let financeStartY = detailsEndY + 22;
-    if (financeStartY > pageHeight - 104) {
-      doc.addPage();
-      financeStartY = 42;
-    }
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.setTextColor(...INK);
-    doc.text("Payment and notes", marginX, financeStartY);
-    autoTable(doc, {
-      startY: financeStartY + 10,
-      head: [["Order ID", "Payment", "Total Bill", "Advance Paid", "Remaining", "Payment Proof", "Notes / Remarks"]],
-      body: tableData.map(row => [row[0], row[9], row[10], row[11], row[12], row[13], row[14]]),
-      theme: "grid",
-      styles: tableBaseStyles,
-      headStyles: tableHeadStyles,
-      bodyStyles: tableBodyStyles,
-      alternateRowStyles: tableAlternateStyles,
-      rowPageBreak: "avoid",
-      columnStyles: {
-        0: { cellWidth: 80 },
-        1: { cellWidth: 80 },
-        2: { cellWidth: 88, halign: "right" },
-        3: { cellWidth: 88, halign: "right" },
-        4: { cellWidth: 88, halign: "right" },
-        5: { cellWidth: 95, halign: "center" },
-        6: { cellWidth: 240 },
+        0: { cellWidth: 68 },
+        1: { cellWidth: 62 },
+        2: { cellWidth: 100 },
+        3: { cellWidth: 52 },
+        4: { cellWidth: 82 },
+        5: { cellWidth: 158 },
+        6: { cellWidth: 80 },
+        7: { cellWidth: 70, halign: "right" },
+        8: { cellWidth: 78, halign: "right" },
       },
       margin: { left: marginX, right: marginX, bottom: 42 },
       showHead: "everyPage",
