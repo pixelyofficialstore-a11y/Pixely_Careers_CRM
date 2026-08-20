@@ -2,3 +2,4 @@
 - [Notification delivery ownership](notification-delivery-ownership.md) — the server alone sends browser push; clients show only one in-app alert per incoming notification.
 - [Vite HMR periodic refresh](vite-hmr-reload-loop.md) — dev-preview reloads on Vite HMR reconnect after dev-server blips/restarts; NOT an app bug, absent in prod; do NOT set hmr.clientPort in middleware mode
 - [DB schema sync](db-schema-sync.md) — new schema.ts columns must be mirrored in server/migrate.ts (ADD COLUMN IF NOT EXISTS); never drizzle push against live Supabase.
+- [Startup cleanup retention](startup-cleanup-retention.md) — startup cleanup can delete historical notification/payment records; treat it as an owner-approved retention policy.
