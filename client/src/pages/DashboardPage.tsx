@@ -420,11 +420,33 @@ export default function DashboardPage() {
 
       {/* Finance Section - Admin Only */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <CashFlowCard
-          total={todayCashFlow.total}
-          advance={todayCashFlow.advance}
-          remaining={todayCashFlow.remaining}
-        />
+        <div className="glass-panel p-6 rounded-2xl">
+          <h3 className="text-lg font-bold font-display text-white mb-6">Designer Performance</h3>
+          <div className="space-y-3">
+            {(() => {
+              const activeDesigners = teamMembers?.filter(u => u.role === "designer" && u.isActive) || [];
+              if (activeDesigners.length === 0) return <p className="text-slate-500 text-center py-4">No designer data available</p>;
+              return activeDesigners.map(designer => {
+                const designerOrders = orders?.filter(o => o.assignedToId === designer.id) || [];
+                const completedCount = designerOrders.filter(o => o.status === 'ready' || o.status === 'delivered').length;
+                return (
+                  <div key={designer.id} className="flex items-center justify-between p-3 bg-slate-950/50 rounded-lg border border-slate-800">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs text-white">
+                        {designer.name.charAt(0)}
+                      </div>
+                      <span className="text-slate-300">{designer.name}</span>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-white font-bold">{completedCount}/{designerOrders.length}</p>
+                      <p className="text-xs text-slate-500">completed</p>
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        </div>
         <div className="glass-panel p-6 rounded-2xl">
           <h3 className="text-lg font-bold font-display text-white mb-6">Financial Summary</h3>
           <div className="space-y-4">
@@ -501,33 +523,11 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="glass-panel p-6 rounded-2xl">
-          <h3 className="text-lg font-bold font-display text-white mb-6">Designer Performance</h3>
-          <div className="space-y-3">
-            {(() => {
-              const activeDesigners = teamMembers?.filter(u => u.role === "designer" && u.isActive) || [];
-              if (activeDesigners.length === 0) return <p className="text-slate-500 text-center py-4">No designer data available</p>;
-              return activeDesigners.map(designer => {
-                const designerOrders = orders?.filter(o => o.assignedToId === designer.id) || [];
-                const completedCount = designerOrders.filter(o => o.status === 'ready' || o.status === 'delivered').length;
-                return (
-                  <div key={designer.id} className="flex items-center justify-between p-3 bg-slate-950/50 rounded-lg border border-slate-800">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs text-white">
-                        {designer.name.charAt(0)}
-                      </div>
-                      <span className="text-slate-300">{designer.name}</span>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-white font-bold">{completedCount}/{designerOrders.length}</p>
-                      <p className="text-xs text-slate-500">completed</p>
-                    </div>
-                  </div>
-                );
-              });
-            })()}
-          </div>
-        </div>
+        <CashFlowCard
+          total={todayCashFlow.total}
+          advance={todayCashFlow.advance}
+          remaining={todayCashFlow.remaining}
+        />
       </div>
     </div>
   );
