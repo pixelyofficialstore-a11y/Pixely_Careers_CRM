@@ -386,8 +386,8 @@ export default function OrdersPage() {
                 {packageLabel}
               </Badge>
             )}
-            <span className="text-slate-300 underline decoration-dotted underline-offset-2">
-              {packageLabel ? `+ ${totalServices} ${totalServices === 1 ? "add-on" : "add-ons"}` : `${totalServices} ${totalServices === 1 ? "Service" : "Services"}`}
+            <span className="text-slate-300 underline decoration-dotted underline-offset-2 whitespace-nowrap">
+              {packageLabel ? `+${totalServices} ${totalServices === 1 ? "Add-on" : "Add-ons"}` : `${totalServices} ${totalServices === 1 ? "Service" : "Services"}`}
             </span>
           </div>
         </TooltipTrigger>
@@ -425,12 +425,17 @@ export default function OrdersPage() {
   };
 
   const getServicesLabel = (order: OrderWithServices) => {
-    const servicesLabel = order.services?.map(s => `${s.serviceType} (${s.quantity || 1})`).join(" + ");
+    const services = order.services || [];
+    const totalServices = services.reduce((total, service) => total + (service.quantity || 1), 0);
     if (order.packageType && order.packageType !== "custom") {
       const packageLabel = packageLabels[order.packageType] || order.packageType;
-      return servicesLabel ? `${packageLabel} + ${servicesLabel}` : packageLabel;
+      return totalServices > 0
+        ? `${packageLabel} +${totalServices} ${totalServices === 1 ? "Add-on" : "Add-ons"}`
+        : packageLabel;
     }
-    return servicesLabel || "Not Specified";
+    return services
+      .map(service => `${service.serviceType || "Service"}${(service.quantity || 1) > 1 ? ` × ${service.quantity}` : ""}`)
+      .join(", ") || "Not Specified";
   };
 
   const getCreatedByLabel = (order: OrderWithServices) => {
@@ -608,7 +613,7 @@ export default function OrdersPage() {
       startY: tableStartY + 10,
       head: [[
         "Order ID", "Created By", "Date Placed", "Client Name", "Client Type",
-        "Phone", "Service / Package", "Designer", "Status",
+         "Phone", "Services", "Designer", "Status",
       ]],
       body: tableData.map(row => row.slice(0, 9)),
       theme: "grid",
@@ -624,7 +629,7 @@ export default function OrdersPage() {
         3: { cellWidth: 94 },
         4: { cellWidth: 65 },
         5: { cellWidth: 76 },
-        6: { cellWidth: 132 },
+        6: { cellWidth: 162 },
         7: { cellWidth: 82 },
         8: { cellWidth: 64 },
       },
@@ -722,7 +727,7 @@ export default function OrdersPage() {
         <TableHead className="text-slate-400">Client</TableHead>
         <TableHead className="text-slate-400">Client Type</TableHead>
         <TableHead className="text-slate-400">Contact</TableHead>
-        <TableHead className="text-slate-400">Services / Package</TableHead>
+        <TableHead className="text-slate-400">Services</TableHead>
         {!isDesigner && <TableHead className="text-slate-400">Designer</TableHead>}
         <TableHead className="text-slate-400">Status</TableHead>
         {!isDesigner && <TableHead className="text-slate-400">Adv. Payment</TableHead>}
