@@ -16,13 +16,14 @@ import {
 import { db } from "./db";
 import { eq, ne, desc, sql, and, isNotNull, inArray, asc } from "drizzle-orm";
 import { getStartOfBusinessDay, getStartOfBusinessMonth } from "@shared/business-time";
-import { randomUUID } from "crypto";
 
 export type ComplaintListFilters = {
   search?: string;
   status?: string;
   category?: string;
   orderId?: number;
+  month?: number;
+  year?: number;
 };
 
 export interface IStorage {
@@ -46,7 +47,7 @@ export interface IStorage {
   markNotificationRead(id: number): Promise<Notification>;
   createNotification(userId: number, type: string, title: string, message: string, priority: string, relatedId?: number, relatedType?: string): Promise<Notification>;
 
-  getStats(role: string, userId: number): Promise<any>;
+  getStats(role: string, userId: number, complaintFilters?: ComplaintListFilters): Promise<any>;
 
   getPaymentVerifications(role: string, userId: number): Promise<PaymentVerificationWithUsers[]>;
   getPaymentVerificationsByOrder(orderId: number): Promise<PaymentVerificationWithUsers[]>;
@@ -96,9 +97,10 @@ export interface IStorage {
     expectedStatus: Complaint["status"],
     updates: Partial<InsertComplaint>,
     historyEvents: InsertActivityLog[],
+    cancelOrder?: boolean,
   ): Promise<Complaint | undefined>;
   getComplaintHistory(id: number): Promise<ComplaintHistoryEntry[]>;
-  getComplaintStats(role: string, userId: number): Promise<ComplaintStats>;
+  getComplaintStats(role: string, userId: number, filters?: ComplaintListFilters): Promise<ComplaintStats>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -242,7 +244,7 @@ export class DatabaseStorage implements IStorage {
     return notification;
   }
 
-  async getStats(role: string, userId: number): Promise<any> {
+  async getStats(role: string, userId: number, complaintFilters: ComplaintListFilters = {}): Promise<any> {
     const allOrdersRaw = await db.select().from(orders);
     const allOrders = allOrdersRaw.filter(o => o.advancePaymentStatus === 'approved');
     const allPaymentVerifications = await db.select().from(paymentVerifications);
@@ -292,7 +294,7 @@ export class DatabaseStorage implements IStorage {
 
     return {
       orders: orderStats,
-      complaints: await this.getComplaintStats(role, userId),
+      complaints: await this.getComplaintStats(role, userId, complaintFilters),
       finance: {
         totalRevenue,
         monthlyRevenue: monthlyOrders.reduce((acc, curr) => acc + (curr.advanceAmount || 0), 0),
@@ -327,6 +329,7 @@ export class DatabaseStorage implements IStorage {
     order: Order | undefined,
     usersById: Map<number, User>,
     role: string,
+    services: OrderService[] = [],
   ): ComplaintResponse | undefined {
     const against = this.complaintUserSummary(usersById.get(complaint.complaintAgainstUserId));
     if (!order || !against) return undefined;
@@ -337,6 +340,19 @@ export class DatabaseStorage implements IStorage {
       orderId: complaint.orderId,
       orderNumber: order.orderNumber,
       clientName: order.clientName,
+      order: {
+        clientName: order.clientName,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        packageType: order.packageType,
+        services: services.filter(service => service.orderId === order.id),
+        ...(role === "admin" || role === "support" ? {
+          totalPrice: order.totalPrice,
+          advanceAmount: order.advanceAmount,
+          remainingAmount: order.remainingAmount,
+          discountAmount: order.discountAmount,
+        } : {}),
+      },
       complaintAgainst: against,
       category: complaint.category,
       description: complaint.description,
@@ -353,6 +369,9 @@ export class DatabaseStorage implements IStorage {
       response.adminNotes = complaint.adminNotes;
     }
     response.resolution = complaint.resolution;
+    response.resolutionOutcome = complaint.resolutionOutcome;
+    // A response is only built after visibility has been authorized.
+    response.screenshotUrl = complaint.screenshotUrl;
     if (role === "admin") {
       response.resolvedBy = complaint.resolvedByUserId
         ? this.complaintUserSummary(usersById.get(complaint.resolvedByUserId))
@@ -363,28 +382,30 @@ export class DatabaseStorage implements IStorage {
 
   async createComplaint(data: InsertComplaint, actorId: number): Promise<Complaint> {
     return await db.transaction(async (tx) => {
-      // The numeric id is the source of truth for a readable, collision-free
-      // complaint number. The temporary value never leaves this transaction.
+      const result = await tx.execute(sql`SELECT nextval('complaint_number_seq') AS value`);
+      const suffix = Number((result as any).rows?.[0]?.value ?? (result as any)[0]?.value);
+      if (!Number.isSafeInteger(suffix) || suffix < 1) {
+        throw new Error("Unable to allocate a complaint number");
+      }
+      const now = new Date();
+      const yy = String(now.getFullYear()).slice(-2);
+      const mm = String(now.getMonth() + 1).padStart(2, "0");
       const [created] = await tx.insert(complaints).values({
         ...data,
-        complaintNumber: `CMP-TEMP-${randomUUID()}`,
+        complaintNumber: `CMP-${yy}${mm}-${String(suffix).padStart(3, "0")}`,
       }).returning();
-      const [numbered] = await tx.update(complaints)
-        .set({ complaintNumber: `CMP-${String(created.id).padStart(6, "0")}` })
-        .where(eq(complaints.id, created.id))
-        .returning();
       await tx.insert(activityLogs).values({
-        orderId: numbered.orderId,
+        orderId: created.orderId,
         actorId,
         activityType: "complaint_created",
-        newValue: numbered.status,
+        newValue: created.status,
         details: {
-          complaintId: numbered.id,
-          complaintNumber: numbered.complaintNumber,
-          category: numbered.category,
+          complaintId: created.id,
+          complaintNumber: created.complaintNumber,
+          category: created.category,
         },
       });
-      return numbered;
+      return created;
     });
   }
 
@@ -411,17 +432,24 @@ export class DatabaseStorage implements IStorage {
     if (filters.category) {
       visible = visible.filter(complaint => complaint.category === filters.category);
     }
+    if (filters.year) {
+      visible = visible.filter(complaint => complaint.createdAt?.getFullYear() === filters.year);
+    }
+    if (filters.month) {
+      visible = visible.filter(complaint => (complaint.createdAt?.getMonth() ?? -1) + 1 === filters.month);
+    }
 
-    const [allOrders, allUsers] = await Promise.all([
+    const [allOrders, allUsers, allServices] = await Promise.all([
       db.select().from(orders),
       this.getUsers(),
+      db.select().from(orderServices),
     ]);
     const ordersById = new Map(allOrders.map(order => [order.id, order]));
     const usersById = new Map(allUsers.map(user => [user.id, user]));
     const search = filters.search?.trim().toLowerCase();
 
     return visible
-      .map(complaint => this.toComplaintResponse(complaint, ordersById.get(complaint.orderId), usersById, role))
+      .map(complaint => this.toComplaintResponse(complaint, ordersById.get(complaint.orderId), usersById, role, allServices))
       .filter((response): response is ComplaintResponse => {
         if (!response) return false;
         if (!search) return true;
@@ -451,6 +479,7 @@ export class DatabaseStorage implements IStorage {
     expectedStatus: Complaint["status"],
     updates: Partial<InsertComplaint>,
     historyEvents: InsertActivityLog[],
+    cancelOrder = false,
   ): Promise<Complaint | undefined> {
     return await db.transaction(async (tx) => {
       const [updated] = await tx.update(complaints)
@@ -460,6 +489,15 @@ export class DatabaseStorage implements IStorage {
       if (!updated) return undefined;
       if (historyEvents.length > 0) {
         await tx.insert(activityLogs).values(historyEvents);
+      }
+      if (cancelOrder) {
+        const [updatedOrder] = await tx.update(orders)
+          .set({ status: "canceled" })
+          .where(eq(orders.id, updated.orderId))
+          .returning();
+        if (!updatedOrder) {
+          throw new Error("Unable to cancel the related order");
+        }
       }
       return updated;
     });
@@ -490,17 +528,17 @@ export class DatabaseStorage implements IStorage {
       }));
   }
 
-  async getComplaintStats(role: string, userId: number): Promise<ComplaintStats> {
-    const rows = await this.getComplaints(role, userId);
-    const startOfMonth = getStartOfBusinessMonth();
+  async getComplaintStats(role: string, userId: number, filters: ComplaintListFilters = {}): Promise<ComplaintStats> {
+    const rows = await this.getComplaints(role, userId, filters);
     return {
-      total: rows.length,
-      thisMonth: rows.filter(row => row.createdAt && new Date(row.createdAt) >= startOfMonth).length,
-      new: rows.filter(row => row.status === "new").length,
-      underReview: rows.filter(row => row.status === "under_review").length,
+      all: rows.length,
       valid: rows.filter(row => row.status === "valid").length,
       invalid: rows.filter(row => row.status === "invalid").length,
       resolved: rows.filter(row => row.status === "resolved").length,
+      refund: rows.filter(row =>
+        (row.status === "resolved" || row.status === "order_canceled") &&
+        row.resolutionOutcome === "refund"
+      ).length,
     };
   }
 

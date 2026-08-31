@@ -48,6 +48,16 @@ function isValidPushEndpoint(endpoint: string): boolean {
   }
 }
 
+function isCloudinaryUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" &&
+      (url.hostname === "res.cloudinary.com" || url.hostname.endsWith(".cloudinary.com"));
+  } catch {
+    return false;
+  }
+}
+
 async function sendWebPushToUser(userId: number, title: string, body: string, priority: string) {
   try {
     const subs = await storage.getPushSubscriptionsForUser(userId);
@@ -623,6 +633,8 @@ export async function registerRoutes(
       search: typeof req.query.search === "string" ? req.query.search : undefined,
       status: typeof req.query.status === "string" ? req.query.status : undefined,
       category: typeof req.query.category === "string" ? req.query.category : undefined,
+      month: typeof req.query.month === "string" && /^(?:[1-9]|1[0-2])$/.test(req.query.month) ? Number(req.query.month) : undefined,
+      year: typeof req.query.year === "string" && /^\d{4}$/.test(req.query.year) ? Number(req.query.year) : undefined,
     };
     const complaints = await storage.getComplaints(user.role, user.id, filters);
     res.json(complaints);
@@ -634,6 +646,34 @@ export async function registerRoutes(
     const complaint = await storage.getComplaintForUser(id, user.role, user.id);
     if (!complaint) return res.sendStatus(404);
     res.json(complaint);
+  });
+
+  const complaintUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      if (["image/png", "image/jpeg", "image/webp"].includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error("Only PNG, JPEG, and WebP images are allowed."));
+      }
+    },
+  }).single("screenshot");
+
+  app.post("/api/complaints/upload", requireRole(["admin", "support"]), (req, res) => {
+    complaintUpload(req, res, async (err) => {
+      if (err) return res.status(400).json({ message: err.message });
+      if (!req.file) return res.status(400).json({ message: "A screenshot is required." });
+      if (!isCloudinaryConfigured()) {
+        return res.status(503).json({ message: "Complaint uploads require Cloudinary configuration." });
+      }
+      try {
+        const screenshotUrl = await uploadToCloudinary(req.file.buffer, "pixelcrm/complaints");
+        return res.json({ screenshotUrl });
+      } catch {
+        return res.status(502).json({ message: "Unable to upload the complaint screenshot." });
+      }
+    });
   });
 
   app.post(api.complaints.create.path, requireRole(["admin", "support"]), async (req, res) => {
@@ -666,9 +706,9 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Select an active complaint category." });
       }
 
-      // Admin findings are authoritative at filing time. Support/sales reports
-      // enter the review queue and require an explicit admin decision.
-      const initialStatus = user.role === "admin" ? "valid" : "new";
+      if (input.screenshotUrl && !isCloudinaryUrl(input.screenshotUrl)) {
+        return res.status(400).json({ message: "Screenshot must be an HTTPS Cloudinary URL." });
+      }
 
       const complaint = await storage.createComplaint({
         orderId: input.orderId,
@@ -676,9 +716,11 @@ export async function registerRoutes(
         filedByUserId: user.id,
         category: input.category,
         description: input.description.trim(),
-        status: initialStatus,
+        status: "new",
         adminNotes: null,
         resolution: null,
+        resolutionOutcome: null,
+        screenshotUrl: input.screenshotUrl || null,
         resolvedByUserId: null,
         resolvedAt: null,
       }, user.id);
@@ -712,7 +754,7 @@ export async function registerRoutes(
       const input = api.complaints.update.input.parse(req.body);
       const existing = await storage.getComplaintRecord(id);
       if (!existing) return res.sendStatus(404);
-      if (input.status === undefined && input.adminNotes === undefined && input.resolution === undefined) {
+      if (input.status === undefined && input.adminNotes === undefined && input.resolution === undefined && input.resolutionOutcome === undefined) {
         return res.status(400).json({ message: "Provide a status, internal note, or resolution." });
       }
 
@@ -720,38 +762,50 @@ export async function registerRoutes(
       const transitionAllowed =
         status === undefined ||
         status === existing.status ||
-        (existing.status === "new" && status === "under_review") ||
-        (existing.status === "under_review" && (status === "valid" || status === "invalid")) ||
-        (existing.status === "valid" && status === "resolved");
+        (existing.status === "new" && (status === "valid" || status === "invalid")) ||
+        (existing.status === "valid" && (status === "resolved" || status === "order_canceled"));
       if (!transitionAllowed) {
         return res.status(400).json({
           message: `Cannot move a complaint from ${statusLabel(existing.status)} to ${statusLabel(status)}.`,
         });
       }
 
-      if ((status === "valid" || status === "invalid") && input.confirmDecision !== true) {
+      if (status !== undefined && status !== existing.status && input.confirmDecision !== true) {
         return res.status(400).json({ message: "Confirm the complaint decision before saving it." });
       }
-      if (status === "resolved" && existing.status !== "valid") {
-        return res.status(400).json({ message: "Only valid complaints can be resolved." });
+      if ((status === "resolved" || status === "order_canceled") && existing.status !== "valid") {
+        return res.status(400).json({ message: "Only valid complaints can be closed." });
       }
-      if (status === "resolved" && !input.resolution?.trim() && !existing.resolution?.trim()) {
+      if ((status === "resolved" || status === "order_canceled") && (!input.resolution?.trim() && !existing.resolution?.trim())) {
         return res.status(400).json({ message: "A resolution is required before closing a valid complaint." });
+      }
+      if ((status === "resolved" || status === "order_canceled") && !input.resolutionOutcome) {
+        return res.status(400).json({ message: "Select a resolution outcome before closing the complaint." });
+      }
+      const isClosingTransition =
+        existing.status === "valid" &&
+        (status === "resolved" || status === "order_canceled");
+      if (input.resolutionOutcome !== undefined && !isClosingTransition) {
+        return res.status(400).json({
+          message: "A resolution outcome can only be recorded while closing a valid complaint.",
+        });
       }
       if (
         input.resolution !== undefined &&
         input.resolution !== existing.resolution &&
         existing.status !== "valid" &&
-        status !== "resolved"
+        status !== "resolved" && status !== "order_canceled"
       ) {
         return res.status(400).json({ message: "A resolution can only be recorded for a valid complaint." });
       }
       if (
-        existing.status === "resolved" &&
-        input.resolution !== undefined &&
-        input.resolution !== existing.resolution
+        (existing.status === "resolved" || existing.status === "order_canceled") &&
+        (
+          (input.resolution !== undefined && input.resolution !== existing.resolution) ||
+          (input.resolutionOutcome !== undefined && input.resolutionOutcome !== existing.resolutionOutcome)
+        )
       ) {
-        return res.status(400).json({ message: "The resolution is locked once a complaint is resolved." });
+        return res.status(400).json({ message: "The resolution and outcome are locked once a complaint is closed." });
       }
 
       const actor = req.user as User;
@@ -760,13 +814,13 @@ export async function registerRoutes(
         historyEvents.push({
           orderId: existing.orderId,
           actorId: actor.id,
-          activityType: status === "resolved" ? "complaint_resolved" : "complaint_status",
+          activityType: status === "resolved" || status === "order_canceled" ? "complaint_resolved" : "complaint_status",
           previousValue: existing.status,
           newValue: status,
           details: {
             complaintId: existing.id,
             complaintNumber: existing.complaintNumber,
-            ...(status === "resolved" ? { resolution: input.resolution?.trim() || existing.resolution } : {}),
+            ...(status === "resolved" || status === "order_canceled" ? { resolution: input.resolution?.trim() || existing.resolution, resolutionOutcome: input.resolutionOutcome } : {}),
           },
         });
       }
@@ -796,6 +850,13 @@ export async function registerRoutes(
           },
         });
       }
+      if (input.resolutionOutcome !== undefined && input.resolutionOutcome !== existing.resolutionOutcome) {
+        historyEvents.push({
+          orderId: existing.orderId, actorId: actor.id, activityType: "complaint_resolution",
+          previousValue: existing.resolutionOutcome, newValue: input.resolutionOutcome,
+          details: { complaintId: existing.id, complaintNumber: existing.complaintNumber },
+        });
+      }
       if (historyEvents.length === 0) {
         return res.status(400).json({ message: "No complaint changes were provided." });
       }
@@ -804,16 +865,16 @@ export async function registerRoutes(
         ...(status !== undefined ? { status } : {}),
         ...(input.adminNotes !== undefined ? { adminNotes: input.adminNotes?.trim() || null } : {}),
         ...(input.resolution !== undefined ? { resolution: input.resolution?.trim() || null } : {}),
-        ...(status === "resolved" && status !== existing.status
+        ...(input.resolutionOutcome !== undefined ? { resolutionOutcome: input.resolutionOutcome } : {}),
+        ...((status === "resolved" || status === "order_canceled") && status !== existing.status
           ? { resolvedByUserId: actor.id, resolvedAt: new Date() }
           : {}),
-      }, historyEvents);
+      }, historyEvents, status === "order_canceled" && status !== existing.status);
       if (!updated) {
         return res.status(409).json({
           message: "This complaint changed while you were reviewing it. Reload and try again.",
         });
       }
-
       if (status !== undefined && status !== existing.status) {
 
         const targetOrder = await storage.getOrder(existing.orderId);
@@ -1144,7 +1205,11 @@ export async function registerRoutes(
 
   app.get(api.stats.dashboard.path, requireAuth, async (req, res) => {
     const user = req.user as User;
-    const stats = await storage.getStats(user.role, user.id);
+    const month = typeof req.query.month === "string" && /^(?:[1-9]|1[0-2])$/.test(req.query.month)
+      ? Number(req.query.month) : undefined;
+    const year = typeof req.query.year === "string" && /^\d{4}$/.test(req.query.year)
+      ? Number(req.query.year) : undefined;
+    const stats = await storage.getStats(user.role, user.id, { month, year });
 
     if (user.role !== 'admin') {
       delete stats.finance;

@@ -220,6 +220,8 @@ export async function runMigrations() {
         status                     TEXT NOT NULL DEFAULT 'new',
         admin_notes                TEXT,
         resolution                 TEXT,
+        resolution_outcome         TEXT,
+        screenshot_url             TEXT,
         resolved_by_user_id        INTEGER REFERENCES users(id),
         resolved_at                TIMESTAMP,
         created_at                 TIMESTAMP DEFAULT NOW(),
@@ -333,6 +335,29 @@ export async function runMigrations() {
         ADD COLUMN IF NOT EXISTS reviewed_by_id       INTEGER REFERENCES users(id),
         ADD COLUMN IF NOT EXISTS reviewed_at          TIMESTAMP,
         ADD COLUMN IF NOT EXISTS notes                TEXT
+    `);
+
+    await client.query(`
+      ALTER TABLE complaints
+        ADD COLUMN IF NOT EXISTS resolution_outcome TEXT,
+        ADD COLUMN IF NOT EXISTS screenshot_url TEXT
+    `);
+    // Legacy review rows are safely returned to the current workflow entry state.
+    await client.query(`UPDATE complaints SET status = 'new' WHERE status = 'under_review'`);
+    // The sequence is global, so suffixes cannot reset across months or deletions.
+    await client.query(`CREATE SEQUENCE IF NOT EXISTS complaint_number_seq`);
+    await client.query(`
+      WITH maximum AS (
+        SELECT GREATEST(
+          COALESCE((
+            SELECT MAX(regexp_replace(complaint_number, '^.*-', '')::bigint)
+            FROM complaints
+            WHERE complaint_number ~ '^CMP-([0-9]{4}-)?[0-9]+$'
+          ), 0),
+          COALESCE((SELECT last_value FROM complaint_number_seq), 0)
+        ) AS value
+      )
+      SELECT setval('complaint_number_seq', GREATEST(value, 1), value > 0) FROM maximum
     `);
 
     await client.query(`

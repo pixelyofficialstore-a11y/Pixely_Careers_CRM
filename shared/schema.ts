@@ -70,7 +70,8 @@ export const complaintCategories = [
   "unauthorized_commitment",
   "other",
 ] as const;
-export const complaintStatuses = ["new", "under_review", "valid", "invalid", "resolved"] as const;
+export const complaintStatuses = ["new", "valid", "invalid", "resolved", "order_canceled"] as const;
+export const complaintResolutionOutcomes = ["correction_revision", "refund", "other"] as const;
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -180,6 +181,8 @@ export const complaints = pgTable("complaints", {
   status: text("status", { enum: complaintStatuses }).notNull().default("new"),
   adminNotes: text("admin_notes"),
   resolution: text("resolution"),
+  resolutionOutcome: text("resolution_outcome", { enum: complaintResolutionOutcomes }),
+  screenshotUrl: text("screenshot_url"),
   resolvedByUserId: integer("resolved_by_user_id").references(() => users.id),
   resolvedAt: timestamp("resolved_at"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -353,6 +356,17 @@ export type ComplaintResponse = {
   orderId: number;
   orderNumber: string | null;
   clientName: string;
+  order?: {
+    clientName: string;
+    orderNumber: string | null;
+    status: string;
+    packageType: string | null;
+    services: Pick<OrderService, "id" | "serviceType" | "quantity" | "instructions" | "status">[];
+    totalPrice?: number | null;
+    advanceAmount?: number | null;
+    remainingAmount?: number | null;
+    discountAmount?: number | null;
+  };
   complaintAgainst: ComplaintUserSummary;
   category: string;
   description: string;
@@ -360,6 +374,8 @@ export type ComplaintResponse = {
   filedBy?: ComplaintUserSummary;
   adminNotes?: string | null;
   resolution?: string | null;
+  resolutionOutcome?: (typeof complaintResolutionOutcomes)[number] | null;
+  screenshotUrl?: string | null;
   resolvedBy?: ComplaintUserSummary | null;
   resolvedAt: Date | null;
   createdAt: Date | null;
@@ -377,11 +393,9 @@ export type ComplaintHistoryEntry = {
 };
 
 export type ComplaintStats = {
-  total: number;
-  thisMonth: number;
-  new: number;
-  underReview: number;
+  all: number;
   valid: number;
   invalid: number;
   resolved: number;
+  refund: number;
 };

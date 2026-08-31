@@ -7,6 +7,7 @@ import {
   notifications,
   complaintCategories,
   complaintStatuses,
+  complaintResolutionOutcomes,
   type ComplaintResponse,
   type ComplaintHistoryEntry,
   type ComplaintStats,
@@ -174,6 +175,7 @@ export const api = {
         complaintAgainstUserId: z.number().int().positive().optional(),
         category: z.string().trim().min(1, "Category is required").max(100),
         description: z.string().trim().min(1, "Description is required").max(5000),
+        screenshotUrl: z.string().url().optional(),
       }),
       responses: {
         201: z.custom<ComplaintResponse>(),
@@ -188,6 +190,7 @@ export const api = {
         status: z.enum(complaintStatuses).optional(),
         adminNotes: z.string().trim().max(5000).nullable().optional(),
         resolution: z.string().trim().max(5000).nullable().optional(),
+        resolutionOutcome: z.enum(complaintResolutionOutcomes).nullable().optional(),
         confirmDecision: z.boolean().optional(),
       }),
       responses: {

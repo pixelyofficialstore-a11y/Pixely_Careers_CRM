@@ -2,25 +2,8 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
 import { format } from "date-fns";
-import {
-  AlertTriangle,
-  ArrowLeft,
-  CheckCircle2,
-  ClipboardCheck,
-  FileWarning,
-  Loader2,
-  Search,
-  ShieldAlert,
-  UserRound,
-  XCircle,
-} from "lucide-react";
-import {
-  complaintCategories,
-  complaintStatuses,
-  type ComplaintHistoryEntry,
-  type ComplaintCategoryConfig,
-  type ComplaintResponse,
-} from "@shared/schema";
+import { AlertTriangle, CalendarDays, CheckCircle2, ClipboardCheck, FileWarning, Loader2, Search, XCircle } from "lucide-react";
+import { complaintCategories, complaintStatuses, type ComplaintHistoryEntry, type ComplaintCategoryConfig, type ComplaintResponse, type ComplaintStats, type OrderWithServices } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -29,432 +12,79 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ComplaintStatusBadge } from "@/components/StatusBadge";
-import { complaintCategoryLabels } from "@/components/ComplaintDialog";
+import { complaintCategoryLabels, ComplaintDialog } from "@/components/ComplaintDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
-function readableError(error: Error) {
-  const match = error.message.match(/"message":"([^"]+)"/);
-  return match?.[1] || "The request could not be completed.";
-}
+const errorText = (error: Error) => error.message.match(/"message":"([^"]+)"/)?.[1] || "The request could not be completed.";
+const titleCase = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, c => c.toUpperCase());
+const money = (value?: number | null) => value == null ? null : `Rs${Math.round(Number(value) / 100).toLocaleString()}`;
 
-function ComplaintDetail({ complaintId }: { complaintId: number }) {
-  const { user } = useAuth();
-  const { toast } = useToast();
-  const [, setLocation] = useLocation();
-  const [adminNotes, setAdminNotes] = useState("");
-  const [resolution, setResolution] = useState("");
-  const [pendingDecision, setPendingDecision] = useState<"valid" | "invalid" | null>(null);
-
-  const { data: complaint, isLoading, isError } = useQuery<ComplaintResponse>({
-    queryKey: [`/api/complaints/${complaintId}`],
+function ComplaintDrawer({ id, open, onOpenChange }: { id: number | null; open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { user } = useAuth(); const { toast } = useToast(); const isAdmin = user?.role === "admin";
+  const [notes, setNotes] = useState(""); const [resolution, setResolution] = useState(""); const [outcome, setOutcome] = useState(""); const [pending, setPending] = useState<string | null>(null);
+  const { data: complaint, isLoading, isError } = useQuery<ComplaintResponse>({ queryKey: [`/api/complaints/${id}`], enabled: Boolean(id && open) });
+  const { data: history = [] } = useQuery<ComplaintHistoryEntry[]>({ queryKey: [`/api/complaints/${id}/history`], enabled: Boolean(id && open && isAdmin) });
+  const update = useMutation({
+    mutationFn: async (payload: Record<string, unknown>) => (await apiRequest("PATCH", `/api/complaints/${id}`, payload)).json(),
+    onSuccess: (value: ComplaintResponse) => { queryClient.setQueryData([`/api/complaints/${id}`], value); queryClient.invalidateQueries({ queryKey: ["/api/complaints"] }); queryClient.invalidateQueries({ queryKey: ["/api/stats"] }); queryClient.invalidateQueries({ queryKey: [`/api/complaints/${id}/history`] }); setPending(null); toast({ title: "Complaint updated" }); },
+    onError: (e: Error) => toast({ title: "Update failed", description: errorText(e), variant: "destructive" }),
   });
-  const { data: history = [] } = useQuery<ComplaintHistoryEntry[]>({
-    queryKey: [`/api/complaints/${complaintId}/history`],
-    enabled: user?.role === "admin",
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async (updates: Record<string, unknown>) => {
-      const response = await apiRequest("PATCH", `/api/complaints/${complaintId}`, updates);
-      return response.json();
-    },
-    onSuccess: (updated: ComplaintResponse) => {
-      queryClient.setQueryData([`/api/complaints/${complaintId}`], updated);
-      queryClient.invalidateQueries({ queryKey: ["/api/complaints"] });
-      queryClient.invalidateQueries({ queryKey: [`/api/complaints/${complaintId}/history`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-      toast({ title: "Complaint updated" });
-      setPendingDecision(null);
-    },
-    onError: (error: Error) => {
-      toast({ title: "Update failed", description: readableError(error), variant: "destructive" });
-    },
-  });
-
-  if (isLoading) {
-    return <div className="min-h-[50vh] flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div>;
-  }
-  if (isError || !complaint) {
-    return (
-      <div className="p-8">
-        <div className="glass-panel rounded-2xl p-8 text-center">
-          <AlertTriangle className="w-10 h-10 text-red-400 mx-auto mb-3" />
-          <h2 className="text-white font-semibold">Complaint unavailable</h2>
-          <p className="text-slate-400 mt-2">It may not exist or you may not have access to it.</p>
-          <Button variant="outline" className="mt-5" onClick={() => setLocation("/complaints")}>Back to Complaints</Button>
-        </div>
-      </div>
-    );
-  }
-
-  const isAdmin = user?.role === "admin";
-  const nextAction = complaint.status === "new"
-    ? { label: "Start Review", status: "under_review" as const }
-    : complaint.status === "valid"
-      ? { label: "Resolve Complaint", status: "resolved" as const }
-      : null;
-
-  return (
-    <div className="p-4 md:p-8 space-y-6">
-      <Button variant="ghost" className="text-slate-400" onClick={() => setLocation("/complaints")}>
-        <ArrowLeft className="w-4 h-4 mr-2" /> Back to Complaints
-      </Button>
-
-      <div className="glass-panel rounded-2xl p-5 md:p-7">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-2xl md:text-3xl font-bold font-display text-white">{complaint.complaintNumber}</h1>
-              <ComplaintStatusBadge status={complaint.status} />
-            </div>
-            <button
-              className="text-blue-400 hover:text-blue-300 text-sm mt-2"
-              onClick={() => setLocation("/orders")}
-            >
-              {complaint.orderNumber ? `Order #${complaint.orderNumber}` : `Order #${complaint.orderId}`} · {complaint.clientName}
-            </button>
-          </div>
-          <p className="text-xs text-slate-500">
-            Raised {complaint.createdAt ? format(new Date(complaint.createdAt), "MMM dd, yyyy 'at' h:mm a") : "—"}
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-7">
-          <div className="rounded-xl bg-slate-950 border border-slate-800 p-4">
-            <p className="text-xs uppercase tracking-wider text-slate-500">Complaint against</p>
-            <div className="flex items-center gap-2 mt-2">
-              <UserRound className="w-4 h-4 text-blue-400" />
-              <p className="text-white font-medium">{complaint.complaintAgainst.name}</p>
-            </div>
-          </div>
-          <div className="rounded-xl bg-slate-950 border border-slate-800 p-4">
-            <p className="text-xs uppercase tracking-wider text-slate-500">Category</p>
-             <p className="text-white font-medium mt-2">{complaintCategoryLabels[complaint.category as keyof typeof complaintCategoryLabels] || complaint.category.replaceAll("_", " ")}</p>
-          </div>
-          {isAdmin && complaint.filedBy && (
-            <div className="rounded-xl bg-slate-950 border border-slate-800 p-4">
-              <p className="text-xs uppercase tracking-wider text-slate-500">Filed by</p>
-              <p className="text-white font-medium mt-2">{complaint.filedBy.name}</p>
-              <p className="text-xs text-slate-500 capitalize">{complaint.filedBy.role}</p>
-            </div>
-          )}
-        </div>
-
-        <div className="mt-6 rounded-xl bg-slate-950 border border-slate-800 p-5">
-          <p className="text-xs uppercase tracking-wider text-slate-500 mb-3">Complaint details</p>
-          <p className="text-slate-200 whitespace-pre-wrap leading-relaxed">{complaint.description}</p>
-        </div>
-
-        {complaint.resolution && (
-          <div className="mt-4 rounded-xl bg-purple-500/10 border border-purple-500/20 p-5">
-            <p className="text-xs uppercase tracking-wider text-purple-300 mb-3">Resolution</p>
-            <p className="text-slate-200 whitespace-pre-wrap">{complaint.resolution}</p>
-          </div>
-        )}
-      </div>
-
-      {isAdmin && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="glass-panel rounded-2xl p-6 space-y-5">
-            <div>
-              <h2 className="text-lg font-semibold text-white">Review controls</h2>
-              <p className="text-sm text-slate-500">Status changes follow the required review sequence.</p>
-            </div>
-
-            {complaint.status === "under_review" && (
-              <div className="grid grid-cols-2 gap-3">
-                <Button className="bg-red-600 hover:bg-red-500" onClick={() => setPendingDecision("valid")}>
-                  <ShieldAlert className="w-4 h-4 mr-2" /> Mark Valid
-                </Button>
-                <Button variant="outline" onClick={() => setPendingDecision("invalid")}>
-                  <XCircle className="w-4 h-4 mr-2" /> Mark Invalid
-                </Button>
-              </div>
-            )}
-
-            {complaint.status === "valid" && (
-              <div className="space-y-2">
-                <Label htmlFor="resolution">Resolution <span className="text-red-400">*</span></Label>
-                <Textarea
-                  id="resolution"
-                  value={resolution}
-                  onChange={event => setResolution(event.target.value)}
-                  placeholder="Describe how the valid complaint was resolved."
-                  className="bg-slate-950 border-slate-700"
-                  rows={4}
-                />
-              </div>
-            )}
-
-            {nextAction && (
-              <Button
-                onClick={() => updateMutation.mutate({
-                  status: nextAction.status,
-                  ...(nextAction.status === "resolved" ? { resolution } : {}),
-                })}
-                disabled={updateMutation.isPending || (nextAction.status === "resolved" && !resolution.trim())}
-                className="w-full"
-              >
-                {updateMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                {nextAction.label}
-              </Button>
-            )}
-
-            {(complaint.status === "invalid" || complaint.status === "resolved") && (
-              <div className="rounded-lg border border-slate-800 bg-slate-950 p-4 text-sm text-slate-400">
-                This complaint has reached its final workflow state.
-              </div>
-            )}
-
-            <div className="space-y-2 pt-3 border-t border-slate-800">
-              <Label htmlFor="admin-notes">Internal admin notes</Label>
-              <Textarea
-                id="admin-notes"
-                value={adminNotes}
-                onChange={event => setAdminNotes(event.target.value)}
-                placeholder={complaint.adminNotes || "Notes visible only to admins"}
-                className="bg-slate-950 border-slate-700"
-                rows={4}
-              />
-              <Button
-                variant="outline"
-                onClick={() => updateMutation.mutate({ adminNotes })}
-                disabled={updateMutation.isPending || !adminNotes.trim()}
-              >
-                Save Internal Note
-              </Button>
-              {complaint.adminNotes && <p className="text-xs text-slate-500 whitespace-pre-wrap">Current: {complaint.adminNotes}</p>}
-            </div>
-          </div>
-
-          <div className="glass-panel rounded-2xl p-6">
-            <h2 className="text-lg font-semibold text-white">Complaint history</h2>
-            <div className="mt-5 space-y-4">
-              {history.length === 0 ? (
-                <p className="text-sm text-slate-500">No history entries yet.</p>
-              ) : history.map(entry => (
-                <div key={entry.id} className="relative pl-6 pb-4 border-l border-slate-700 last:pb-0">
-                  <span className="absolute -left-1.5 top-1 w-3 h-3 rounded-full bg-blue-500" />
-                  <p className="text-sm text-white">{entry.action.replaceAll("_", " ")}</p>
-                  {(entry.previousValue || entry.newValue) && (
-                    <p className="text-xs text-slate-400 mt-1">
-                      {entry.previousValue ? entry.previousValue.replaceAll("_", " ") : "Created"}
-                      {" → "}
-                      {entry.newValue?.replaceAll("_", " ") || "Recorded"}
-                    </p>
-                  )}
-                  <p className="text-xs text-slate-600 mt-1">
-                    {entry.actor?.name || "System"} · {entry.createdAt ? format(new Date(entry.createdAt), "MMM dd, yyyy h:mm a") : "—"}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <AlertDialog open={pendingDecision !== null} onOpenChange={open => !open && setPendingDecision(null)}>
-        <AlertDialogContent className="bg-slate-900 border-slate-800 text-white">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirm complaint decision</AlertDialogTitle>
-            <AlertDialogDescription className="text-slate-400">
-              Mark {complaint.complaintNumber} as {pendingDecision}. This decision is recorded in complaint history and cannot be reversed.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => pendingDecision && updateMutation.mutate({ status: pendingDecision, confirmDecision: true })}
-              className={pendingDecision === "valid" ? "bg-red-600 hover:bg-red-500" : ""}
-            >
-              Confirm {pendingDecision}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
-  );
+  const submitDecision = () => {
+    if (!pending || !complaint) return;
+    const isClosing = pending === "resolved" || pending === "order_canceled";
+    update.mutate({
+      status: pending,
+      confirmDecision: true,
+      ...(isClosing ? { resolution: resolution.trim(), resolutionOutcome: outcome } : {}),
+    });
+  };
+  const terminal = complaint && ["invalid", "resolved", "order_canceled"].includes(complaint.status);
+  return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent className="w-full sm:max-w-xl overflow-y-auto bg-slate-950 border-slate-800 text-white">
+    <SheetHeader><SheetTitle className="flex items-center gap-3">{complaint?.complaintNumber || "Complaint details"} {complaint && <ComplaintStatusBadge status={complaint.status} />}</SheetTitle></SheetHeader>
+    {isLoading ? <div className="py-24 text-center"><Loader2 className="mx-auto animate-spin text-blue-400" /></div> : isError || !complaint ? <div className="py-20 text-center text-slate-400"><AlertTriangle className="mx-auto mb-3 text-rose-400" />Could not load this complaint.</div> : <div className="space-y-5 mt-6">
+      <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"><p className="text-xs uppercase tracking-wider text-slate-500">Complaint details</p><dl className="grid grid-cols-2 gap-4 mt-4"><div><dt className="text-xs text-slate-500">Category</dt><dd className="mt-1 text-sm">{titleCase(complaint.category)}</dd></div><div><dt className="text-xs text-slate-500">Complaint against</dt><dd className="mt-1 text-sm">{complaint.complaintAgainst?.name || "—"}</dd></div></dl><p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-300">{complaint.description}</p></section>
+      {complaint.order && <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"><p className="text-xs uppercase tracking-wider text-slate-500">Related order</p><p className="mt-2 font-medium">#{complaint.order.orderNumber || complaint.orderId} · {complaint.order.clientName}</p><div className="mt-3 space-y-2 text-sm text-slate-400">{complaint.order.services?.length > 0 && <p><span className="text-slate-500">Services:</span> {complaint.order.services.map(s => `${s.serviceType} ×${s.quantity || 1}`).join(", ")}</p>}<div className="grid grid-cols-2 gap-2">{[["Total", complaint.order.totalPrice], ["Advance", complaint.order.advanceAmount], ["Remaining", complaint.order.remainingAmount], ["Discount", complaint.order.discountAmount]].map(([label, value]) => money(value as number | null) && <p key={label as string}><span className="text-slate-500">{label as string}:</span> {money(value as number)}</p>)}</div></div></section>}
+      {isAdmin && complaint.filedBy && <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-sm"><p className="text-xs uppercase tracking-wider text-slate-500">Filed by</p><p className="mt-2">{complaint.filedBy.name} <span className="text-slate-500">({complaint.filedBy.role})</span></p></section>}
+      {complaint.screenshotUrl && <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"><p className="text-xs uppercase tracking-wider text-slate-500 mb-3">Evidence</p><a href={complaint.screenshotUrl} target="_blank" rel="noreferrer" className="block"><img src={complaint.screenshotUrl} alt="Complaint evidence" className="max-h-56 w-full rounded-lg bg-slate-950 object-contain" onError={e => { e.currentTarget.style.display = "none"; }} /><span className="mt-2 inline-block text-sm text-blue-400 underline">Open evidence in a new tab</span></a></section>}
+      {(complaint.resolution || complaint.resolutionOutcome) && <section className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4"><p className="text-xs uppercase tracking-wider text-emerald-300">Resolution</p><p className="mt-2 text-sm text-slate-300">{complaint.resolution || "—"}</p>{complaint.resolutionOutcome && <p className="mt-2 text-xs text-emerald-300">{titleCase(complaint.resolutionOutcome)}</p>}</section>}
+      {isAdmin && <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-4"><div><p className="text-xs uppercase tracking-wider text-slate-500">Decision controls</p><p className="text-xs text-slate-500 mt-1">Every decision is recorded and cannot be reversed.</p></div>
+        {complaint.status === "new" && <div className="grid grid-cols-2 gap-2"><Button onClick={() => setPending("valid")} className="bg-amber-600 hover:bg-amber-500"><CheckCircle2 className="w-4 h-4 mr-2" />Valid</Button><Button variant="outline" onClick={() => setPending("invalid")}><XCircle className="w-4 h-4 mr-2" />Invalid</Button></div>}
+        {complaint.status === "valid" && <><div className="space-y-2"><Label htmlFor="resolution">Resolution text <span className="text-rose-400">*</span></Label><Textarea id="resolution" value={resolution} onChange={e => setResolution(e.target.value)} rows={3} className="bg-slate-950 border-slate-700" /></div><div className="space-y-2"><Label>Outcome <span className="text-rose-400">*</span></Label><Select value={outcome} onValueChange={setOutcome}><SelectTrigger><SelectValue placeholder="Select an outcome" /></SelectTrigger><SelectContent><SelectItem value="correction_revision">Correction / Revision</SelectItem><SelectItem value="refund">Refund</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent></Select></div><div className="grid grid-cols-2 gap-2"><Button disabled={!resolution.trim() || !outcome} onClick={() => setPending("resolved")} className="bg-emerald-600 hover:bg-emerald-500">Resolved</Button><Button variant="outline" disabled={!resolution.trim() || !outcome} onClick={() => setPending("order_canceled")}>Order Canceled</Button></div></>}
+        {terminal && <p className="rounded-lg bg-slate-950 p-3 text-sm text-slate-500">This complaint has reached a terminal state.</p>}
+        <div className="border-t border-slate-800 pt-4 space-y-2"><Label htmlFor="admin-notes">Internal notes</Label><Textarea id="admin-notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder={complaint.adminNotes || "Visible only to admins"} rows={3} className="bg-slate-950 border-slate-700" /><Button variant="outline" disabled={!notes.trim() || update.isPending} onClick={() => update.mutate({ adminNotes: notes.trim() })}>Save note</Button></div>
+      </section>}
+      {isAdmin && <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"><p className="text-xs uppercase tracking-wider text-slate-500">History</p><div className="mt-4 space-y-4">{history.length ? history.map(entry => <div key={entry.id} className="border-l border-slate-700 pl-4"><p className="text-sm">{titleCase(entry.action)}</p><p className="text-xs text-slate-500 mt-1">{entry.actor?.name || "System"} · {entry.createdAt ? format(new Date(entry.createdAt), "MMM dd, yyyy h:mm a") : "—"}</p></div>) : <p className="text-sm text-slate-500">No history entries yet.</p>}</div></section>}
+    </div>}
+    <AlertDialog open={Boolean(pending)} onOpenChange={v => !v && setPending(null)}><AlertDialogContent className="bg-slate-900 border-slate-800 text-white"><AlertDialogHeader><AlertDialogTitle>Confirm {titleCase(pending || "")} decision</AlertDialogTitle><AlertDialogDescription className="text-slate-400">This is an irreversible workflow transition for {complaint?.complaintNumber}.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={submitDecision} disabled={update.isPending}>Confirm decision</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+  </SheetContent></Sheet>;
 }
 
 export default function ComplaintsPage() {
-  const { user } = useAuth();
-  const [, params] = useRoute("/complaints/:id");
-  const [, setLocation] = useLocation();
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
-  const [category, setCategory] = useState("all");
-
-  const { data: complaints = [], isLoading, isError, refetch } = useQuery<ComplaintResponse[]>({
-    queryKey: ["/api/complaints"],
-    enabled: !params?.id,
-  });
-  const { data: categoryConfigs = [] } = useQuery<ComplaintCategoryConfig[]>({
-    queryKey: ["/api/complaint-categories"],
-    enabled: !params?.id,
-    staleTime: 5 * 60 * 1000,
-  });
-  const categoryOptions = categoryConfigs.length > 0
-    ? categoryConfigs
-    : complaintCategories.map((key, index) => ({
-        id: -(index + 1),
-        key,
-        label: complaintCategoryLabels[key],
-        isActive: true,
-        sortOrder: index,
-        createdAt: null,
-      }));
-  const categoryLabel = (key: string) =>
-    categoryOptions.find(item => item.key === key)?.label
-    || complaintCategoryLabels[key as keyof typeof complaintCategoryLabels]
-    || key.replaceAll("_", " ").replace(/\b\w/g, character => character.toUpperCase());
-
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return complaints.filter(complaint => {
-      const matchesSearch = !term || [
-        complaint.complaintNumber,
-        complaint.orderNumber,
-        complaint.clientName,
-        complaint.complaintAgainst.name,
-        complaint.description,
-      ].some(value => value?.toLowerCase().includes(term));
-      return matchesSearch
-        && (status === "all" || complaint.status === status)
-        && (category === "all" || complaint.category === category);
-    });
-  }, [complaints, search, status, category]);
-
-  if (params?.id) {
-    return <ComplaintDetail complaintId={Number(params.id)} />;
-  }
-
-  const title = user?.role === "designer"
-    ? "Complaints About My Work"
-    : user?.role === "support"
-      ? "Complaints I Filed"
-      : "Complaints Management";
-
-  return (
-    <div className="p-4 md:p-8 space-y-6">
-      <div>
-        <div className="flex items-center gap-3">
-          <FileWarning className="w-7 h-7 text-red-400" />
-          <h1 className="text-2xl md:text-3xl font-bold font-display text-white">{title}</h1>
-        </div>
-        <p className="text-slate-400 mt-2">
-          {user?.role === "admin"
-            ? "Review and resolve order-linked complaints."
-            : "View the complaints available to your role."}
-        </p>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-        {[
-          { key: "all", label: "All Complaints", value: complaints.length, color: "text-blue-400" },
-          { key: "new", label: "New", value: complaints.filter(item => item.status === "new").length, color: "text-amber-400" },
-          { key: "under_review", label: "Under Review", value: complaints.filter(item => item.status === "under_review").length, color: "text-cyan-400" },
-          { key: "valid", label: "Valid", value: complaints.filter(item => item.status === "valid").length, color: "text-red-400" },
-          { key: "invalid", label: "Invalid", value: complaints.filter(item => item.status === "invalid").length, color: "text-slate-400" },
-          { key: "resolved", label: "Resolved", value: complaints.filter(item => item.status === "resolved").length, color: "text-purple-400" },
-        ].map(item => (
-          <button key={item.key} onClick={() => setStatus(item.key)} className={`glass-panel rounded-xl border p-4 text-left transition-colors ${status === item.key ? "border-blue-500/60 bg-blue-500/5" : "border-slate-800 hover:border-slate-700"}`}>
-            <p className="text-xs text-slate-500">{item.label}</p>
-            <p className={`text-2xl font-bold mt-1 ${item.color}`}>{item.value}</p>
-          </button>
-        ))}
-      </div>
-
-      <div className="glass-panel rounded-2xl p-4 space-y-4">
-        <Tabs value={status} onValueChange={setStatus}>
-          <TabsList className="bg-slate-950 border border-slate-800 p-1 h-auto flex-wrap justify-start">
-            <TabsTrigger value="all">All</TabsTrigger>
-            {complaintStatuses.map(value => (
-              <TabsTrigger key={value} value={value}>{value.replaceAll("_", " ").replace(/\b\w/g, c => c.toUpperCase())}</TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_240px] gap-3">
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
-            <Input
-              value={search}
-              onChange={event => setSearch(event.target.value)}
-              placeholder="Search complaint, order, client, or designer"
-              className="pl-9 bg-slate-950 border-slate-700"
-            />
-          </div>
-          <Select value={category} onValueChange={setCategory}>
-            <SelectTrigger className="bg-slate-950 border-slate-700"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All categories</SelectItem>
-              {categoryOptions.map(item => (
-                <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {isLoading ? (
-        <div className="min-h-[35vh] flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div>
-      ) : isError ? (
-        <div className="glass-panel rounded-2xl p-10 text-center">
-          <AlertTriangle className="w-10 h-10 text-red-400 mx-auto mb-3" />
-          <h2 className="text-white font-semibold">Could not load complaints</h2>
-          <Button variant="outline" className="mt-4" onClick={() => refetch()}>Try Again</Button>
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="glass-panel rounded-2xl p-12 text-center">
-          <ClipboardCheck className="w-12 h-12 text-slate-600 mx-auto mb-4" />
-          <h2 className="text-lg font-semibold text-white">No complaints found</h2>
-          <p className="text-sm text-slate-500 mt-2">
-            {complaints.length === 0 ? "There are no complaints in your current scope." : "Try changing your search or filters."}
-          </p>
-        </div>
-      ) : (
-        <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
-          <div className="p-5 border-b border-slate-800">
-            <h2 className="text-lg font-bold text-white">{status === "all" ? "All Complaints" : `${status.replaceAll("_", " ").replace(/\b\w/g, c => c.toUpperCase())} Complaints`}</h2>
-            <p className="text-sm text-slate-500">{filtered.length} complaint{filtered.length === 1 ? "" : "s"} shown</p>
-          </div>
-          <div className="table-scroll-wrapper">
-            <Table>
-              <TableHeader className="bg-slate-900/50"><TableRow className="border-slate-800 hover:bg-transparent">
-                <TableHead className="text-slate-400">Complaint</TableHead>
-                <TableHead className="text-slate-400">Order / Client</TableHead>
-                <TableHead className="text-slate-400">Designer</TableHead>
-                <TableHead className="text-slate-400">Category</TableHead>
-                <TableHead className="text-slate-400">Date</TableHead>
-                <TableHead className="text-slate-400">Status</TableHead>
-                <TableHead className="text-right text-slate-400">Action</TableHead>
-              </TableRow></TableHeader>
-              <TableBody>{filtered.map(complaint => (
-                <TableRow key={complaint.id} className="border-slate-800 hover:bg-slate-900/50 cursor-pointer" onClick={() => setLocation(`/complaints/${complaint.id}`)}>
-                  <TableCell className="font-mono text-xs font-semibold text-blue-400">{complaint.complaintNumber}</TableCell>
-                  <TableCell><p className="text-sm text-white">{complaint.orderNumber ? `#${complaint.orderNumber}` : `Order #${complaint.orderId}`}</p><p className="text-xs text-slate-500">{complaint.clientName}</p></TableCell>
-                  <TableCell className="text-sm text-slate-300">{complaint.complaintAgainst.name}</TableCell>
-                  <TableCell className="text-sm text-slate-400 min-w-40">{categoryLabel(complaint.category)}</TableCell>
-                  <TableCell className="text-xs text-slate-500 whitespace-nowrap">{complaint.createdAt ? format(new Date(complaint.createdAt), "MMM dd, yyyy") : "—"}</TableCell>
-                  <TableCell><ComplaintStatusBadge status={complaint.status} /></TableCell>
-                  <TableCell className="text-right text-xs text-blue-400">View details</TableCell>
-                </TableRow>
-              ))}</TableBody>
-            </Table>
-          </div>
-        </div>
-      )}
-    </div>
+  const { user } = useAuth(); const [, setLocation] = useLocation(); const [, routeParams] = useRoute("/complaints/:id");
+  const [search, setSearch] = useState(""); const [status, setStatus] = useState("all"); const [outcome, setOutcome] = useState(""); const [category, setCategory] = useState("all"); const [page, setPage] = useState(1); const [createOpen, setCreateOpen] = useState(false); const [selectedId, setSelectedId] = useState<number | null>(routeParams?.id ? Number(routeParams.id) : null);
+  const now = new Date(); const [month, setMonth] = useState(String(now.getMonth() + 1)); const [year, setYear] = useState(String(now.getFullYear()));
+  const query = new URLSearchParams({ month, year, ...(search ? { search } : {}), ...(status !== "all" ? { status } : {}), ...(category !== "all" ? { category } : {}) }).toString();
+  const { data: complaints = [], isLoading, isError, refetch } = useQuery<ComplaintResponse[]>({ queryKey: [`/api/complaints?${query}`] });
+  const { data: statsResponse } = useQuery<{ complaints: ComplaintStats }>({ queryKey: [`/api/stats?month=${month}&year=${year}`] });
+  const { data: categories = [] } = useQuery<ComplaintCategoryConfig[]>({ queryKey: ["/api/complaint-categories"], staleTime: 300000 });
+  const { data: orders = [] } = useQuery<OrderWithServices[]>({ queryKey: ["/api/orders"], enabled: user?.role === "admin" || user?.role === "support" });
+  const stats = statsResponse?.complaints; const isAdmin = user?.role === "admin"; const canCreate = isAdmin || user?.role === "support";
+  const categoryOptions = categories.length ? categories.filter(c => c.isActive) : complaintCategories.map(key => ({ key, label: complaintCategoryLabels[key] }));
+  const cards = [{ key: "all", label: "All Complaints", value: stats?.all ?? complaints.length, tone: "text-blue-300" }, { key: "valid", label: "Valid", value: stats?.valid ?? complaints.filter(c => c.status === "valid").length, tone: "text-amber-300" }, { key: "invalid", label: "Invalid", value: stats?.invalid ?? complaints.filter(c => c.status === "invalid").length, tone: "text-slate-300" }, { key: "resolved", label: "Resolved", value: stats?.resolved ?? complaints.filter(c => c.status === "resolved").length, tone: "text-emerald-300" }, { key: "refund", label: "Refund", value: stats?.refund ?? complaints.filter(c => c.resolutionOutcome === "refund").length, tone: "text-violet-300" }];
+  const filteredComplaints = useMemo(
+    () => outcome === "refund" ? complaints.filter(complaint => complaint.resolutionOutcome === "refund") : complaints,
+    [complaints, outcome],
   );
+  const pageSize = 10; const pages = Math.max(1, Math.ceil(filteredComplaints.length / pageSize)); const visible = useMemo(() => filteredComplaints.slice((page - 1) * pageSize, page * pageSize), [filteredComplaints, page]);
+  const openComplaint = (id: number) => { setSelectedId(id); setLocation(`/complaints/${id}`); };
+  return <div className="p-4 md:p-8 space-y-6">
+    <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between"><div><div className="flex items-center gap-3"><FileWarning className="w-7 h-7 text-rose-300" /><h1 className="text-2xl md:text-3xl font-bold font-display text-white">{isAdmin ? "Complaints Management" : user?.role === "designer" ? "Complaints About My Work" : "Complaints I Filed"}</h1></div><p className="text-slate-400 mt-2">Review order-linked complaints for {format(new Date(Number(year), Number(month) - 1, 1), "MMMM yyyy")}.</p></div>{canCreate && <Button onClick={() => setCreateOpen(true)} className="bg-rose-600 hover:bg-rose-500">New Complaint</Button>}</div>
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">{cards.map(card => <button key={card.key} onClick={() => { if (card.key === "refund") { setStatus("all"); setOutcome("refund"); } else { setStatus(card.key); setOutcome(""); } setPage(1); }} className={`rounded-xl border p-4 text-left transition-colors ${(card.key === "refund" ? outcome === "refund" : status === card.key && !outcome) ? "border-blue-500/60 bg-blue-500/10" : "glass-panel border-slate-800 hover:border-slate-700"}`}><p className="text-xs text-slate-500">{card.label}</p><p className={`text-2xl font-bold mt-1 ${card.tone}`}>{card.value}</p></button>)}</div>
+    <div className="glass-panel rounded-2xl p-4"><div className="flex flex-col xl:flex-row gap-3"><div className="relative flex-1"><Search className="absolute left-3 top-3 w-4 h-4 text-slate-500" /><Input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Search complaint, order, client, or designer" className="pl-9 bg-slate-950 border-slate-700" /></div><Select value={month} onValueChange={v => { setMonth(v); setPage(1); }}><SelectTrigger className="w-full xl:w-44 bg-slate-950 border-slate-700"><CalendarDays className="w-4 h-4 mr-2" /><SelectValue /></SelectTrigger><SelectContent>{Array.from({ length: 12 }, (_, i) => <SelectItem key={i + 1} value={String(i + 1)}>{format(new Date(2024, i, 1), "MMMM")}</SelectItem>)}</SelectContent></Select><Select value={year} onValueChange={v => { setYear(v); setPage(1); }}><SelectTrigger className="w-full xl:w-32 bg-slate-950 border-slate-700"><SelectValue /></SelectTrigger><SelectContent>{[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(v => <SelectItem key={v} value={String(v)}>{v}</SelectItem>)}</SelectContent></Select><Select value={category} onValueChange={v => { setCategory(v); setPage(1); }}><SelectTrigger className="w-full xl:w-52 bg-slate-950 border-slate-700"><SelectValue placeholder="All categories" /></SelectTrigger><SelectContent><SelectItem value="all">All categories</SelectItem>{categoryOptions.map(item => <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>)}</SelectContent></Select></div><div className="flex gap-2 flex-wrap mt-4">{["all", ...complaintStatuses].map(value => <Button key={value} size="sm" variant={status === value && !outcome ? "secondary" : "ghost"} onClick={() => { setStatus(value); setOutcome(""); setPage(1); }}>{titleCase(value)}</Button>)}</div></div>
+    {isLoading ? <div className="glass-panel p-16 text-center"><Loader2 className="mx-auto animate-spin text-blue-400" /></div> : isError ? <div className="glass-panel p-12 text-center"><AlertTriangle className="mx-auto text-rose-400 mb-3" /><p className="text-white">Could not load complaints</p><Button variant="outline" className="mt-4" onClick={() => refetch()}>Try Again</Button></div> : !visible.length ? <div className="glass-panel p-12 text-center"><ClipboardCheck className="w-12 h-12 text-slate-600 mx-auto mb-4" /><p className="text-white font-semibold">No complaints found</p><p className="text-sm text-slate-500 mt-2">Try another month or filter.</p></div> : <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden"><div className="p-5 border-b border-slate-800"><h2 className="font-bold text-white">Complaints</h2><p className="text-sm text-slate-500">{complaints.length} shown</p></div><div className="table-scroll-wrapper"><Table><TableHeader className="bg-slate-900/50"><TableRow className="border-slate-800 hover:bg-transparent"><TableHead>Complaint ID</TableHead><TableHead>Order</TableHead><TableHead>Client</TableHead><TableHead>Category</TableHead><TableHead>Complaint Against</TableHead>{isAdmin && <TableHead>Placed By</TableHead>}<TableHead>Status</TableHead><TableHead>Date</TableHead></TableRow></TableHeader><TableBody>{visible.map(c => <TableRow key={c.id} onClick={() => openComplaint(c.id)} className="border-slate-800 hover:bg-slate-900/50 cursor-pointer"><TableCell className="font-mono text-xs text-blue-300">{c.complaintNumber}</TableCell><TableCell className="text-sm text-white">#{c.orderNumber || c.orderId}</TableCell><TableCell className="text-sm text-slate-300">{c.clientName}</TableCell><TableCell className="text-sm text-slate-400">{categoryOptions.find(x => x.key === c.category)?.label || titleCase(c.category)}</TableCell><TableCell className="text-sm text-slate-300">{c.complaintAgainst?.name || "—"}</TableCell>{isAdmin && <TableCell className="text-sm text-slate-300">{c.filedBy?.name || "—"}</TableCell>}<TableCell><ComplaintStatusBadge status={c.status} /></TableCell><TableCell className="text-xs text-slate-500 whitespace-nowrap">{c.createdAt ? format(new Date(c.createdAt), "MMM dd, yyyy") : "—"}</TableCell></TableRow>)}</TableBody></Table></div><div className="flex items-center justify-between p-4 border-t border-slate-800 text-sm text-slate-500"><span>Page {page} of {pages}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Previous</Button><Button size="sm" variant="outline" disabled={page >= pages} onClick={() => setPage(p => p + 1)}>Next</Button></div></div></div>}
+    <ComplaintDrawer id={selectedId} open={selectedId !== null} onOpenChange={open => { if (!open) { setSelectedId(null); setLocation("/complaints"); } }} /><ComplaintDialog order={null} orders={orders} open={createOpen} onOpenChange={setCreateOpen} />
+  </div>;
 }
