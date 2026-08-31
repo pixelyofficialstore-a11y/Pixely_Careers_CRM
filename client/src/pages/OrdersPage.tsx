@@ -57,7 +57,8 @@ import {
   Star,
   Crown,
   Wrench,
-  Pencil
+  Pencil,
+  FileWarning
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -81,7 +82,9 @@ import {
 } from "@/components/ui/tooltip";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { OrderWithServices, User, SupportDesignerAssignment, ServiceCatalogItem, PackageConfig, PlatformCatalogItem, PaymentVerification } from "@shared/schema";
+import type { OrderWithServices, User, SupportDesignerAssignment, ServiceCatalogItem, PackageConfig, PlatformCatalogItem, PaymentVerification, ComplaintResponse } from "@shared/schema";
+import { ComplaintDialog } from "@/components/ComplaintDialog";
+import { ComplaintStatusBadge } from "@/components/StatusBadge";
 
 const FALLBACK_SERVICE_TYPES = [
   "ATS CV",
@@ -153,6 +156,7 @@ export default function OrdersPage() {
   const [editSheetOpen, setEditSheetOpen] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<OrderWithServices | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [complaintDialogOpen, setComplaintDialogOpen] = useState(false);
 
   // Debounce the search input (300ms) so typing stays smooth on large order lists.
   useEffect(() => {
@@ -190,6 +194,12 @@ export default function OrdersPage() {
   const { data: paymentVerifications = [] } = useQuery<PaymentVerification[]>({
     queryKey: ["/api/payment-verifications"],
     staleTime: 30 * 1000,
+  });
+
+  const { data: selectedOrderComplaints = [] } = useQuery<ComplaintResponse[]>({
+    queryKey: [`/api/orders/${selectedOrder?.id}/complaints`],
+    enabled: Boolean(detailsSheetOpen && selectedOrder?.id),
+    staleTime: 15 * 1000,
   });
 
   const activeServiceTypes = servicesCatalog.filter(s => s.isActive).map(s => s.name);
@@ -1143,6 +1153,54 @@ export default function OrdersPage() {
                 </div>
               </div>
 
+              <div className="space-y-4 p-4 bg-slate-950 rounded-lg border border-slate-800">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Complaints</h4>
+                    <p className="text-xs text-slate-600 mt-1">
+                      {selectedOrderComplaints.length} related complaint{selectedOrderComplaints.length === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                  {(isAdmin || isSupport) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setComplaintDialogOpen(true)}
+                      disabled={!selectedOrder.assignedToId}
+                      title={!selectedOrder.assignedToId ? "Assign a designer before raising a complaint" : "Raise complaint"}
+                    >
+                      <FileWarning className="w-4 h-4 mr-2" />
+                      Raise Complaint
+                    </Button>
+                  )}
+                </div>
+
+                {selectedOrderComplaints.length > 0 ? (
+                  <div className="space-y-2">
+                    {selectedOrderComplaints.slice(0, 3).map(complaint => (
+                      <button
+                        key={complaint.id}
+                        onClick={() => setLocation(`/complaints/${complaint.id}`)}
+                        className="w-full flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-900 p-3 text-left hover:border-slate-700"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-mono text-xs text-blue-400">{complaint.complaintNumber}</p>
+                          <p className="text-xs text-slate-400 truncate">{complaint.complaintAgainst.name}</p>
+                        </div>
+                        <ComplaintStatusBadge status={complaint.status} />
+                      </button>
+                    ))}
+                    {selectedOrderComplaints.length > 3 && (
+                      <Button variant="ghost" size="sm" className="w-full" onClick={() => setLocation("/complaints")}>
+                        View all related complaints
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">No complaints are visible for this order.</p>
+                )}
+              </div>
+
               <div className="space-y-3 p-4 bg-slate-950 rounded-lg border border-slate-800">
                 <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
                   {selectedOrder.packageType && selectedOrder.packageType !== "custom" ? "Package & Add-ons" : "Services"}
@@ -1274,6 +1332,12 @@ export default function OrdersPage() {
           )}
         </SheetContent>
       </Sheet>
+
+      <ComplaintDialog
+        order={selectedOrder}
+        open={complaintDialogOpen}
+        onOpenChange={setComplaintDialogOpen}
+      />
 
       {isAdmin && (
         <Sheet open={editSheetOpen} onOpenChange={(open) => { setEditSheetOpen(open); if (!open) setOrderToEdit(null); }}>

@@ -1,6 +1,6 @@
 import { 
   users, orders, notifications, orderServices, paymentVerifications, supportDesignerAssignments,
-  servicesCatalog, packageConfigs, platformsCatalog, pushSubscriptions, activityLogs,
+  servicesCatalog, packageConfigs, platformsCatalog, pushSubscriptions, activityLogs, complaints,
   type User, type InsertUser, type Order, type InsertOrder,
   type OrderService, type InsertOrderService, type OrderWithServices,
   type PaymentVerification, type InsertPaymentVerification, type PaymentVerificationWithUsers,
@@ -8,11 +8,21 @@ import {
   type ServiceCatalogItem, type InsertServiceCatalogItem,
   type PackageConfig, type InsertPackageConfig,
   type PlatformCatalogItem, type InsertPlatformCatalogItem,
-  type PushSubscription,
+  type PushSubscription, type Complaint, type InsertComplaint, type ComplaintResponse,
+  type ComplaintHistoryEntry, type ComplaintStats,
+  type InsertActivityLog, type ActivityLog,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, ne, desc, sql, and, isNotNull, inArray, asc } from "drizzle-orm";
 import { getStartOfBusinessDay, getStartOfBusinessMonth } from "@shared/business-time";
+import { randomUUID } from "crypto";
+
+export type ComplaintListFilters = {
+  search?: string;
+  status?: string;
+  category?: string;
+  orderId?: number;
+};
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -35,7 +45,7 @@ export interface IStorage {
   markNotificationRead(id: number): Promise<Notification>;
   createNotification(userId: number, type: string, title: string, message: string, priority: string, relatedId?: number, relatedType?: string): Promise<Notification>;
 
-  getStats(): Promise<any>;
+  getStats(role: string, userId: number): Promise<any>;
 
   getPaymentVerifications(role: string, userId: number): Promise<PaymentVerificationWithUsers[]>;
   getPaymentVerificationsByOrder(orderId: number): Promise<PaymentVerificationWithUsers[]>;
@@ -69,6 +79,20 @@ export interface IStorage {
   savePushSubscription(userId: number, endpoint: string, p256dh: string, auth: string): Promise<PushSubscription>;
   deletePushSubscription(endpoint: string): Promise<void>;
   getPushSubscriptionsForUser(userId: number): Promise<PushSubscription[]>;
+
+  createActivityLog(log: InsertActivityLog): Promise<ActivityLog>;
+  createComplaint(data: InsertComplaint, actorId: number): Promise<Complaint>;
+  getComplaints(role: string, userId: number, filters?: ComplaintListFilters): Promise<ComplaintResponse[]>;
+  getComplaintForUser(id: number, role: string, userId: number): Promise<ComplaintResponse | undefined>;
+  getComplaintRecord(id: number): Promise<Complaint | undefined>;
+  updateComplaint(
+    id: number,
+    expectedStatus: Complaint["status"],
+    updates: Partial<InsertComplaint>,
+    historyEvents: InsertActivityLog[],
+  ): Promise<Complaint | undefined>;
+  getComplaintHistory(id: number): Promise<ComplaintHistoryEntry[]>;
+  getComplaintStats(role: string, userId: number): Promise<ComplaintStats>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -212,7 +236,7 @@ export class DatabaseStorage implements IStorage {
     return notification;
   }
 
-  async getStats(): Promise<any> {
+  async getStats(role: string, userId: number): Promise<any> {
     const allOrdersRaw = await db.select().from(orders);
     const allOrders = allOrdersRaw.filter(o => o.advancePaymentStatus === 'approved');
     const allPaymentVerifications = await db.select().from(paymentVerifications);
@@ -262,6 +286,7 @@ export class DatabaseStorage implements IStorage {
 
     return {
       orders: orderStats,
+      complaints: await this.getComplaintStats(role, userId),
       finance: {
         totalRevenue,
         monthlyRevenue: monthlyOrders.reduce((acc, curr) => acc + (curr.advanceAmount || 0), 0),
@@ -272,6 +297,204 @@ export class DatabaseStorage implements IStorage {
           total: advanceReceivedToday + remainingReceivedToday,
         },
       },
+    };
+  }
+
+  async createActivityLog(log: InsertActivityLog): Promise<ActivityLog> {
+    const [created] = await db.insert(activityLogs).values(log).returning();
+    return created;
+  }
+
+  private complaintUserSummary(user: User | undefined) {
+    if (!user) return undefined;
+    return {
+      id: user.id,
+      name: user.name,
+      role: user.role,
+      title: user.title,
+      avatar: user.avatar,
+    };
+  }
+
+  private toComplaintResponse(
+    complaint: Complaint,
+    order: Order | undefined,
+    usersById: Map<number, User>,
+    role: string,
+  ): ComplaintResponse | undefined {
+    const against = this.complaintUserSummary(usersById.get(complaint.complaintAgainstUserId));
+    if (!order || !against) return undefined;
+
+    const response: ComplaintResponse = {
+      id: complaint.id,
+      complaintNumber: complaint.complaintNumber,
+      orderId: complaint.orderId,
+      orderNumber: order.orderNumber,
+      clientName: order.clientName,
+      complaintAgainst: against,
+      category: complaint.category,
+      description: complaint.description,
+      status: complaint.status,
+      resolvedAt: complaint.resolvedAt,
+      createdAt: complaint.createdAt,
+      updatedAt: complaint.updatedAt,
+    };
+
+    // Filer identity and internal notes are deliberately admin-only. Designers
+    // and support receive the same safe base projection regardless of client code.
+    if (role === "admin") {
+      response.filedBy = this.complaintUserSummary(usersById.get(complaint.filedByUserId));
+      response.adminNotes = complaint.adminNotes;
+    }
+    response.resolution = complaint.resolution;
+    if (role === "admin") {
+      response.resolvedBy = complaint.resolvedByUserId
+        ? this.complaintUserSummary(usersById.get(complaint.resolvedByUserId))
+        : null;
+    }
+    return response;
+  }
+
+  async createComplaint(data: InsertComplaint, actorId: number): Promise<Complaint> {
+    return await db.transaction(async (tx) => {
+      // The numeric id is the source of truth for a readable, collision-free
+      // complaint number. The temporary value never leaves this transaction.
+      const [created] = await tx.insert(complaints).values({
+        ...data,
+        complaintNumber: `CMP-TEMP-${randomUUID()}`,
+      }).returning();
+      const [numbered] = await tx.update(complaints)
+        .set({ complaintNumber: `CMP-${String(created.id).padStart(6, "0")}` })
+        .where(eq(complaints.id, created.id))
+        .returning();
+      await tx.insert(activityLogs).values({
+        orderId: numbered.orderId,
+        actorId,
+        activityType: "complaint_created",
+        newValue: numbered.status,
+        details: {
+          complaintId: numbered.id,
+          complaintNumber: numbered.complaintNumber,
+          category: numbered.category,
+        },
+      });
+      return numbered;
+    });
+  }
+
+  async getComplaints(role: string, userId: number, filters: ComplaintListFilters = {}): Promise<ComplaintResponse[]> {
+    let visible: Complaint[];
+    if (role === "admin") {
+      visible = await db.select().from(complaints).orderBy(desc(complaints.createdAt));
+    } else if (role === "support") {
+      visible = await db.select().from(complaints)
+        .where(eq(complaints.filedByUserId, userId))
+        .orderBy(desc(complaints.createdAt));
+    } else {
+      visible = await db.select().from(complaints)
+        .where(eq(complaints.complaintAgainstUserId, userId))
+        .orderBy(desc(complaints.createdAt));
+    }
+
+    if (filters.orderId) {
+      visible = visible.filter(complaint => complaint.orderId === filters.orderId);
+    }
+    if (filters.status) {
+      visible = visible.filter(complaint => complaint.status === filters.status);
+    }
+    if (filters.category) {
+      visible = visible.filter(complaint => complaint.category === filters.category);
+    }
+
+    const [allOrders, allUsers] = await Promise.all([
+      db.select().from(orders),
+      this.getUsers(),
+    ]);
+    const ordersById = new Map(allOrders.map(order => [order.id, order]));
+    const usersById = new Map(allUsers.map(user => [user.id, user]));
+    const search = filters.search?.trim().toLowerCase();
+
+    return visible
+      .map(complaint => this.toComplaintResponse(complaint, ordersById.get(complaint.orderId), usersById, role))
+      .filter((response): response is ComplaintResponse => {
+        if (!response) return false;
+        if (!search) return true;
+        return [
+          response.complaintNumber,
+          response.orderNumber,
+          response.clientName,
+          response.category,
+          response.description,
+          response.complaintAgainst.name,
+        ].some(value => value?.toLowerCase().includes(search));
+      });
+  }
+
+  async getComplaintForUser(id: number, role: string, userId: number): Promise<ComplaintResponse | undefined> {
+    const complaintsForUser = await this.getComplaints(role, userId);
+    return complaintsForUser.find(complaint => complaint.id === id);
+  }
+
+  async getComplaintRecord(id: number): Promise<Complaint | undefined> {
+    const [complaint] = await db.select().from(complaints).where(eq(complaints.id, id));
+    return complaint;
+  }
+
+  async updateComplaint(
+    id: number,
+    expectedStatus: Complaint["status"],
+    updates: Partial<InsertComplaint>,
+    historyEvents: InsertActivityLog[],
+  ): Promise<Complaint | undefined> {
+    return await db.transaction(async (tx) => {
+      const [updated] = await tx.update(complaints)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(and(eq(complaints.id, id), eq(complaints.status, expectedStatus)))
+        .returning();
+      if (!updated) return undefined;
+      if (historyEvents.length > 0) {
+        await tx.insert(activityLogs).values(historyEvents);
+      }
+      return updated;
+    });
+  }
+
+  async getComplaintHistory(id: number): Promise<ComplaintHistoryEntry[]> {
+    const complaint = await this.getComplaintRecord(id);
+    if (!complaint) return [];
+    const logs = await db.select().from(activityLogs)
+      .where(eq(activityLogs.orderId, complaint.orderId))
+      .orderBy(asc(activityLogs.createdAt));
+    const allUsers = await this.getUsers();
+    const usersById = new Map(allUsers.map(user => [user.id, user]));
+
+    return logs
+      .filter(log => {
+        const details = log.details;
+        return details && typeof details === "object" && details.complaintId === id;
+      })
+      .map(log => ({
+        id: log.id,
+        action: log.activityType,
+        previousValue: log.previousValue,
+        newValue: log.newValue,
+        details: log.details,
+        createdAt: log.createdAt,
+        actor: log.actorId ? this.complaintUserSummary(usersById.get(log.actorId)) : undefined,
+      }));
+  }
+
+  async getComplaintStats(role: string, userId: number): Promise<ComplaintStats> {
+    const rows = await this.getComplaints(role, userId);
+    const startOfMonth = getStartOfBusinessMonth();
+    return {
+      total: rows.length,
+      thisMonth: rows.filter(row => row.createdAt && new Date(row.createdAt) >= startOfMonth).length,
+      new: rows.filter(row => row.status === "new").length,
+      underReview: rows.filter(row => row.status === "under_review").length,
+      valid: rows.filter(row => row.status === "valid").length,
+      invalid: rows.filter(row => row.status === "invalid").length,
+      resolved: rows.filter(row => row.status === "resolved").length,
     };
   }
 

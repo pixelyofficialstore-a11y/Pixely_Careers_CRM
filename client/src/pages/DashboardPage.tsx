@@ -11,7 +11,10 @@ import {
   TrendingUp,
   Calendar,
   Users,
-  Activity
+  Activity,
+  FileWarning,
+  ShieldAlert,
+  ClipboardCheck
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, isToday, startOfMonth } from "date-fns";
@@ -34,6 +37,15 @@ interface DashboardStats {
       remaining: number;
       total: number;
     };
+  };
+  complaints?: {
+    total: number;
+    thisMonth: number;
+    new: number;
+    underReview: number;
+    valid: number;
+    invalid: number;
+    resolved: number;
   };
 }
 
@@ -134,6 +146,31 @@ function CashFlowCard({
   );
 }
 
+function ComplaintStatsGrid({
+  stats,
+  totalTitle,
+}: {
+  stats: NonNullable<DashboardStats["complaints"]> | undefined;
+  totalTitle: string;
+}) {
+  const values = stats ?? { total: 0, thisMonth: 0, new: 0, underReview: 0, valid: 0, invalid: 0, resolved: 0 };
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <FileWarning className="w-5 h-5 text-red-400" />
+        <h2 className="text-lg font-semibold text-white">Complaint Overview</h2>
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <StatCard title={totalTitle} value={values.total} icon={FileWarning} color="red" testId="stat-complaints-total" />
+        <StatCard title="Under Review" value={values.underReview} icon={Clock} color="blue" testId="stat-complaints-review" />
+        <StatCard title="Valid" value={values.valid} icon={ShieldAlert} color="orange" testId="stat-complaints-valid" />
+        <StatCard title="Invalid" value={values.invalid} icon={XCircle} color="green" testId="stat-complaints-invalid" />
+        <StatCard title="Resolved" value={values.resolved} icon={ClipboardCheck} color="purple" testId="stat-complaints-resolved" />
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const { user } = useAuth();
   
@@ -150,7 +187,7 @@ export default function DashboardPage() {
 
   const { data: dashboardStats, refetch: refetchDashboardStats } = useQuery<DashboardStats>({
     queryKey: ["/api/stats"],
-    enabled: user?.role === "admin",
+    enabled: Boolean(user),
     refetchInterval: 60 * 1000,
     staleTime: 30 * 1000,
   });
@@ -261,6 +298,8 @@ export default function DashboardPage() {
           />
         </div>
 
+        <ComplaintStatsGrid stats={dashboardStats?.complaints} totalTitle="Complaints About Me" />
+
         <div className="glass-panel p-6 rounded-2xl">
           <h3 className="text-lg font-bold font-display text-white mb-4">Recent Assigned Orders</h3>
           {orders && orders.length > 0 ? (
@@ -334,6 +373,8 @@ export default function DashboardPage() {
             testId="stat-canceled-orders"
           />
         </div>
+
+        <ComplaintStatsGrid stats={dashboardStats?.complaints} totalTitle="Complaints Filed" />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="glass-panel p-6 rounded-2xl">
@@ -434,6 +475,8 @@ export default function DashboardPage() {
           testId="stat-active-orders"
         />
       </div>
+
+      <ComplaintStatsGrid stats={dashboardStats?.complaints} totalTitle="Total Complaints" />
 
       {/* Finance Section - Admin Only */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

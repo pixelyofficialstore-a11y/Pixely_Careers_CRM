@@ -15,6 +15,7 @@ import TeamPage from "@/pages/TeamPage";
 import AnalyticsPage from "@/pages/AnalyticsPage";
 import PaymentsPage from "@/pages/PaymentsPage";
 import AdminSettingsPage from "@/pages/AdminSettingsPage";
+import ComplaintsPage from "@/pages/ComplaintsPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -51,6 +52,20 @@ function Router() {
         <ProtectedRoute>
           <Layout>
             <OrdersPage />
+          </Layout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/complaints/:id">
+        <ProtectedRoute>
+          <Layout>
+            <ComplaintsPage />
+          </Layout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/complaints">
+        <ProtectedRoute>
+          <Layout>
+            <ComplaintsPage />
           </Layout>
         </ProtectedRoute>
       </Route>

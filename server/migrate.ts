@@ -178,6 +178,66 @@ export async function runMigrations() {
       )
     `);
 
+    // ── Complaints (depends on orders + users) ───────────────────────────────
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS complaints (
+        id                         SERIAL PRIMARY KEY,
+        complaint_number           TEXT NOT NULL UNIQUE,
+        order_id                   INTEGER NOT NULL REFERENCES orders(id),
+        complaint_against_user_id  INTEGER NOT NULL REFERENCES users(id),
+        filed_by_user_id           INTEGER NOT NULL REFERENCES users(id),
+        category                   TEXT NOT NULL,
+        description                TEXT NOT NULL,
+        status                     TEXT NOT NULL DEFAULT 'new',
+        admin_notes                TEXT,
+        resolution                 TEXT,
+        resolved_by_user_id        INTEGER REFERENCES users(id),
+        resolved_at                TIMESTAMP,
+        created_at                 TIMESTAMP DEFAULT NOW(),
+        updated_at                 TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS complaints_order_id_idx
+        ON complaints(order_id)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS complaints_against_user_id_idx
+        ON complaints(complaint_against_user_id)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS complaints_filed_by_user_id_idx
+        ON complaints(filed_by_user_id)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS complaints_status_idx
+        ON complaints(status)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS complaints_created_at_idx
+        ON complaints(created_at)
+    `);
+
+    // Complaints are permanent audit records. Remove an earlier cascade rule if
+    // present so deleting an order cannot silently erase complaint history.
+    await client.query(`
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1
+          FROM pg_constraint
+          WHERE conname = 'complaints_order_id_fkey'
+            AND confdeltype = 'c'
+        ) THEN
+          ALTER TABLE complaints DROP CONSTRAINT complaints_order_id_fkey;
+          ALTER TABLE complaints
+            ADD CONSTRAINT complaints_order_id_fkey
+            FOREIGN KEY (order_id) REFERENCES orders(id);
+        END IF;
+      END $$
+    `);
+
     // ── Support-designer assignments (depends on users) ──────────────────────
 
     await client.query(`

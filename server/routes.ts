@@ -7,7 +7,7 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-import { type User, userRoles } from "@shared/schema";
+import { type User, userRoles, type InsertActivityLog } from "@shared/schema";
 import { db, pool } from "./db";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
@@ -602,6 +602,241 @@ export async function registerRoutes(
     res.json(sanitized);
   });
 
+  app.get(api.orderComplaints.list.path, requireAuth, async (req, res) => {
+    const orderId = Number(req.params.id);
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      return res.status(400).json({ message: "Invalid order id" });
+    }
+    const user = req.user as User;
+    const order = await storage.getOrder(orderId);
+    if (!order) return res.sendStatus(404);
+    if (user.role === "designer" && order.assignedToId !== user.id) {
+      return res.sendStatus(403);
+    }
+    const complaints = await storage.getComplaints(user.role, user.id, { orderId });
+    res.json(complaints);
+  });
+
+  app.get(api.complaints.list.path, requireAuth, async (req, res) => {
+    const user = req.user as User;
+    const filters = {
+      search: typeof req.query.search === "string" ? req.query.search : undefined,
+      status: typeof req.query.status === "string" ? req.query.status : undefined,
+      category: typeof req.query.category === "string" ? req.query.category : undefined,
+    };
+    const complaints = await storage.getComplaints(user.role, user.id, filters);
+    res.json(complaints);
+  });
+
+  app.get(api.complaints.get.path, requireAuth, async (req, res) => {
+    const id = Number(req.params.id);
+    const user = req.user as User;
+    const complaint = await storage.getComplaintForUser(id, user.role, user.id);
+    if (!complaint) return res.sendStatus(404);
+    res.json(complaint);
+  });
+
+  app.post(api.complaints.create.path, requireRole(["admin", "support"]), async (req, res) => {
+    try {
+      const input = api.complaints.create.input.parse(req.body);
+      const user = req.user as User;
+      const order = await storage.getOrder(input.orderId);
+      if (!order) return res.status(400).json({ message: "The selected order could not be found." });
+
+      const targetId = order.assignedToId;
+      if (!targetId) {
+        return res.status(400).json({
+          message: "This order has no assigned designer. Assign a designer before raising a complaint.",
+        });
+      }
+      if (input.complaintAgainstUserId && input.complaintAgainstUserId !== targetId) {
+        return res.status(400).json({
+          message: "A complaint can only target the designer currently assigned to this order.",
+        });
+      }
+
+      const targetDesigner = await storage.getUser(targetId);
+      if (!targetDesigner || targetDesigner.role !== "designer") {
+        return res.status(400).json({ message: "The complaint must target a valid assigned designer." });
+      }
+
+      const complaint = await storage.createComplaint({
+        orderId: input.orderId,
+        complaintAgainstUserId: targetId,
+        filedByUserId: user.id,
+        category: input.category,
+        description: input.description.trim(),
+        status: "new",
+        adminNotes: null,
+        resolution: null,
+        resolvedByUserId: null,
+        resolvedAt: null,
+      }, user.id);
+
+      // This message is intentionally neutral: the designer is never told who
+      // filed the complaint, only that their assigned order needs attention.
+      await notifyUser(
+        targetId,
+        "complaint",
+        "Complaint Requires Review",
+        `A complaint related to ${orderRef(order)} has been filed about an assigned order. Please review it in Complaints.`,
+        "action_required",
+        complaint.id,
+        "complaint",
+        ["designer"],
+      );
+
+      const response = await storage.getComplaintForUser(complaint.id, user.role, user.id);
+      res.status(201).json(response);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message || "Invalid complaint details" });
+      }
+      throw err;
+    }
+  });
+
+  app.patch(api.complaints.update.path, requireRole(["admin"]), async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const input = api.complaints.update.input.parse(req.body);
+      const existing = await storage.getComplaintRecord(id);
+      if (!existing) return res.sendStatus(404);
+      if (input.status === undefined && input.adminNotes === undefined && input.resolution === undefined) {
+        return res.status(400).json({ message: "Provide a status, internal note, or resolution." });
+      }
+
+      const status = input.status;
+      const transitionAllowed =
+        status === undefined ||
+        status === existing.status ||
+        (existing.status === "new" && status === "under_review") ||
+        (existing.status === "under_review" && (status === "valid" || status === "invalid")) ||
+        (existing.status === "valid" && status === "resolved");
+      if (!transitionAllowed) {
+        return res.status(400).json({
+          message: `Cannot move a complaint from ${statusLabel(existing.status)} to ${statusLabel(status)}.`,
+        });
+      }
+
+      if ((status === "valid" || status === "invalid") && input.confirmDecision !== true) {
+        return res.status(400).json({ message: "Confirm the complaint decision before saving it." });
+      }
+      if (status === "resolved" && existing.status !== "valid") {
+        return res.status(400).json({ message: "Only valid complaints can be resolved." });
+      }
+      if (status === "resolved" && !input.resolution?.trim() && !existing.resolution?.trim()) {
+        return res.status(400).json({ message: "A resolution is required before closing a valid complaint." });
+      }
+      if (
+        input.resolution !== undefined &&
+        input.resolution !== existing.resolution &&
+        existing.status !== "valid" &&
+        status !== "resolved"
+      ) {
+        return res.status(400).json({ message: "A resolution can only be recorded for a valid complaint." });
+      }
+      if (
+        existing.status === "resolved" &&
+        input.resolution !== undefined &&
+        input.resolution !== existing.resolution
+      ) {
+        return res.status(400).json({ message: "The resolution is locked once a complaint is resolved." });
+      }
+
+      const actor = req.user as User;
+      const historyEvents: InsertActivityLog[] = [];
+      if (status !== undefined && status !== existing.status) {
+        historyEvents.push({
+          orderId: existing.orderId,
+          actorId: actor.id,
+          activityType: status === "resolved" ? "complaint_resolved" : "complaint_status",
+          previousValue: existing.status,
+          newValue: status,
+          details: {
+            complaintId: existing.id,
+            complaintNumber: existing.complaintNumber,
+            ...(status === "resolved" ? { resolution: input.resolution?.trim() || existing.resolution } : {}),
+          },
+        });
+      }
+      if (input.adminNotes !== undefined && (input.adminNotes?.trim() || null) !== existing.adminNotes) {
+        historyEvents.push({
+          orderId: existing.orderId,
+          actorId: actor.id,
+          activityType: "complaint_note",
+          previousValue: existing.adminNotes,
+          newValue: input.adminNotes?.trim() || null,
+          details: {
+            complaintId: existing.id,
+            complaintNumber: existing.complaintNumber,
+          },
+        });
+      }
+      if (input.resolution !== undefined && (input.resolution?.trim() || null) !== existing.resolution) {
+        historyEvents.push({
+          orderId: existing.orderId,
+          actorId: actor.id,
+          activityType: "complaint_resolution",
+          previousValue: existing.resolution,
+          newValue: input.resolution?.trim() || null,
+          details: {
+            complaintId: existing.id,
+            complaintNumber: existing.complaintNumber,
+          },
+        });
+      }
+      if (historyEvents.length === 0) {
+        return res.status(400).json({ message: "No complaint changes were provided." });
+      }
+
+      const updated = await storage.updateComplaint(id, existing.status, {
+        ...(status !== undefined ? { status } : {}),
+        ...(input.adminNotes !== undefined ? { adminNotes: input.adminNotes?.trim() || null } : {}),
+        ...(input.resolution !== undefined ? { resolution: input.resolution?.trim() || null } : {}),
+        ...(status === "resolved" && status !== existing.status
+          ? { resolvedByUserId: actor.id, resolvedAt: new Date() }
+          : {}),
+      }, historyEvents);
+      if (!updated) {
+        return res.status(409).json({
+          message: "This complaint changed while you were reviewing it. Reload and try again.",
+        });
+      }
+
+      if (status !== undefined && status !== existing.status) {
+
+        const targetOrder = await storage.getOrder(existing.orderId);
+        await notifyUser(
+          existing.complaintAgainstUserId,
+          "complaint",
+          `Complaint ${statusLabel(status)}`,
+          `Complaint ${existing.complaintNumber} related to ${targetOrder ? orderRef(targetOrder) : "an assigned order"} is now ${statusLabel(status)}.`,
+          status === "resolved" ? "confirmation" : "update",
+          existing.id,
+          "complaint",
+          ["designer"],
+        );
+      }
+
+      const response = await storage.getComplaintForUser(id, "admin", actor.id);
+      res.json(response);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message || "Invalid complaint update" });
+      }
+      throw err;
+    }
+  });
+
+  app.get(api.complaints.history.path, requireRole(["admin"]), async (req, res) => {
+    const id = Number(req.params.id);
+    const complaint = await storage.getComplaintRecord(id);
+    if (!complaint) return res.sendStatus(404);
+    const history = await storage.getComplaintHistory(id);
+    res.json(history);
+  });
+
   app.patch(api.orders.update.path, requireAuth, async (req, res) => {
     const orderId = Number(req.params.id);
     const updates = { ...req.body };
@@ -828,6 +1063,12 @@ export async function registerRoutes(
 
     const orderLabel = orderRef(existingOrder);
     const clientName = existingOrder.clientName || "this client";
+    const relatedComplaints = await storage.getComplaints("admin", user.id, { orderId });
+    if (relatedComplaints.length > 0) {
+      return res.status(409).json({
+        message: "This order has complaint history and cannot be deleted. Complaint records must remain auditable.",
+      });
+    }
 
     await storage.deleteOrder(orderId);
 
@@ -892,8 +1133,8 @@ export async function registerRoutes(
   });
 
   app.get(api.stats.dashboard.path, requireAuth, async (req, res) => {
-    const stats = await storage.getStats();
     const user = req.user as User;
+    const stats = await storage.getStats(user.role, user.id);
 
     if (user.role !== 'admin') {
       delete stats.finance;

@@ -36,7 +36,32 @@ export const paymentVerificationStatuses = ["pending_confirmation", "approved", 
 export const paymentTypes = ["advance", "full", "remaining"] as const;
 export const advancePaymentStatuses = ["pending", "approved", "disapproved"] as const;
 export const clientTypes = ["national", "international"] as const;
-export const activityTypes = ["status_change", "payment_change", "assignment", "note", "verification"] as const;
+export const activityTypes = [
+  "status_change",
+  "payment_change",
+  "assignment",
+  "note",
+  "verification",
+  "complaint_created",
+  "complaint_status",
+  "complaint_note",
+  "complaint_resolution",
+  "complaint_resolved",
+] as const;
+export const complaintCategories = [
+  "communication_issue",
+  "slow_response",
+  "delivery_delay",
+  "work_quality_issue",
+  "instructions_not_followed",
+  "revision_handling_issue",
+  "incorrect_information",
+  "unprofessional_behavior",
+  "process_policy_violation",
+  "unauthorized_commitment",
+  "other",
+] as const;
+export const complaintStatuses = ["new", "under_review", "valid", "invalid", "resolved"] as const;
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -133,6 +158,23 @@ export const paymentVerifications = pgTable("payment_verifications", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const complaints = pgTable("complaints", {
+  id: serial("id").primaryKey(),
+  complaintNumber: text("complaint_number").notNull().unique(),
+  orderId: integer("order_id").notNull().references(() => orders.id),
+  complaintAgainstUserId: integer("complaint_against_user_id").notNull().references(() => users.id),
+  filedByUserId: integer("filed_by_user_id").notNull().references(() => users.id),
+  category: text("category", { enum: complaintCategories }).notNull(),
+  description: text("description").notNull(),
+  status: text("status", { enum: complaintStatuses }).notNull().default("new"),
+  adminNotes: text("admin_notes"),
+  resolution: text("resolution"),
+  resolvedByUserId: integer("resolved_by_user_id").references(() => users.id),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const supportDesignerAssignments = pgTable("support_designer_assignments", {
   id: serial("id").primaryKey(),
   supportUserId: integer("support_user_id").notNull().references(() => users.id),
@@ -167,6 +209,7 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
   services: many(orderServices),
   activityLogs: many(activityLogs),
   paymentVerifications: many(paymentVerifications),
+  complaints: many(complaints),
 }));
 
 export const activityLogsRelations = relations(activityLogs, ({ one }) => ({
@@ -195,6 +238,28 @@ export const paymentVerificationsRelations = relations(paymentVerifications, ({ 
   }),
 }));
 
+export const complaintsRelations = relations(complaints, ({ one }) => ({
+  order: one(orders, {
+    fields: [complaints.orderId],
+    references: [orders.id],
+  }),
+  complaintAgainst: one(users, {
+    fields: [complaints.complaintAgainstUserId],
+    references: [users.id],
+    relationName: "complaintAgainst",
+  }),
+  filedBy: one(users, {
+    fields: [complaints.filedByUserId],
+    references: [users.id],
+    relationName: "complaintFiledBy",
+  }),
+  resolvedBy: one(users, {
+    fields: [complaints.resolvedByUserId],
+    references: [users.id],
+    relationName: "complaintResolvedBy",
+  }),
+}));
+
 export const orderServicesRelations = relations(orderServices, ({ one }) => ({
   order: one(orders, {
     fields: [orderServices.orderId],
@@ -216,6 +281,12 @@ export const insertOrderSchema = createInsertSchema(orders).omit({ id: true, cre
 export const insertOrderServiceSchema = createInsertSchema(orderServices).omit({ id: true });
 export const insertActivityLogSchema = createInsertSchema(activityLogs).omit({ id: true, createdAt: true });
 export const insertPaymentVerificationSchema = createInsertSchema(paymentVerifications).omit({ id: true, createdAt: true });
+export const insertComplaintSchema = createInsertSchema(complaints).omit({
+  id: true,
+  complaintNumber: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export const insertSupportDesignerAssignmentSchema = createInsertSchema(supportDesignerAssignments).omit({ id: true, assignedAt: true });
 export const insertServicesCatalogSchema = createInsertSchema(servicesCatalog).omit({ id: true, createdAt: true });
 export const insertPackageConfigSchema = createInsertSchema(packageConfigs).omit({ id: true, createdAt: true });
@@ -232,6 +303,8 @@ export type ActivityLog = typeof activityLogs.$inferSelect;
 export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;
 export type PaymentVerification = typeof paymentVerifications.$inferSelect;
 export type InsertPaymentVerification = z.infer<typeof insertPaymentVerificationSchema>;
+export type Complaint = typeof complaints.$inferSelect;
+export type InsertComplaint = z.infer<typeof insertComplaintSchema>;
 export type MonthlyFinance = typeof monthlyFinance.$inferSelect;
 export type UserRole = (typeof userRoles)[number];
 
@@ -258,3 +331,43 @@ export type InsertPackageConfig = z.infer<typeof insertPackageConfigSchema>;
 export type PlatformCatalogItem = typeof platformsCatalog.$inferSelect;
 export type InsertPlatformCatalogItem = z.infer<typeof insertPlatformsCatalogSchema>;
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+
+export type ComplaintUserSummary = Pick<User, "id" | "name" | "role" | "title" | "avatar">;
+export type ComplaintResponse = {
+  id: number;
+  complaintNumber: string;
+  orderId: number;
+  orderNumber: string | null;
+  clientName: string;
+  complaintAgainst: ComplaintUserSummary;
+  category: (typeof complaintCategories)[number];
+  description: string;
+  status: (typeof complaintStatuses)[number];
+  filedBy?: ComplaintUserSummary;
+  adminNotes?: string | null;
+  resolution?: string | null;
+  resolvedBy?: ComplaintUserSummary | null;
+  resolvedAt: Date | null;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+};
+
+export type ComplaintHistoryEntry = {
+  id: number;
+  action: string;
+  previousValue: string | null;
+  newValue: string | null;
+  details: Record<string, unknown> | null;
+  createdAt: Date | null;
+  actor?: ComplaintUserSummary;
+};
+
+export type ComplaintStats = {
+  total: number;
+  thisMonth: number;
+  new: number;
+  underReview: number;
+  valid: number;
+  invalid: number;
+  resolved: number;
+};

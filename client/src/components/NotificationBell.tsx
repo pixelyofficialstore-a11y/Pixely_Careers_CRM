@@ -96,6 +96,7 @@ function notifIcon(type: string, priority: string, title: string) {
   if (type === "order") return ShoppingCart;
   if (type === "payment") return CreditCard;
   if (type === "assignment") return UserCheck;
+  if (type === "complaint") return AlertTriangle;
   if (type === "user") return User;
   return Bell;
 }
@@ -109,6 +110,7 @@ function notifColor(type: string, priority: string, title: string) {
   if (type === "order") return "text-blue-400 bg-blue-500/10";
   if (type === "payment") return "text-yellow-400 bg-yellow-500/10";
   if (type === "assignment") return "text-purple-400 bg-purple-500/10";
+  if (type === "complaint") return "text-red-400 bg-red-500/10";
   if (type === "user") return "text-cyan-400 bg-cyan-500/10";
   return "text-slate-400 bg-slate-500/10";
 }
@@ -287,7 +289,9 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
   const handleNotifClick = (notif: Notification) => {
     if (!notif.read) markOneMutation.mutate(notif.id);
     setOpen(false);
-    setLocation("/orders");
+    setLocation(notif.relatedType === "complaint" && notif.relatedId
+      ? `/complaints/${notif.relatedId}`
+      : "/orders");
   };
 
   const dropdownContent = open ? (

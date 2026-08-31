@@ -1,5 +1,16 @@
 import { z } from "zod";
-import { insertUserSchema, insertOrderSchema, users, orders, notifications } from "./schema";
+import {
+  insertUserSchema,
+  insertOrderSchema,
+  users,
+  orders,
+  notifications,
+  complaintCategories,
+  complaintStatuses,
+  type ComplaintResponse,
+  type ComplaintHistoryEntry,
+  type ComplaintStats,
+} from "./schema";
 
 export const errorSchemas = {
   validation: z.object({
@@ -138,6 +149,72 @@ export const api = {
       },
     },
   },
+  complaints: {
+    list: {
+      method: "GET" as const,
+      path: "/api/complaints",
+      responses: {
+        200: z.array(z.custom<ComplaintResponse>()),
+      },
+    },
+    get: {
+      method: "GET" as const,
+      path: "/api/complaints/:id",
+      responses: {
+        200: z.custom<ComplaintResponse>(),
+        404: errorSchemas.notFound,
+        403: errorSchemas.forbidden,
+      },
+    },
+    create: {
+      method: "POST" as const,
+      path: "/api/complaints",
+      input: z.object({
+        orderId: z.number().int().positive(),
+        complaintAgainstUserId: z.number().int().positive().optional(),
+        category: z.enum(complaintCategories),
+        description: z.string().trim().min(1, "Description is required").max(5000),
+      }),
+      responses: {
+        201: z.custom<ComplaintResponse>(),
+        400: errorSchemas.validation,
+        403: errorSchemas.forbidden,
+      },
+    },
+    update: {
+      method: "PATCH" as const,
+      path: "/api/complaints/:id",
+      input: z.object({
+        status: z.enum(complaintStatuses).optional(),
+        adminNotes: z.string().trim().max(5000).nullable().optional(),
+        resolution: z.string().trim().max(5000).nullable().optional(),
+        confirmDecision: z.boolean().optional(),
+      }),
+      responses: {
+        200: z.custom<ComplaintResponse>(),
+        400: errorSchemas.validation,
+        403: errorSchemas.forbidden,
+        404: errorSchemas.notFound,
+      },
+    },
+    history: {
+      method: "GET" as const,
+      path: "/api/complaints/:id/history",
+      responses: {
+        200: z.array(z.custom<ComplaintHistoryEntry>()),
+        403: errorSchemas.forbidden,
+      },
+    },
+  },
+  orderComplaints: {
+    list: {
+      method: "GET" as const,
+      path: "/api/orders/:id/complaints",
+      responses: {
+        200: z.array(z.custom<ComplaintResponse>()),
+      },
+    },
+  },
   stats: {
     dashboard: {
       method: "GET" as const,
@@ -161,6 +238,7 @@ export const api = {
               total: z.number(),
             }).optional(),
           }).optional(),
+          complaints: z.custom<ComplaintStats>(),
         }),
       },
     },
