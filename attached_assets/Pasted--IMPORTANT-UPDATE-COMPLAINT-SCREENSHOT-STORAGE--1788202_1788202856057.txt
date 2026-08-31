@@ -1,0 +1,297 @@
+==================================================
+IMPORTANT UPDATE — COMPLAINT SCREENSHOT STORAGE
+==================================================
+
+Complaint screenshots/evidence MUST use CLOUDINARY.
+
+DO NOT use Supabase Storage for complaint screenshots.
+
+The CRM already has an existing payment screenshot upload system using Cloudinary.
+
+BEFORE implementing complaint screenshot upload:
+
+1. Find the EXISTING payment screenshot upload implementation.
+2. Understand:
+   - How frontend sends the image
+   - Which API/server function uploads it
+   - How Cloudinary credentials are used
+   - How upload errors are handled
+   - What Cloudinary response is stored
+   - How the payment screenshot URL is saved in Supabase
+   - How screenshots are later rendered in the CRM
+
+REUSE THAT SAME ARCHITECTURE.
+
+Do NOT create a separate file-storage system unless technically unavoidable.
+
+==================================================
+COMPLAINT SCREENSHOT WORKFLOW
+==================================================
+
+Required flow:
+
+User selects complaint screenshot
+↓
+Frontend validates file
+↓
+Existing backend/server-side Cloudinary upload logic is used
+↓
+Cloudinary stores the image
+↓
+Cloudinary returns the uploaded image URL
+↓
+ONLY THE CLOUDINARY URL is stored in the Supabase complaints record
+↓
+Authorized CRM users load/view the screenshot using that URL
+
+Supabase should NOT contain:
+
+- Image binary
+- Base64 image
+- Raw screenshot data
+- Large file content
+
+Supabase should store only the Cloudinary URL/reference.
+
+==================================================
+DATABASE FIELD
+==================================================
+
+Add an optional field to the complaints table such as:
+
+screenshot_url
+
+or follow the naming convention already used for payment screenshots.
+
+Type:
+
+TEXT / VARCHAR
+
+Nullable:
+YES
+
+Example conceptual value:
+
+https://res.cloudinary.com/.../complaint-evidence/...
+
+DO NOT hard-code Cloudinary URLs.
+
+Save the actual secure URL returned by Cloudinary.
+
+If the existing payment screenshot field uses another naming pattern or additional Cloudinary metadata, follow the existing architecture instead of creating inconsistent conventions.
+
+==================================================
+CLOUDINARY IMPLEMENTATION
+==================================================
+
+Reuse the current Cloudinary configuration already used for PAYMENT SCREENSHOTS.
+
+DO NOT:
+
+- Add another Cloudinary account
+- Add duplicate Cloudinary credentials
+- Change existing Cloudinary environment variables
+- Expose Cloudinary secrets to frontend
+- Upload directly using secret credentials from browser code
+- Replace the payment screenshot system
+- Change existing payment screenshot behavior
+
+Complaint screenshots should simply become another safe use of the existing Cloudinary upload infrastructure.
+
+If the current system organizes Cloudinary files into folders, use an appropriate folder such as:
+
+complaints/
+
+or:
+
+complaint-evidence/
+
+BUT follow the existing Cloudinary folder strategy if one already exists.
+
+==================================================
+COMPLAINT FORM
+==================================================
+
+Add:
+
+Screenshot / Evidence
+
+This field should be OPTIONAL.
+
+Allowed image types:
+
+PNG
+JPG
+JPEG
+WEBP
+
+Use the same file-size validation already used for payment screenshots where appropriate.
+
+Show:
+
+- Selected filename or preview
+- Upload/loading state
+- Upload error if failed
+
+Do not submit the complaint as successfully created with a broken screenshot reference.
+
+If screenshot upload fails:
+
+Show a clear error and allow retry.
+
+If no screenshot is selected:
+
+Complaint should still be allowed to submit.
+
+==================================================
+RECOMMENDED SAFE CREATION FLOW
+==================================================
+
+If a screenshot is selected:
+
+1. Validate complaint fields.
+2. Upload screenshot to Cloudinary.
+3. Receive secure Cloudinary URL.
+4. Create complaint in Supabase using screenshot_url.
+5. Confirm complaint creation.
+6. Trigger Designer notification.
+
+If Cloudinary upload fails:
+
+DO NOT create a complaint containing an invalid screenshot URL.
+
+Allow the user to retry.
+
+If no screenshot is selected:
+
+Create complaint normally with:
+
+screenshot_url = NULL
+
+==================================================
+DISPLAYING SCREENSHOT
+==================================================
+
+Inside the Complaint right-side details drawer add:
+
+SCREENSHOT / EVIDENCE
+
+If screenshot_url exists:
+
+Display a clean image preview.
+
+Allow user to click it to view a larger preview.
+
+Use the Cloudinary URL stored in Supabase.
+
+If screenshot_url is NULL:
+
+Show:
+
+"No screenshot attached."
+
+Do not show broken image placeholders.
+
+==================================================
+WHO CAN VIEW SCREENSHOT
+==================================================
+
+Any CRM user who is already AUTHORIZED to view that complaint may view its attached screenshot.
+
+Admin:
+Can see screenshot for all complaints.
+
+Designer:
+Can see screenshot only for complaints against themselves.
+
+Sales/Support:
+Can see screenshot only for complaints they are authorized to access.
+
+IMPORTANT:
+
+Complaint permissions must still be checked before returning the complaint record containing screenshot_url.
+
+Do not create a separate unrestricted endpoint that exposes complaint screenshot URLs.
+
+==================================================
+ANONYMITY
+==================================================
+
+The screenshot itself may be visible to the Designer, but the system must NOT expose who uploaded it.
+
+Designer must NOT see:
+
+- uploader user ID
+- uploader name
+- uploader role
+- internal upload metadata that reveals complainant identity
+
+The complaint screenshot section should simply display:
+
+"Screenshot / Evidence"
+
+==================================================
+DO NOT ADD SUPABASE STORAGE
+==================================================
+
+Explicitly:
+
+DO NOT create a Supabase Storage bucket for complaints.
+
+DO NOT upload complaint images into Supabase Storage.
+
+DO NOT store base64 screenshots in Supabase.
+
+DO NOT store image blobs in PostgreSQL.
+
+CLOUDINARY stores the actual file.
+
+SUPABASE stores only the URL and complaint metadata.
+
+==================================================
+REUSE PAYMENT SCREENSHOT CODE
+==================================================
+
+This is extremely important.
+
+Search the codebase for the existing PAYMENT SCREENSHOT Cloudinary implementation first.
+
+Reuse its:
+
+- Cloudinary client/config
+- Server upload service
+- Environment variables
+- Validation
+- Error handling
+- URL extraction
+- Database storage approach
+- Image display approach
+
+Do not implement a second unrelated Cloudinary upload architecture.
+
+If common functionality can be extracted into a reusable helper WITHOUT risking payment screenshots, do so carefully.
+
+Otherwise keep payment functionality unchanged and create a complaint-specific wrapper around the proven existing upload function.
+
+==================================================
+REGRESSION TESTING
+==================================================
+
+After adding complaint screenshot uploads:
+
+TEST PAYMENT SCREENSHOTS AGAIN.
+
+Confirm:
+
+1. Existing payment screenshot upload still works.
+2. Existing payment screenshot display still works.
+3. Existing payment records are unchanged.
+4. Complaint screenshot uploads successfully to Cloudinary.
+5. Supabase complaint record stores only the returned URL.
+6. Complaint drawer displays the image correctly.
+7. Complaint creation works without a screenshot.
+8. Failed Cloudinary upload shows an error.
+9. Designer cannot access complaints belonging to another Designer.
+10. Existing Cloudinary environment configuration remains unchanged.
+
+DO NOT consider the task complete until both the old payment screenshot workflow and new complaint screenshot workflow are verified.
