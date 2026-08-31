@@ -1,0 +1,1473 @@
+PROJECT: PIXELY CAREERS CRM
+TASK: BUILD A COMPLETE COMPLAINT MANAGEMENT MODULE
+
+IMPORTANT:
+This is an EXISTING PRODUCTION CRM.
+
+DO NOT rebuild the application.
+DO NOT redesign unrelated pages.
+DO NOT change existing workflows unless specifically required below.
+DO NOT delete, rename, replace, or rewrite existing database tables, columns, APIs, routes, authentication logic, permissions, order logic, payment logic, notifications, dashboards, or other working functionality.
+
+Your job is to ADD a Complaints Module safely into the existing CRM.
+
+Before changing ANY code, inspect the complete project architecture, database schema, authentication system, role system, existing Order model, notification system, dashboard structure, activity logs, UI components, API conventions, Supabase configuration, and existing routes.
+
+Reuse the project's EXISTING conventions wherever possible.
+
+==================================================
+PHASE 0 — MANDATORY PRE-IMPLEMENTATION AUDIT
+==================================================
+
+BEFORE WRITING CODE:
+
+1. Inspect the complete existing CRM.
+2. Identify:
+   - Frontend framework
+   - Backend architecture
+   - Database
+   - Existing Supabase integration
+   - Authentication implementation
+   - Existing user roles
+   - Existing Order table/model
+   - Existing User/Profile table
+   - Existing Notifications system
+   - Existing Dashboard
+   - Existing navigation/sidebar
+   - Existing Activity/Audit logs
+   - Existing role permissions
+   - Existing API/server actions
+   - Existing modal/form components
+   - Existing toast/error system
+   - Existing database migrations
+
+3. DO NOT assume role names.
+
+Find the EXACT role values already used in the CRM.
+
+For example, the system may use:
+- admin
+- designer
+- support
+- sales
+- manager
+or different values.
+
+DO NOT create duplicate roles merely because this prompt uses words like "Sales", "Support", "Designer", or "Admin".
+
+Map the Complaint Module permissions to the EXISTING role system.
+
+4. Inspect how an Order is linked to:
+   - Client
+   - Assigned Designer
+   - Support/Sales person
+   - Payment
+   - Status
+   - Order ID
+
+5. Inspect how existing notifications are created and displayed.
+
+DO NOT build a second notification architecture if one already exists.
+
+6. Inspect the dashboard cards and existing design system.
+
+New complaint metrics must visually match the current application.
+
+7. Identify any possible breaking changes BEFORE implementing.
+
+8. Make a safe implementation plan internally and then execute it.
+
+==================================================
+CRITICAL SAFETY RULE
+==================================================
+
+THIS MODULE MUST BE ADDITIVE.
+
+Existing features must continue working EXACTLY as they currently work.
+
+Do not make unnecessary refactors.
+
+Do not rename existing variables, routes, database columns, components, hooks, services, tables, roles, or functions simply to make the new module cleaner.
+
+Do not change the behavior of existing Orders, Payments, Production, QC, Users, Authentication, Notifications, or any other modules.
+
+If an existing component can be extended safely, extend it.
+
+If changing an existing component would create risk, create a separate component and integrate it minimally.
+
+==================================================
+BUSINESS PURPOSE
+==================================================
+
+Pixely Careers wants a formal Complaint Management System connected directly to client Orders.
+
+Complaints are mainly filed when there is an issue concerning the Designer handling an order.
+
+The system must allow authorized staff to raise a complaint directly from an Order.
+
+The assigned Designer must be notified that a complaint has been filed against them.
+
+HOWEVER:
+
+The identity of the person who filed the complaint MUST remain anonymous to the Designer.
+
+Admins/authorized management users must be able to see who filed the complaint.
+
+Complaints must be reviewed before they are treated as valid performance issues.
+
+A complaint being FILED does NOT automatically mean the Designer is guilty.
+
+Only complaints marked VALID by an authorized Admin/Manager should eventually affect performance metrics.
+
+==================================================
+MODULE 1 — DATABASE / DATA MODEL
+==================================================
+
+Create a new complaints entity/table using the same database conventions already used by the CRM.
+
+Suggested conceptual structure:
+
+complaints
+
+Fields:
+
+1. id
+   - Use the project's normal primary key convention.
+   - UUID if the rest of the CRM uses UUID.
+
+2. complaint_number
+   Example:
+   CMP-000001
+
+   Must be unique and human readable.
+
+   If there is already a standardized ID-generation utility in the project, reuse it.
+
+3. order_id
+   - Required
+   - Foreign key/reference to existing Orders table.
+   - DO NOT duplicate entire order information into complaints unnecessarily.
+
+4. client_id
+   - Use only if appropriate according to the existing schema.
+   - Prefer deriving client from Order if that is the current architecture.
+   - Avoid redundant data if unnecessary.
+
+5. complaint_against_user_id
+   - Usually the Designer assigned to that Order.
+   - Required.
+   - Foreign key/reference to existing user/profile system.
+
+6. filed_by_user_id
+   - User who created the complaint.
+   - Required.
+   - This information is ADMIN-VISIBLE.
+   - It must NOT be shown to the Designer.
+
+7. category
+   Use a controlled enum/list, not random free text.
+
+Categories:
+
+- Communication Issue
+- Slow Response
+- Delivery Delay
+- Work Quality Issue
+- Client Instructions Not Followed
+- Revision Handling Issue
+- Incorrect Information / Mistake
+- Unprofessional Behavior
+- Process / Policy Violation
+- Unauthorized Commitment
+- Other
+
+8. description
+   - Required
+   - Text
+   - Complaint details.
+
+9. status
+
+Required complaint statuses:
+
+- New
+- Under Review
+- Valid
+- Invalid
+- Resolved
+
+Use internal slug values if preferred, for example:
+
+new
+under_review
+valid
+invalid
+resolved
+
+but display clean human-readable labels in UI.
+
+10. admin_notes
+    - Optional
+    - Visible only to authorized Admin/Management.
+    - Must never be exposed to Designer unless intentionally designed later.
+
+11. resolution
+    - Optional text
+    - Used when resolving complaint.
+
+12. resolved_by_user_id
+    - Nullable
+    - Admin/Manager who resolved it.
+
+13. resolved_at
+    - Nullable timestamp.
+
+14. created_at
+
+15. updated_at
+
+OPTIONAL if architecture supports it safely:
+
+16. severity
+    Possible values:
+    - Minor
+    - Major
+    - Critical
+
+Do NOT overcomplicate V1 if severity requires unnecessary architectural changes.
+
+==================================================
+DATABASE MIGRATION SAFETY
+==================================================
+
+Do NOT manually modify production tables destructively.
+
+Create proper additive migration(s).
+
+DO NOT:
+- drop existing columns
+- rename existing columns
+- recreate tables unnecessarily
+- reset database
+- clear data
+- delete existing records
+- change existing foreign key behavior unless absolutely necessary
+
+All migrations must be backward compatible.
+
+If Supabase Row Level Security is currently enabled, inspect existing RLS patterns and create complaint policies consistent with them.
+
+Do not disable RLS globally.
+
+==================================================
+MODULE 2 — WHO CAN RAISE A COMPLAINT
+==================================================
+
+Use the EXISTING roles found in the application.
+
+The intended business rule is:
+
+Authorized Sales/Support and Admin/Management users can raise complaints.
+
+DESIGNERS MUST NOT HAVE A "RAISE COMPLAINT" BUTTON for complaints against themselves.
+
+Important:
+
+The CRM may use "Support" where business language sometimes says "Sales".
+
+DO NOT guess.
+
+Inspect existing roles.
+
+If both Sales and Support exist, determine existing workflow and safely allow whichever role(s) management currently uses for client handling.
+
+At minimum:
+
+Admin:
+- Can raise complaints.
+
+Client-facing Sales/Support role:
+- Can raise complaints.
+
+Designer:
+- Cannot raise a complaint through this module unless future permissions explicitly allow it.
+
+Manager/Founder:
+- If those roles already exist and have admin-level privileges, allow complaint creation and management according to existing permission hierarchy.
+
+==================================================
+MODULE 3 — RAISE COMPLAINT FROM ORDER PAGE
+==================================================
+
+On every applicable Order Detail Page, add:
+
+"Raise Complaint"
+
+This action must only appear to authorized roles.
+
+DO NOT show it to Designers.
+
+Place it somewhere logical without disturbing the existing order UI.
+
+Prefer an existing Actions menu or appropriate secondary button area.
+
+When clicked, open a modal/drawer/form consistent with the existing CRM design.
+
+==================================================
+RAISE COMPLAINT FORM
+==================================================
+
+Automatically populate:
+
+Order ID
+Client
+Assigned Designer / Complaint Against
+
+The user should NOT have to manually type existing order details.
+
+Fields:
+
+Complaint Against
+- Default = currently assigned Designer on the Order.
+- If Admin has permission and architecture supports it, Admin may change the target user.
+- Regular Sales/Support should normally complain against the assigned Designer.
+
+Category
+Required dropdown using defined categories.
+
+Description
+Required textarea.
+
+Optional:
+Severity, if implemented.
+
+Submit button:
+"File Complaint"
+
+Cancel button.
+
+==================================================
+FORM VALIDATION
+==================================================
+
+Do not allow complaint creation when:
+
+- No Order exists.
+- No complaint description exists.
+- No category selected.
+- Complaint target cannot be identified.
+
+If Order has no assigned Designer:
+
+Do NOT crash.
+
+Show a meaningful error such as:
+
+"This order currently has no assigned designer. Please assign a designer before filing a designer complaint."
+
+Alternatively allow Admin to select a target user if appropriate.
+
+Do not allow empty descriptions containing only spaces.
+
+Prevent accidental duplicate submissions when button is clicked multiple times.
+
+==================================================
+MODULE 4 — ANONYMOUS COMPLAINANT RULE
+==================================================
+
+THIS IS VERY IMPORTANT.
+
+The Designer MUST NOT see who filed the complaint.
+
+Designer can see:
+
+Complaint Number
+Order ID
+Client Name if already allowed under existing permissions
+Category
+Description
+Status
+Created Date
+Resolution if management chooses to expose it
+
+Designer MUST NOT see:
+
+Filed By Name
+Filed By User ID
+Filed By Role
+Admin Notes
+Internal management notes
+
+Do NOT simply hide filed_by_user_id visually while exposing it through an API response available to the Designer.
+
+The backend/API/query/RLS layer must also prevent unauthorized access to complainant identity.
+
+Admin/authorized Management can see:
+
+Filed By
+Filed By Role
+All complaint details
+Internal notes
+Resolution history
+
+Sales/Support who created the complaint can see that THEY filed it on their own view.
+
+But they do not need access to confidential Admin review notes unless existing permissions allow it.
+
+==================================================
+MODULE 5 — DESIGNER NOTIFICATION
+==================================================
+
+When a complaint is successfully created:
+
+Send a notification to the complaint target/Designer using the EXISTING CRM notification system.
+
+Do not build duplicate notifications.
+
+Suggested notification:
+
+Title:
+"New Complaint Filed"
+
+Message:
+"A complaint related to Order [ORDER ID] has been filed against you. Please review it in the Complaints section."
+
+If category can safely be included:
+
+"A [CATEGORY] complaint related to Order [ORDER ID] has been filed against you."
+
+DO NOT include:
+- complainant name
+- complainant role
+- internal notes
+
+Notification should link to the complaint detail page if the current notification system supports links.
+
+==================================================
+IMPORTANT LANGUAGE
+==================================================
+
+Do NOT notify the Designer:
+
+"You have received a warning."
+
+A complaint may still be invalid.
+
+Use neutral language:
+
+"A complaint has been filed and is currently under review."
+
+==================================================
+MODULE 6 — COMPLAINTS PAGE
+==================================================
+
+Create a dedicated Complaints page similar in structure and styling to the existing Orders page.
+
+Add Complaints to the existing navigation/sidebar in an appropriate location.
+
+DO NOT redesign the entire sidebar.
+
+Page should contain:
+
+- Search
+- Filters
+- Complaint table/list
+- Pagination if existing pages use pagination
+- Loading states
+- Empty state
+- Error state
+
+==================================================
+COMPLAINT TABLE
+==================================================
+
+Suggested columns:
+
+Complaint ID
+Order ID
+Client
+Complaint Against
+Category
+Status
+Created Date
+
+Admin additionally sees:
+
+Filed By
+
+Designer MUST NOT see Filed By.
+
+Sales/Support viewing their own complaints may see their own identity if useful, but it is not necessary.
+
+==================================================
+SEARCH
+==================================================
+
+Allow useful searches where technically practical:
+
+Complaint Number
+Order ID
+Client Name
+Designer Name
+
+Follow existing search implementation patterns.
+
+==================================================
+FILTERS
+==================================================
+
+Suggested:
+
+Status
+Category
+Designer / Complaint Against — Admin only where appropriate
+Date range — optional if easy within current structure
+
+Do not overengineer.
+
+==================================================
+MODULE 7 — ROLE-BASED COMPLAINT VISIBILITY
+==================================================
+
+DESIGNER:
+
+Designer can ONLY see complaints where:
+
+complaint_against_user_id = currently logged-in Designer
+
+Designer cannot see:
+- complaints against other Designers
+- filed_by identity
+- admin_notes
+- internal-only information
+
+Designer cannot:
+- create complaint
+- delete complaint
+- edit complaint description
+- change status
+- mark complaint valid/invalid
+- resolve complaint
+
+--------------------------------------------------
+
+SALES / SUPPORT:
+
+Client-facing staff can see ONLY complaints they personally filed:
+
+filed_by_user_id = currently logged-in user
+
+They should be able to see:
+
+Complaint Number
+Order
+Client
+Designer/Complaint Against
+Category
+Description
+Status
+Created Date
+
+They cannot:
+- mark complaint Valid
+- mark complaint Invalid
+- resolve complaint
+- edit Admin notes
+- delete complaint unless a very explicit existing Admin permission says otherwise
+
+Prefer NO deletion for normal users.
+
+--------------------------------------------------
+
+ADMIN / MANAGEMENT:
+
+Admin should see ALL complaints.
+
+Admin should see:
+
+Complaint Number
+Order
+Client
+Complaint Against
+Filed By
+Filed By Role
+Category
+Description
+Status
+Dates
+Admin Notes
+Resolution
+
+Admin can:
+
+- Change New → Under Review
+- Mark complaint Valid
+- Mark complaint Invalid
+- Resolve valid complaint
+- Add Admin Notes
+- Add Resolution
+- View full complaint history
+
+Do not give these abilities to Designers or normal Support users.
+
+==================================================
+MODULE 8 — COMPLAINT DETAIL PAGE
+==================================================
+
+Create complaint detail page or detail drawer according to existing CRM design patterns.
+
+Display:
+
+Complaint Number
+Order ID
+Client
+Complaint Against
+Category
+Description
+Status
+Created Date
+Updated Date
+
+Admin additionally sees:
+
+Filed By
+Filed By Role
+Admin Notes
+Resolved By
+Resolved Date
+Resolution
+
+Provide link back to related Order.
+
+On Order detail, also allow navigation to related complaints.
+
+==================================================
+MODULE 9 — COMPLAINT STATUS WORKFLOW
+==================================================
+
+Required workflow:
+
+NEW
+↓
+UNDER REVIEW
+↓
+VALID OR INVALID
+
+If INVALID:
+Complaint does not count negatively against Designer.
+
+It may be considered closed after Invalid, depending on implementation.
+
+If VALID:
+Admin may later mark it:
+RESOLVED
+
+Recommended transition:
+
+New → Under Review
+Under Review → Valid
+Under Review → Invalid
+Valid → Resolved
+
+Avoid random status transitions if possible.
+
+Do not let ordinary users manipulate status.
+
+==================================================
+IMPORTANT PERFORMANCE RULE
+==================================================
+
+TOTAL FILED COMPLAINTS and VALID COMPLAINTS are NOT the same metric.
+
+Performance reporting must treat these separately.
+
+Example:
+
+Designer receives 6 complaints.
+
+Admin determines:
+1 Designer mistake
+2 client misunderstandings
+1 Sales error
+2 invalid complaints
+
+Designer must NOT receive 6 valid complaints.
+
+Only complaints officially marked:
+
+status = Valid
+or Valid → Resolved
+
+should count toward Designer negative performance metrics.
+
+==================================================
+MODULE 10 — ADMIN REVIEW
+==================================================
+
+Admin-only complaint controls:
+
+Status
+Admin Notes
+Resolution
+
+When marking complaint Valid or Invalid:
+
+Require Admin confirmation.
+
+When resolving:
+
+Resolution should be required.
+
+Example:
+
+"Client contacted, CV corrected, issue explained and case closed."
+
+Record:
+
+Resolved By
+Resolved At
+
+Do not destroy original complaint description.
+
+Complaint history must remain auditable.
+
+==================================================
+MODULE 11 — AUDIT / ACTIVITY HISTORY
+==================================================
+
+If the CRM already has Activity Logs, integrate Complaint events there.
+
+If not, implement a lightweight complaint history safely.
+
+Important events:
+
+Complaint created
+Status changed
+Marked Under Review
+Marked Valid
+Marked Invalid
+Resolution added
+Marked Resolved
+
+Record:
+
+Action
+Timestamp
+User responsible
+
+Admin can see full history.
+
+Designer does not need to see confidential actor information if that reveals complainant/admin identities inappropriately.
+
+==================================================
+MODULE 12 — ORDER PAGE INTEGRATION
+==================================================
+
+Each Order should display related complaint information.
+
+Add a section/card/tab:
+
+"Complaints"
+
+Example:
+
+Complaints: 2
+
+Clicking should show complaints connected to that Order.
+
+Admin sees all complaint details.
+
+Designer sees only what Designer permissions allow.
+
+Support sees only complaints they filed if that is the established permission rule.
+
+Do not duplicate complaint data manually into the Order table unless technically necessary.
+
+Use relationship queries.
+
+==================================================
+MODULE 13 — DASHBOARD METRICS
+==================================================
+
+Add complaint metrics to dashboards WITHOUT breaking or replacing existing dashboard cards.
+
+Use existing card styles.
+
+==================================================
+DESIGNER DASHBOARD
+==================================================
+
+Designer should see ONLY their complaint metrics.
+
+Suggested cards:
+
+Complaints This Month
+Under Review
+Valid Complaints
+Resolved Complaints
+
+IMPORTANT:
+
+Do not prominently label raw complaint count as a performance score.
+
+Valid Complaints should be clearly distinguished from Total Complaints.
+
+Designer should never see complaint filer identity through these cards.
+
+==================================================
+SALES / SUPPORT DASHBOARD
+==================================================
+
+Support/Sales should see ONLY metrics for complaints THEY filed:
+
+Complaints Filed
+Pending / Under Review
+Valid
+Invalid / Resolved where useful
+
+No access to other employees' complaint metrics.
+
+==================================================
+ADMIN DASHBOARD
+==================================================
+
+Admin can see:
+
+Total Complaints
+New
+Under Review
+Valid
+Invalid
+Resolved
+
+Optional:
+Complaints This Month
+
+Do NOT build complex charts unless they fit naturally into the current dashboard.
+
+Keep V1 clean.
+
+==================================================
+MODULE 14 — NOTIFICATION RULES
+==================================================
+
+Use existing notifications.
+
+Required:
+
+1. Complaint Created
+Notify targeted Designer.
+
+2. Optional:
+Notify Admin/Management that a new complaint exists if current CRM workflow benefits from it.
+
+3. Status Change
+Designer may be notified when complaint becomes:
+- Valid
+- Invalid
+- Resolved
+
+But notifications must remain neutral and must not expose complainant identity.
+
+Suggested:
+
+"Complaint CMP-000123 related to Order PX-XXXX-XXX has been marked Valid."
+
+or
+
+"Complaint CMP-000123 has been resolved."
+
+==================================================
+MODULE 15 — DELETE / EDIT RULES
+==================================================
+
+Complaints should NOT casually be deleted.
+
+For normal users:
+NO DELETE.
+
+For Designers:
+NO EDIT.
+NO DELETE.
+
+For Sales/Support:
+Prefer no edit after submission.
+Prefer no delete.
+
+For Admin:
+Prefer maintaining audit history rather than deleting records.
+
+If an Admin needs to correct something, use appropriate status/notes instead of deleting historical complaints.
+
+If the existing application supports soft-delete patterns and management specifically needs deletion later, follow existing conventions.
+
+Do not implement destructive delete without necessity.
+
+==================================================
+MODULE 16 — SECURITY
+==================================================
+
+This module contains sensitive employee/client information.
+
+Ensure:
+
+1. Server-side permission checks.
+2. Frontend hiding alone is NOT sufficient.
+3. Designers cannot retrieve filed_by data through API inspection.
+4. Users cannot modify complaint IDs in URL and access unauthorized records.
+5. Sales/Support cannot retrieve complaints filed by other users.
+6. Designers cannot view complaints against other Designers.
+7. Admin has authorized full access.
+8. Existing authentication/session handling must be reused.
+9. Supabase RLS must be respected where applicable.
+10. Do not expose service-role keys or secrets in frontend code.
+
+==================================================
+MODULE 17 — CLIENT INFORMATION
+==================================================
+
+Complaint is connected to a client Order.
+
+DO NOT expose new client data to roles that could not already see that client through existing CRM permissions.
+
+Complaint access must NOT become a method of bypassing existing Order/client permission rules.
+
+==================================================
+MODULE 18 — UI / DESIGN REQUIREMENTS
+==================================================
+
+Match the existing Pixely Careers CRM design.
+
+DO NOT introduce a completely new design language.
+
+Reuse:
+
+Buttons
+Cards
+Badges
+Tables
+Modals
+Typography
+Spacing
+Icons
+Responsive behavior
+Toast messages
+Dropdowns
+Inputs
+Loading skeletons
+
+Suggested complaint status badges:
+
+New
+Under Review
+Valid
+Invalid
+Resolved
+
+Use existing color conventions if the CRM already has status colors.
+
+Do not hard-code random colors inconsistent with the application.
+
+==================================================
+MODULE 19 — RESPONSIVE BEHAVIOR
+==================================================
+
+Complaints page must work on:
+
+Desktop
+Laptop
+Tablet
+Mobile
+
+On smaller screens, follow existing CRM table/card responsive patterns.
+
+Do not break the application navigation on mobile.
+
+==================================================
+MODULE 20 — ERROR HANDLING
+==================================================
+
+Handle:
+
+Database failure
+Network failure
+Unauthorized access
+Missing Order
+Missing Designer
+Invalid Complaint ID
+Deleted/nonexistent User
+Invalid status transition
+Duplicate submission
+
+Show professional user-friendly errors.
+
+Do not expose raw database errors or stack traces to users.
+
+Log errors using the existing application error strategy.
+
+==================================================
+MODULE 21 — NO BREAKING CHANGES
+==================================================
+
+AFTER implementation, thoroughly test:
+
+Authentication
+Login
+Logout
+Orders
+Order creation
+Order editing
+Order assignment
+Designer assignment
+Payments
+Payment approvals
+Notifications
+Dashboard
+User management
+Existing roles
+Production workflows
+QC workflows
+Any existing order actions
+Existing filters
+Existing Supabase queries
+Deployment/build
+
+The Complaint Module must NOT alter existing business logic.
+
+==================================================
+MODULE 22 — DATABASE BACKWARD COMPATIBILITY
+==================================================
+
+Existing orders must continue loading even though they were created before Complaints existed.
+
+An Order with zero complaints must simply show:
+
+Complaints: 0
+
+Do not require complaint-related fields on existing Order records.
+
+==================================================
+MODULE 23 — PERFORMANCE
+==================================================
+
+Avoid loading every complaint into every page.
+
+Use efficient filtered queries.
+
+Designer dashboard:
+Only fetch their complaint statistics.
+
+Support dashboard:
+Only fetch complaints filed by them.
+
+Admin:
+Fetch broader metrics appropriately.
+
+Use indexes where appropriate:
+
+order_id
+complaint_against_user_id
+filed_by_user_id
+status
+created_at
+
+Only add indexes if compatible with the existing database.
+
+==================================================
+MODULE 24 — FUTURE COMPATIBILITY
+==================================================
+
+Structure the Complaint Module so later we can add:
+
+Designer Performance Score
+Reviews
+Client Suggestions
+After-Sales Follow-Ups
+Complaint analytics
+Complaint severity
+Attachments/screenshots
+Manager comments
+Root-cause classification
+
+BUT:
+
+DO NOT implement all these future modules now.
+
+Only ensure the Complaint architecture does not make them difficult later.
+
+==================================================
+IMPORTANT — DO NOT BUILD REVIEWS YET
+==================================================
+
+Do NOT build Reviews Module in this task.
+
+Do NOT build Suggestions Module in this task.
+
+Do NOT build After-Sales Module in this task.
+
+Do NOT build Designer Experience Score in this task.
+
+These will be separate phases after Complaints is stable.
+
+==================================================
+MODULE 25 — ACCEPTANCE CRITERIA
+==================================================
+
+The implementation is considered complete ONLY when all of the following work:
+
+TEST 1:
+Admin opens an Order → clicks Raise Complaint → selects category → enters description → submits.
+
+EXPECTED:
+Complaint is created and linked to Order.
+
+TEST 2:
+Assigned Designer receives notification.
+
+EXPECTED:
+Designer knows a complaint was filed but cannot see who filed it.
+
+TEST 3:
+Designer opens Complaints page.
+
+EXPECTED:
+Designer sees only complaints against themselves.
+
+TEST 4:
+Designer attempts to access another Designer's complaint URL manually.
+
+EXPECTED:
+Access denied.
+
+TEST 5:
+Support/Sales opens Complaints.
+
+EXPECTED:
+They see only complaints they personally filed.
+
+TEST 6:
+Support/Sales attempts to access complaint filed by another Support user.
+
+EXPECTED:
+Access denied unless existing higher permissions explicitly allow it.
+
+TEST 7:
+Admin opens Complaints.
+
+EXPECTED:
+Admin sees all complaints including filed-by identity.
+
+TEST 8:
+Admin marks complaint Under Review.
+
+EXPECTED:
+Status updates successfully.
+
+TEST 9:
+Admin marks complaint Invalid.
+
+EXPECTED:
+It remains recorded but is NOT counted as a valid Designer complaint.
+
+TEST 10:
+Admin marks another complaint Valid.
+
+EXPECTED:
+Valid complaint metric increases for that Designer.
+
+TEST 11:
+Admin resolves valid complaint and enters Resolution.
+
+EXPECTED:
+resolved_at and resolved_by are stored.
+
+TEST 12:
+Order Page shows related complaints count/history.
+
+TEST 13:
+Designer dashboard shows only Designer-specific complaint metrics.
+
+TEST 14:
+Support dashboard shows only their filed complaint metrics.
+
+TEST 15:
+Admin dashboard shows global complaint metrics.
+
+TEST 16:
+Existing Order functionality still works.
+
+TEST 17:
+Existing notifications still work.
+
+TEST 18:
+Existing payments still work.
+
+TEST 19:
+Existing authentication/roles still work.
+
+TEST 20:
+Production build/deployment succeeds without errors.
+
+==================================================
+MODULE 26 — CODE QUALITY
+==================================================
+
+Follow the existing project architecture.
+
+Do not place entire Complaint logic inside one giant component.
+
+Separate reasonably into:
+
+Types/models
+Database layer
+API/server actions
+Permission logic
+Components
+Complaint form
+Complaint list
+Complaint detail
+Dashboard metrics
+Notifications
+
+BUT avoid unnecessary refactoring of unrelated existing code.
+
+==================================================
+MODULE 27 — PERMISSIONS MUST BE CENTRALIZED
+==================================================
+
+Where possible, create reusable complaint permission helpers such as conceptual functions:
+
+canRaiseComplaint(user)
+canViewComplaint(user, complaint)
+canManageComplaint(user)
+canSeeComplainantIdentity(user)
+canChangeComplaintStatus(user)
+
+Use the project's actual coding conventions.
+
+Do not scatter inconsistent role checks such as:
+
+if role === "admin"
+
+across dozens of files if the application already has a permission system.
+
+Reuse or safely extend existing authorization helpers.
+
+==================================================
+MODULE 28 — ANONYMOUS DOES NOT MEAN DATABASE-ANONYMOUS
+==================================================
+
+The filed_by_user_id MUST still be stored.
+
+The complainant is anonymous ONLY to the Designer.
+
+Admin needs accountability and must be able to see:
+
+Who filed it
+When
+Against whom
+For which Order
+
+Do not remove complainant information from the database.
+
+Instead enforce visibility properly.
+
+==================================================
+MODULE 29 — COMPLAINT COUNTS
+==================================================
+
+Do not confuse:
+
+Total Complaints
+Valid Complaints
+Resolved Complaints
+
+Example:
+
+Designer:
+Total = 5
+Under Review = 2
+Valid = 1
+Invalid = 2
+
+Their performance metric must use Valid = 1.
+
+==================================================
+MODULE 30 — COMPLAINT CREATION BUSINESS LOGIC
+==================================================
+
+Complaint should originate from an Order whenever possible.
+
+Do not create disconnected complaints unless Admin has an explicit reason and existing architecture supports it.
+
+For normal Sales/Support:
+
+Order → Raise Complaint
+
+is the primary workflow.
+
+==================================================
+MODULE 31 — PROTECT EXISTING CRM
+==================================================
+
+THIS IS THE MOST IMPORTANT TECHNICAL REQUIREMENT.
+
+Before modifying an existing file:
+
+Understand what it currently does.
+
+After modifying it:
+
+Confirm its previous functionality remains intact.
+
+Do not replace working components with newly generated versions just because rewriting is easier.
+
+Do not remove existing imports, states, hooks, API calls, event handlers, validations, fields, or permission checks unless they are directly obsolete because of THIS Complaint Module, which should rarely be the case.
+
+Prefer minimal, isolated changes.
+
+==================================================
+MODULE 32 — DO NOT CHANGE ENVIRONMENT CONFIGURATION
+==================================================
+
+Do not change:
+
+Supabase URL
+Supabase keys
+Existing environment variables
+Database connection
+Deployment configuration
+Railway/Vercel/Replit configuration
+Authentication secrets
+
+unless absolutely required for the Complaints Module.
+
+No new external service should be required.
+
+==================================================
+MODULE 33 — BUILD / DEPLOYMENT VALIDATION
+==================================================
+
+After coding:
+
+1. Run lint/type checks where available.
+2. Run production build.
+3. Fix all errors.
+4. Check browser console.
+5. Check backend logs.
+6. Verify database migration.
+7. Verify existing APIs.
+8. Verify complaint permissions manually.
+9. Verify responsive layout.
+10. Confirm no new infinite renders or duplicate API requests.
+11. Confirm no duplicate notifications.
+12. Confirm no duplicated dashboard cards after refresh.
+
+Do not stop after writing code.
+
+Actually verify the implementation.
+
+==================================================
+MODULE 34 — FINAL REPORT REQUIRED
+==================================================
+
+After everything is completed, provide a concise implementation report containing:
+
+1. Files created
+2. Files modified
+3. Database tables/migrations added
+4. Permissions implemented
+5. Routes/pages added
+6. Notifications added
+7. Dashboard changes
+8. Order page changes
+9. Tests performed
+10. Any limitations
+11. Any future recommendations
+
+Also explicitly confirm:
+
+"Existing CRM features were preserved and no unrelated feature was intentionally changed."
+
+==================================================
+DO NOT DO THESE THINGS
+==================================================
+
+DO NOT:
+
+- Rebuild the CRM.
+- Change UI globally.
+- Rewrite authentication.
+- Replace Supabase integration.
+- Change existing order status logic.
+- Change payment workflow.
+- Change Designer assignment logic.
+- Create duplicate user roles.
+- Create duplicate notification systems.
+- Create duplicate client records.
+- Delete existing migrations.
+- Reset database.
+- Modify historical data.
+- Expose complainant identity to Designers.
+- Count every complaint as a valid complaint.
+- Let Designers resolve their own complaints.
+- Let Support mark complaints Valid/Invalid.
+- Let unauthorized users see complaints.
+- Expose sensitive admin_notes.
+- Build Slack integration.
+- Build Reviews yet.
+- Build Suggestions yet.
+- Build After-Sales yet.
+- Build Designer Score yet.
+- Add unnecessary external dependencies.
+- Change deployment configuration unnecessarily.
+
+==================================================
+DESIRED FINAL WORKFLOW
+==================================================
+
+ORDER PAGE
+↓
+AUTHORIZED SALES/SUPPORT OR ADMIN CLICKS "RAISE COMPLAINT"
+↓
+SELECT CATEGORY
+↓
+WRITE DESCRIPTION
+↓
+SUBMIT
+↓
+COMPLAINT STORED AND LINKED TO ORDER
+↓
+ASSIGNED DESIGNER NOTIFIED
+↓
+DESIGNER SEES COMPLAINT BUT NOT WHO FILED IT
+↓
+ADMIN SEES FULL COMPLAINT INCLUDING COMPLAINANT
+↓
+ADMIN MARKS UNDER REVIEW
+↓
+ADMIN DECIDES VALID OR INVALID
+↓
+IF VALID → RESOLVE AFTER ACTION
+↓
+ONLY VALID COMPLAINTS LATER AFFECT DESIGNER PERFORMANCE
+↓
+FULL HISTORY REMAINS STORED IN CRM
+
+==================================================
+FINAL PRIORITY
+==================================================
+
+Reliability is more important than speed.
+
+Do not rush implementation.
+
+First understand the existing code.
+
+Then implement the Complaint Module incrementally.
+
+Preserve all existing functionality.
+
+If there is any conflict between this prompt and the existing application's technical architecture, adapt the implementation to the EXISTING architecture rather than restructuring the whole project.
+
+The Complaints Module should feel like it has always been part of the CRM.
