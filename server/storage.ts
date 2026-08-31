@@ -1,6 +1,6 @@
 import { 
   users, orders, notifications, orderServices, paymentVerifications, supportDesignerAssignments,
-  servicesCatalog, packageConfigs, platformsCatalog, pushSubscriptions, activityLogs, complaints,
+  servicesCatalog, packageConfigs, platformsCatalog, complaintCategoryConfigs, pushSubscriptions, activityLogs, complaints,
   type User, type InsertUser, type Order, type InsertOrder,
   type OrderService, type InsertOrderService, type OrderWithServices,
   type PaymentVerification, type InsertPaymentVerification, type PaymentVerificationWithUsers,
@@ -8,6 +8,7 @@ import {
   type ServiceCatalogItem, type InsertServiceCatalogItem,
   type PackageConfig, type InsertPackageConfig,
   type PlatformCatalogItem, type InsertPlatformCatalogItem,
+  type ComplaintCategoryConfig, type InsertComplaintCategoryConfig,
   type PushSubscription, type Complaint, type InsertComplaint, type ComplaintResponse,
   type ComplaintHistoryEntry, type ComplaintStats,
   type InsertActivityLog, type ActivityLog,
@@ -71,6 +72,11 @@ export interface IStorage {
   createPlatformCatalogItem(item: InsertPlatformCatalogItem): Promise<PlatformCatalogItem>;
   updatePlatformCatalogItem(id: number, updates: Partial<InsertPlatformCatalogItem>): Promise<PlatformCatalogItem>;
   deletePlatformCatalogItem(id: number): Promise<void>;
+
+  getComplaintCategoryConfigs(): Promise<ComplaintCategoryConfig[]>;
+  createComplaintCategoryConfig(item: InsertComplaintCategoryConfig): Promise<ComplaintCategoryConfig>;
+  updateComplaintCategoryConfig(id: number, updates: Partial<InsertComplaintCategoryConfig>): Promise<ComplaintCategoryConfig>;
+  deleteComplaintCategoryConfig(id: number): Promise<void>;
 
   getAdmins(): Promise<User[]>;
   getUnreadNotificationCount(userId: number): Promise<number>;
@@ -623,6 +629,26 @@ export class DatabaseStorage implements IStorage {
 
   async deletePlatformCatalogItem(id: number): Promise<void> {
     await db.delete(platformsCatalog).where(eq(platformsCatalog.id, id));
+  }
+
+  async getComplaintCategoryConfigs(): Promise<ComplaintCategoryConfig[]> {
+    return await db.select().from(complaintCategoryConfigs)
+      .orderBy(asc(complaintCategoryConfigs.sortOrder), asc(complaintCategoryConfigs.id));
+  }
+
+  async createComplaintCategoryConfig(item: InsertComplaintCategoryConfig): Promise<ComplaintCategoryConfig> {
+    const [created] = await db.insert(complaintCategoryConfigs).values(item).returning();
+    return created;
+  }
+
+  async updateComplaintCategoryConfig(id: number, updates: Partial<InsertComplaintCategoryConfig>): Promise<ComplaintCategoryConfig> {
+    const [updated] = await db.update(complaintCategoryConfigs).set(updates)
+      .where(eq(complaintCategoryConfigs.id, id)).returning();
+    return updated;
+  }
+
+  async deleteComplaintCategoryConfig(id: number): Promise<void> {
+    await db.delete(complaintCategoryConfigs).where(eq(complaintCategoryConfigs.id, id));
   }
 
   async getAdmins(): Promise<User[]> {

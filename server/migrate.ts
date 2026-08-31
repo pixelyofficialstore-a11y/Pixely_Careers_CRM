@@ -59,6 +59,34 @@ export async function runMigrations() {
     `);
 
     await client.query(`
+      CREATE TABLE IF NOT EXISTS complaint_category_configs (
+        id         SERIAL PRIMARY KEY,
+        key        TEXT NOT NULL UNIQUE,
+        label      TEXT NOT NULL,
+        is_active  BOOLEAN NOT NULL DEFAULT true,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      INSERT INTO complaint_category_configs (key, label, sort_order)
+      VALUES
+        ('communication_issue', 'Communication Issue', 10),
+        ('slow_response', 'Slow Response', 20),
+        ('delivery_delay', 'Delivery Delay', 30),
+        ('work_quality_issue', 'Work Quality Issue', 40),
+        ('instructions_not_followed', 'Instructions Not Followed', 50),
+        ('revision_handling_issue', 'Revision Handling Issue', 60),
+        ('incorrect_information', 'Incorrect Information Provided', 70),
+        ('unprofessional_behavior', 'Unprofessional Behavior', 80),
+        ('process_policy_violation', 'Process / Policy Violation', 90),
+        ('unauthorized_commitment', 'Unauthorized Commitment', 100),
+        ('other', 'Other', 110)
+      ON CONFLICT (key) DO NOTHING
+    `);
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS monthly_finance (
         id              SERIAL PRIMARY KEY,
         month           TEXT NOT NULL UNIQUE,

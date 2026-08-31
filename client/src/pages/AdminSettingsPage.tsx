@@ -37,8 +37,9 @@ import {
   Eye,
   EyeOff,
   Globe,
+  FileWarning,
 } from "lucide-react";
-import type { ServiceCatalogItem, PackageConfig, PlatformCatalogItem } from "@shared/schema";
+import type { ServiceCatalogItem, PackageConfig, PlatformCatalogItem, ComplaintCategoryConfig } from "@shared/schema";
 
 export default function AdminSettingsPage() {
   const { user } = useAuth();
@@ -56,7 +57,7 @@ export default function AdminSettingsPage() {
         <Settings className="w-7 h-7 text-blue-400" />
         <div>
           <h1 className="text-2xl font-bold text-white">Admin Settings</h1>
-          <p className="text-sm text-slate-400">Manage services, packages, and marketing platforms</p>
+          <p className="text-sm text-slate-400">Manage services, packages, marketing platforms, and complaint categories</p>
         </div>
       </div>
 
@@ -74,6 +75,10 @@ export default function AdminSettingsPage() {
             <Globe className="w-4 h-4" />
             Platforms
           </TabsTrigger>
+          <TabsTrigger value="complaints" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white gap-2">
+            <FileWarning className="w-4 h-4" />
+            Complaint Categories
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="services">
@@ -87,7 +92,99 @@ export default function AdminSettingsPage() {
         <TabsContent value="platforms">
           <PlatformsSection />
         </TabsContent>
+
+        <TabsContent value="complaints">
+          <ComplaintCategoriesSection />
+        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function ComplaintCategoriesSection() {
+  const { toast } = useToast();
+  const [newLabel, setNewLabel] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
+  const [editItem, setEditItem] = useState<ComplaintCategoryConfig | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+  const { data: categories = [], isLoading } = useQuery<ComplaintCategoryConfig[]>({
+    queryKey: ["/api/complaint-categories"],
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (label: string) => (await apiRequest("POST", "/api/complaint-categories", { label })).json(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/complaint-categories"] });
+      setAddOpen(false);
+      setNewLabel("");
+      toast({ title: "Complaint category added" });
+    },
+    onError: (error: Error) => toast({ title: "Could not add category", description: error.message, variant: "destructive" }),
+  });
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, ...updates }: { id: number; label?: string; isActive?: boolean }) =>
+      (await apiRequest("PATCH", `/api/complaint-categories/${id}`, updates)).json(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/complaint-categories"] });
+      setEditItem(null);
+      toast({ title: "Complaint category updated" });
+    },
+    onError: (error: Error) => toast({ title: "Could not update category", description: error.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Complaint Categories</h2>
+          <p className="text-sm text-slate-400">Choose the dropdown options available when admins or sales/support raise complaints.</p>
+        </div>
+        <Button onClick={() => setAddOpen(true)} className="bg-blue-600 hover:bg-blue-700 gap-2">
+          <Plus className="w-4 h-4" /> Add Category
+        </Button>
+      </div>
+      <div className="rounded-xl border border-slate-800 bg-slate-900/50 overflow-hidden">
+        {isLoading ? <div className="py-12 text-center text-slate-500">Loading categories…</div> : (
+          <table className="w-full">
+            <thead><tr className="border-b border-slate-800">
+              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase">Category</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase">Status</th>
+              <th className="text-right px-5 py-3 text-xs font-semibold text-slate-400 uppercase">Actions</th>
+            </tr></thead>
+            <tbody className="divide-y divide-slate-800">
+              {categories.map(item => <tr key={item.id} className="hover:bg-slate-800/30">
+                <td className="px-5 py-3.5">
+                  <p className="text-sm font-medium text-white">{item.label}</p>
+                  <p className="text-xs text-slate-600 font-mono">{item.key}</p>
+                </td>
+                <td className="px-5 py-3.5"><div className="flex items-center gap-2">
+                  <Switch checked={item.isActive} onCheckedChange={isActive => updateMutation.mutate({ id: item.id, isActive })} />
+                  <span className="text-xs text-slate-400">{item.isActive ? "Active" : "Inactive"}</span>
+                </div></td>
+                <td className="px-5 py-3.5 text-right">
+                  <Button size="icon" variant="ghost" onClick={() => { setEditItem(item); setEditLabel(item.label); }}>
+                    <Pencil className="w-4 h-4" />
+                  </Button>
+                </td>
+              </tr>)}
+            </tbody>
+          </table>
+        )}
+      </div>
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+          <DialogHeader><DialogTitle>Add Complaint Category</DialogTitle></DialogHeader>
+          <div className="space-y-2 py-2"><Label>Category name</Label><Input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="e.g. Missed Deadline" className="bg-slate-800 border-slate-700" /></div>
+          <DialogFooter><Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button><Button disabled={!newLabel.trim() || createMutation.isPending} onClick={() => createMutation.mutate(newLabel.trim())}>Add Category</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!editItem} onOpenChange={open => !open && setEditItem(null)}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+          <DialogHeader><DialogTitle>Edit Complaint Category</DialogTitle></DialogHeader>
+          <div className="space-y-2 py-2"><Label>Category name</Label><Input value={editLabel} onChange={e => setEditLabel(e.target.value)} className="bg-slate-800 border-slate-700" /></div>
+          <DialogFooter><Button variant="outline" onClick={() => setEditItem(null)}>Cancel</Button><Button disabled={!editLabel.trim() || updateMutation.isPending} onClick={() => editItem && updateMutation.mutate({ id: editItem.id, label: editLabel.trim() })}>Save Changes</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

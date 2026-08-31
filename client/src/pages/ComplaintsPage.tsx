@@ -18,6 +18,7 @@ import {
   complaintCategories,
   complaintStatuses,
   type ComplaintHistoryEntry,
+  type ComplaintCategoryConfig,
   type ComplaintResponse,
 } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
@@ -30,6 +31,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { ComplaintStatusBadge } from "@/components/StatusBadge";
 import { complaintCategoryLabels } from "@/components/ComplaintDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -138,7 +141,7 @@ function ComplaintDetail({ complaintId }: { complaintId: number }) {
           </div>
           <div className="rounded-xl bg-slate-950 border border-slate-800 p-4">
             <p className="text-xs uppercase tracking-wider text-slate-500">Category</p>
-            <p className="text-white font-medium mt-2">{complaintCategoryLabels[complaint.category]}</p>
+             <p className="text-white font-medium mt-2">{complaintCategoryLabels[complaint.category as keyof typeof complaintCategoryLabels] || complaint.category.replaceAll("_", " ")}</p>
           </div>
           {isAdmin && complaint.filedBy && (
             <div className="rounded-xl bg-slate-950 border border-slate-800 p-4">
@@ -297,6 +300,25 @@ export default function ComplaintsPage() {
     queryKey: ["/api/complaints"],
     enabled: !params?.id,
   });
+  const { data: categoryConfigs = [] } = useQuery<ComplaintCategoryConfig[]>({
+    queryKey: ["/api/complaint-categories"],
+    enabled: !params?.id,
+    staleTime: 5 * 60 * 1000,
+  });
+  const categoryOptions = categoryConfigs.length > 0
+    ? categoryConfigs
+    : complaintCategories.map((key, index) => ({
+        id: -(index + 1),
+        key,
+        label: complaintCategoryLabels[key],
+        isActive: true,
+        sortOrder: index,
+        createdAt: null,
+      }));
+  const categoryLabel = (key: string) =>
+    categoryOptions.find(item => item.key === key)?.label
+    || complaintCategoryLabels[key as keyof typeof complaintCategoryLabels]
+    || key.replaceAll("_", " ").replace(/\b\w/g, character => character.toUpperCase());
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -338,8 +360,32 @@ export default function ComplaintsPage() {
         </p>
       </div>
 
-      <div className="glass-panel rounded-2xl p-4">
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_190px_240px] gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+        {[
+          { key: "all", label: "All Complaints", value: complaints.length, color: "text-blue-400" },
+          { key: "new", label: "New", value: complaints.filter(item => item.status === "new").length, color: "text-amber-400" },
+          { key: "under_review", label: "Under Review", value: complaints.filter(item => item.status === "under_review").length, color: "text-cyan-400" },
+          { key: "valid", label: "Valid", value: complaints.filter(item => item.status === "valid").length, color: "text-red-400" },
+          { key: "invalid", label: "Invalid", value: complaints.filter(item => item.status === "invalid").length, color: "text-slate-400" },
+          { key: "resolved", label: "Resolved", value: complaints.filter(item => item.status === "resolved").length, color: "text-purple-400" },
+        ].map(item => (
+          <button key={item.key} onClick={() => setStatus(item.key)} className={`glass-panel rounded-xl border p-4 text-left transition-colors ${status === item.key ? "border-blue-500/60 bg-blue-500/5" : "border-slate-800 hover:border-slate-700"}`}>
+            <p className="text-xs text-slate-500">{item.label}</p>
+            <p className={`text-2xl font-bold mt-1 ${item.color}`}>{item.value}</p>
+          </button>
+        ))}
+      </div>
+
+      <div className="glass-panel rounded-2xl p-4 space-y-4">
+        <Tabs value={status} onValueChange={setStatus}>
+          <TabsList className="bg-slate-950 border border-slate-800 p-1 h-auto flex-wrap justify-start">
+            <TabsTrigger value="all">All</TabsTrigger>
+            {complaintStatuses.map(value => (
+              <TabsTrigger key={value} value={value}>{value.replaceAll("_", " ").replace(/\b\w/g, c => c.toUpperCase())}</TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_240px] gap-3">
           <div className="relative">
             <Search className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
             <Input
@@ -349,21 +395,12 @@ export default function ComplaintsPage() {
               className="pl-9 bg-slate-950 border-slate-700"
             />
           </div>
-          <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger className="bg-slate-950 border-slate-700"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              {complaintStatuses.map(value => (
-                <SelectItem key={value} value={value}>{value.replaceAll("_", " ").replace(/\b\w/g, c => c.toUpperCase())}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
           <Select value={category} onValueChange={setCategory}>
             <SelectTrigger className="bg-slate-950 border-slate-700"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All categories</SelectItem>
-              {complaintCategories.map(value => (
-                <SelectItem key={value} value={value}>{complaintCategoryLabels[value]}</SelectItem>
+              {categoryOptions.map(item => (
+                <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -387,36 +424,35 @@ export default function ComplaintsPage() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {filtered.map(complaint => (
-            <button
-              key={complaint.id}
-              onClick={() => setLocation(`/complaints/${complaint.id}`)}
-              className="glass-panel rounded-2xl p-5 text-left hover:border-slate-700 transition-colors"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-mono text-blue-400 font-semibold">{complaint.complaintNumber}</p>
-                  <p className="text-sm text-white mt-1">
-                    {complaint.orderNumber ? `#${complaint.orderNumber}` : `Order #${complaint.orderId}`} · {complaint.clientName}
-                  </p>
-                </div>
-                <ComplaintStatusBadge status={complaint.status} />
-              </div>
-              <div className="mt-4 flex items-center gap-2 text-sm text-slate-300">
-                <UserRound className="w-4 h-4 text-slate-500" />
-                {complaint.complaintAgainst.name}
-              </div>
-              <p className="text-xs text-slate-500 mt-2">{complaintCategoryLabels[complaint.category]}</p>
-              <p className="text-sm text-slate-400 mt-3 line-clamp-2">{complaint.description}</p>
-              <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-800 text-xs text-slate-500">
-                <span>{complaint.createdAt ? format(new Date(complaint.createdAt), "MMM dd, yyyy") : "—"}</span>
-                {complaint.status === "resolved"
-                  ? <span className="flex items-center gap-1 text-purple-400"><CheckCircle2 className="w-3.5 h-3.5" /> Closed</span>
-                  : <span>Open details</span>}
-              </div>
-            </button>
-          ))}
+        <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
+          <div className="p-5 border-b border-slate-800">
+            <h2 className="text-lg font-bold text-white">{status === "all" ? "All Complaints" : `${status.replaceAll("_", " ").replace(/\b\w/g, c => c.toUpperCase())} Complaints`}</h2>
+            <p className="text-sm text-slate-500">{filtered.length} complaint{filtered.length === 1 ? "" : "s"} shown</p>
+          </div>
+          <div className="table-scroll-wrapper">
+            <Table>
+              <TableHeader className="bg-slate-900/50"><TableRow className="border-slate-800 hover:bg-transparent">
+                <TableHead className="text-slate-400">Complaint</TableHead>
+                <TableHead className="text-slate-400">Order / Client</TableHead>
+                <TableHead className="text-slate-400">Designer</TableHead>
+                <TableHead className="text-slate-400">Category</TableHead>
+                <TableHead className="text-slate-400">Date</TableHead>
+                <TableHead className="text-slate-400">Status</TableHead>
+                <TableHead className="text-right text-slate-400">Action</TableHead>
+              </TableRow></TableHeader>
+              <TableBody>{filtered.map(complaint => (
+                <TableRow key={complaint.id} className="border-slate-800 hover:bg-slate-900/50 cursor-pointer" onClick={() => setLocation(`/complaints/${complaint.id}`)}>
+                  <TableCell className="font-mono text-xs font-semibold text-blue-400">{complaint.complaintNumber}</TableCell>
+                  <TableCell><p className="text-sm text-white">{complaint.orderNumber ? `#${complaint.orderNumber}` : `Order #${complaint.orderId}`}</p><p className="text-xs text-slate-500">{complaint.clientName}</p></TableCell>
+                  <TableCell className="text-sm text-slate-300">{complaint.complaintAgainst.name}</TableCell>
+                  <TableCell className="text-sm text-slate-400 min-w-40">{categoryLabel(complaint.category)}</TableCell>
+                  <TableCell className="text-xs text-slate-500 whitespace-nowrap">{complaint.createdAt ? format(new Date(complaint.createdAt), "MMM dd, yyyy") : "—"}</TableCell>
+                  <TableCell><ComplaintStatusBadge status={complaint.status} /></TableCell>
+                  <TableCell className="text-right text-xs text-blue-400">View details</TableCell>
+                </TableRow>
+              ))}</TableBody>
+            </Table>
+          </div>
         </div>
       )}
     </div>

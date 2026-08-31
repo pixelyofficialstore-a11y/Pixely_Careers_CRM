@@ -660,13 +660,23 @@ export async function registerRoutes(
         return res.status(400).json({ message: "The complaint must target a valid assigned designer." });
       }
 
+      const categoryConfigs = await storage.getComplaintCategoryConfigs();
+      const selectedCategory = categoryConfigs.find(category => category.key === input.category);
+      if (!selectedCategory || !selectedCategory.isActive) {
+        return res.status(400).json({ message: "Select an active complaint category." });
+      }
+
+      // Admin findings are authoritative at filing time. Support/sales reports
+      // enter the review queue and require an explicit admin decision.
+      const initialStatus = user.role === "admin" ? "valid" : "new";
+
       const complaint = await storage.createComplaint({
         orderId: input.orderId,
         complaintAgainstUserId: targetId,
         filedByUserId: user.id,
         category: input.category,
         description: input.description.trim(),
-        status: "new",
+        status: initialStatus,
         adminNotes: null,
         resolution: null,
         resolvedByUserId: null,
@@ -1596,6 +1606,53 @@ export async function registerRoutes(
   app.delete("/api/platforms-catalog/:id", requireRole(["admin"]), async (req, res) => {
     const id = Number(req.params.id);
     await storage.deletePlatformCatalogItem(id);
+    res.json({ success: true });
+  });
+
+  app.get("/api/complaint-categories", requireAuth, async (_req, res) => {
+    res.json(await storage.getComplaintCategoryConfigs());
+  });
+
+  app.post("/api/complaint-categories", requireRole(["admin"]), async (req, res) => {
+    try {
+      const label = typeof req.body.label === "string" ? req.body.label.trim() : "";
+      const requestedKey = typeof req.body.key === "string" ? req.body.key.trim() : label;
+      const key = requestedKey.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+      if (!label || !key) return res.status(400).json({ message: "Category name is required" });
+      const item = await storage.createComplaintCategoryConfig({
+        key,
+        label,
+        isActive: req.body.isActive !== false,
+        sortOrder: Number.isInteger(req.body.sortOrder) ? req.body.sortOrder : 0,
+      });
+      res.status(201).json(item);
+    } catch (err: any) {
+      if (err?.code === "23505") return res.status(400).json({ message: "That complaint category already exists" });
+      throw err;
+    }
+  });
+
+  app.patch("/api/complaint-categories/:id", requireRole(["admin"]), async (req, res) => {
+    const id = Number(req.params.id);
+    const updates: Record<string, unknown> = {};
+    if (typeof req.body.label === "string" && req.body.label.trim()) updates.label = req.body.label.trim();
+    if (typeof req.body.isActive === "boolean") updates.isActive = req.body.isActive;
+    if (Number.isInteger(req.body.sortOrder)) updates.sortOrder = req.body.sortOrder;
+    const updated = await storage.updateComplaintCategoryConfig(id, updates);
+    if (!updated) return res.sendStatus(404);
+    res.json(updated);
+  });
+
+  app.delete("/api/complaint-categories/:id", requireRole(["admin"]), async (req, res) => {
+    const id = Number(req.params.id);
+    const categories = await storage.getComplaintCategoryConfigs();
+    const category = categories.find(item => item.id === id);
+    if (!category) return res.sendStatus(404);
+    const existingComplaints = await storage.getComplaints("admin", (req.user as User).id, { category: category.key });
+    if (existingComplaints.length > 0) {
+      return res.status(409).json({ message: "This category is used by complaint history. Disable it instead." });
+    }
+    await storage.deleteComplaintCategoryConfig(id);
     res.json({ success: true });
   });
 

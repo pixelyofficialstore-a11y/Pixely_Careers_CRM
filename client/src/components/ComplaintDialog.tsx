@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Loader2 } from "lucide-react";
-import { complaintCategories, type OrderWithServices } from "@shared/schema";
+import { complaintCategories, type ComplaintCategoryConfig, type OrderWithServices } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -41,6 +41,20 @@ export function ComplaintDialog({ order, open, onOpenChange }: ComplaintDialogPr
   const { toast } = useToast();
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
+  const { data: categoryConfigs = [] } = useQuery<ComplaintCategoryConfig[]>({
+    queryKey: ["/api/complaint-categories"],
+    staleTime: 5 * 60 * 1000,
+  });
+  const availableCategories = categoryConfigs.length > 0
+    ? categoryConfigs.filter(item => item.isActive)
+    : complaintCategories.map((key, index) => ({
+        id: -(index + 1),
+        key,
+        label: complaintCategoryLabels[key],
+        isActive: true,
+        sortOrder: index,
+        createdAt: null,
+      }));
 
   useEffect(() => {
     if (!open) return;
@@ -108,8 +122,8 @@ export function ComplaintDialog({ order, open, onOpenChange }: ComplaintDialogPr
                   <SelectValue placeholder="Select a category" />
                 </SelectTrigger>
                 <SelectContent>
-                  {complaintCategories.map(value => (
-                    <SelectItem key={value} value={value}>{complaintCategoryLabels[value]}</SelectItem>
+                  {availableCategories.map(item => (
+                    <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

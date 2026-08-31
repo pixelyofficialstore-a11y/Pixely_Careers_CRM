@@ -772,6 +772,22 @@ export default function OrdersPage() {
       <TableCell className="text-right">
         <div className="flex justify-end gap-1">
           {(isAdmin || isSupport) && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-950/30"
+              onClick={() => {
+                setSelectedOrder(order);
+                setComplaintDialogOpen(true);
+              }}
+              disabled={!order.assignedToId}
+              title={order.assignedToId ? "Raise complaint" : "Assign a designer before raising a complaint"}
+              data-testid={`button-complaint-${order.id}`}
+            >
+              <FileWarning className="w-4 h-4" />
+            </Button>
+          )}
+          {(isAdmin || isSupport) && (
             <Dialog>
               <DialogTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-white" data-testid={`button-assign-${order.id}`}><UserPlus className="w-4 h-4" /></Button>

@@ -172,7 +172,7 @@ export const api = {
       input: z.object({
         orderId: z.number().int().positive(),
         complaintAgainstUserId: z.number().int().positive().optional(),
-        category: z.enum(complaintCategories),
+        category: z.string().trim().min(1, "Category is required").max(100),
         description: z.string().trim().min(1, "Description is required").max(5000),
       }),
       responses: {

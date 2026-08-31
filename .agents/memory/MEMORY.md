@@ -4,3 +4,4 @@
 - [DB schema sync](db-schema-sync.md) — new schema.ts columns must be mirrored in server/migrate.ts (ADD COLUMN IF NOT EXISTS); never drizzle push against live Supabase.
 - [Startup cleanup retention](startup-cleanup-retention.md) — startup cleanup can delete historical notification/payment records; treat it as an owner-approved retention policy.
 - [Railway stale source snapshots](railway-stale-source-snapshots.md) — logs can build an archived GitHub source; verify a unique marker and relink the source before changing images again.
+- [Complaint intake policy](complaint-intake-policy.md) — admin-filed complaints are immediately valid; support/sales complaints require admin review; category history is immutable.

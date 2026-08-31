@@ -29,6 +29,15 @@ export const packageConfigs = pgTable("package_configs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const complaintCategoryConfigs = pgTable("complaint_category_configs", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  label: text("label").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const userRoles = ["admin", "support", "designer"] as const;
 export const orderStatuses = ["pending_payment", "new", "working", "ready", "delivered", "canceled"] as const;
 export const priorities = ["normal", "high", "urgent"] as const;
@@ -164,7 +173,9 @@ export const complaints = pgTable("complaints", {
   orderId: integer("order_id").notNull().references(() => orders.id),
   complaintAgainstUserId: integer("complaint_against_user_id").notNull().references(() => users.id),
   filedByUserId: integer("filed_by_user_id").notNull().references(() => users.id),
-  category: text("category", { enum: complaintCategories }).notNull(),
+  // Values are managed by admins. Keep historical category keys valid even
+  // after a category is disabled or removed from future dropdowns.
+  category: text("category").notNull(),
   description: text("description").notNull(),
   status: text("status", { enum: complaintStatuses }).notNull().default("new"),
   adminNotes: text("admin_notes"),
@@ -291,6 +302,7 @@ export const insertSupportDesignerAssignmentSchema = createInsertSchema(supportD
 export const insertServicesCatalogSchema = createInsertSchema(servicesCatalog).omit({ id: true, createdAt: true });
 export const insertPackageConfigSchema = createInsertSchema(packageConfigs).omit({ id: true, createdAt: true });
 export const insertPlatformsCatalogSchema = createInsertSchema(platformsCatalog).omit({ id: true, createdAt: true });
+export const insertComplaintCategoryConfigSchema = createInsertSchema(complaintCategoryConfigs).omit({ id: true, createdAt: true });
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -330,6 +342,8 @@ export type PackageConfig = typeof packageConfigs.$inferSelect;
 export type InsertPackageConfig = z.infer<typeof insertPackageConfigSchema>;
 export type PlatformCatalogItem = typeof platformsCatalog.$inferSelect;
 export type InsertPlatformCatalogItem = z.infer<typeof insertPlatformsCatalogSchema>;
+export type ComplaintCategoryConfig = typeof complaintCategoryConfigs.$inferSelect;
+export type InsertComplaintCategoryConfig = z.infer<typeof insertComplaintCategoryConfigSchema>;
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 
 export type ComplaintUserSummary = Pick<User, "id" | "name" | "role" | "title" | "avatar">;
@@ -340,7 +354,7 @@ export type ComplaintResponse = {
   orderNumber: string | null;
   clientName: string;
   complaintAgainst: ComplaintUserSummary;
-  category: (typeof complaintCategories)[number];
+  category: string;
   description: string;
   status: (typeof complaintStatuses)[number];
   filedBy?: ComplaintUserSummary;
