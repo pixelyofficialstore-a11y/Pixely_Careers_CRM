@@ -1,0 +1,1233 @@
+PIXELY CAREERS CRM — COMPLAINTS MODULE UI & WORKFLOW REFINEMENT
+
+IMPORTANT:
+The Complaints Module already exists / is being implemented.
+
+THIS TASK IS TO REFINE AND IMPROVE THE EXISTING COMPLAINTS MODULE.
+
+DO NOT rebuild the CRM.
+DO NOT rebuild the Orders module.
+DO NOT modify unrelated existing functionality.
+DO NOT change authentication, payments, order creation, designer assignment, QC, notifications, user roles, or other existing modules unless specifically required below.
+
+The Complaints UI must closely follow the EXISTING Orders Page UI.
+
+BEFORE MAKING CHANGES:
+Inspect the current Orders Page carefully and reuse its:
+- Layout
+- Header spacing
+- Metric card design
+- Search bar position
+- Dropdown/filter design
+- Table design
+- Pagination
+- Status badges
+- Row spacing
+- Right-side details drawer
+- Responsive behavior
+- Typography
+- Existing components where possible
+
+Do not create a visually different design for Complaints.
+
+The goal is:
+
+ORDERS PAGE DESIGN
++
+COMPLAINT-SPECIFIC DATA
+
+==================================================
+1. COMPLAINT ID FORMAT
+==================================================
+
+Change Complaint IDs to this exact format:
+
+CMP-2606-001
+
+Meaning:
+
+CMP = Complaint
+26 = Year 2026
+06 = Month June
+001 = Universal complaint sequence
+
+Example:
+
+CMP-2606-001
+CMP-2606-002
+CMP-2606-003
+CMP-2607-004
+CMP-2607-005
+CMP-2608-006
+
+IMPORTANT:
+
+The final numeric sequence is GLOBAL.
+
+IT MUST NOT RESET EACH MONTH.
+IT MUST NOT RESET EACH YEAR.
+
+If the last complaint is:
+
+CMP-2606-099
+
+and the next complaint is created in July 2026, it becomes:
+
+CMP-2607-100
+
+The date prefix should always come from the actual complaint creation date.
+
+Do not generate complaint numbers by simply counting currently visible records because deleted/missing records could cause duplicate IDs.
+
+Use a safe database-backed sequential mechanism consistent with the existing database architecture.
+
+Complaint IDs must be UNIQUE.
+
+Existing complaints should remain accessible.
+
+If migration of old complaint numbers is necessary, handle it safely without destroying complaint records.
+
+==================================================
+2. COMPLAINTS PAGE MUST MATCH ORDERS PAGE
+==================================================
+
+Open and inspect the existing Orders page before changing Complaints.
+
+The Complaints page should visually feel like the Orders page was reused for Complaints.
+
+Match:
+
+- Page width
+- Main container
+- Header position
+- Metrics cards
+- Search field
+- Filter/dropdown positioning
+- Table header
+- Table row styling
+- Status dropdown styling
+- Pagination
+- Loading UI
+- Empty states
+- Right-side details drawer
+
+DO NOT invent a new Complaints design.
+
+==================================================
+3. TOP METRIC CARDS
+==================================================
+
+At the top of the Complaints Page create exactly these five primary metric cards:
+
+1. All Complaints
+2. Valid
+3. Invalid
+4. Resolved
+5. Refund
+
+Use the SAME card style already used on the Orders Page.
+
+Same:
+- Height
+- Width behavior
+- Border radius
+- Typography
+- Icon style where applicable
+- Spacing
+- Alignment
+- Hover behavior if Orders cards have it
+
+Definitions:
+
+ALL COMPLAINTS
+Count all complaints for the currently selected period.
+
+VALID
+Count complaints with status = Valid or complaints that progressed from Valid to a valid final resolution if the data model preserves that relationship.
+
+INVALID
+Count complaints marked Invalid.
+
+RESOLVED
+Count complaints whose final complaint status is Resolved.
+
+REFUND
+Count complaints where the complaint resolution/outcome resulted in a Refund.
+
+IMPORTANT:
+Refund should NOT necessarily replace complaint status.
+
+Complaint status workflow and resolution outcome should remain logically separate.
+
+For example:
+
+Complaint Status:
+Resolved
+
+Resolution Outcome:
+Refund
+
+This allows the Refund metric to work correctly.
+
+==================================================
+4. MONTH AND YEAR FILTERING
+==================================================
+
+The Complaints Page needs the SAME month/year filtering UX currently used on the Orders Page.
+
+Reuse the exact Orders dropdown/filter component if possible.
+
+Users must be able to view complaints for:
+
+- Selected Month
+- Selected Year
+
+Example:
+
+August 2026
+July 2026
+June 2026
+
+Changing the selected month/year should update:
+
+- Complaint table
+- All Complaints metric
+- Valid metric
+- Invalid metric
+- Resolved metric
+- Refund metric
+
+Do not implement a completely different date filter.
+
+Use the same position and UI used on Orders.
+
+==================================================
+5. SEARCH BAR
+==================================================
+
+Place the Search Bar in the SAME position as the Orders Page.
+
+Use the SAME design.
+
+Search should support where practical:
+
+- Complaint ID
+- Order ID
+- Client Name
+- Designer Name
+- Complaint Category
+
+Admin search may also search:
+- Placed By
+
+Do not expose Placed By search results to roles that are not allowed to see complainant identity.
+
+==================================================
+6. COMPLAINTS TABLE / CHART
+==================================================
+
+The main Complaints listing table should use the same table style as the Orders page.
+
+Required columns in this order:
+
+Complaint ID
+Date Placed
+Placed By
+Designer
+Order ID
+Status
+
+IMPORTANT ROLE RULE:
+
+"Placed By" column is visible ONLY to Admin/authorized Management.
+
+DESIGNER:
+Must never see who placed the complaint.
+
+SUPPORT/SALES:
+Can see their own complaints according to existing permissions, but do not expose complaint raiser information belonging to other users.
+
+ADMIN:
+Can see Placed By for all complaints.
+
+If hiding Placed By for a role, make sure the remaining columns resize cleanly.
+
+==================================================
+7. DATE PLACED
+==================================================
+
+Show the complaint creation date using the same date format used elsewhere in the CRM.
+
+Do not invent a different date format if Orders already follows one standard.
+
+==================================================
+8. DESIGNER COLUMN
+==================================================
+
+Display the Designer the complaint is against.
+
+Use the same user name/avatar/display styling used elsewhere in the CRM if available.
+
+Designer name should come from the existing user/profile relationship.
+
+Do not duplicate designer names as random text if a proper user relationship exists.
+
+==================================================
+9. ORDER ID COLUMN
+==================================================
+
+Display the existing CRM Order ID.
+
+Example:
+
+PX-2608-602
+
+If Orders Page has clickable Order IDs, reuse the same behavior where appropriate.
+
+Do not duplicate order records.
+
+Complaint remains linked to the original Order.
+
+==================================================
+10. STATUS DROPDOWN
+==================================================
+
+Use the SAME dropdown UI/design used on the Orders Page status selector.
+
+Complaint statuses must follow a STRICT workflow.
+
+INITIAL STATUS:
+
+New
+
+From NEW, Admin can change status ONLY to:
+
+Valid
+Invalid
+
+==================================================
+11. IRREVERSIBLE VALIDATION
+==================================================
+
+Changing:
+
+New → Valid
+
+or
+
+New → Invalid
+
+is a serious decision.
+
+Before applying either change, show confirmation modal:
+
+Example:
+
+"Confirm Complaint Status"
+
+"You are about to mark this complaint as Valid. This action cannot be undone."
+
+Buttons:
+
+Cancel
+Confirm
+
+For Invalid:
+
+"You are about to mark this complaint as Invalid. This action cannot be undone."
+
+Once complaint becomes Valid:
+
+IT CANNOT RETURN TO:
+- New
+- Invalid
+
+Once complaint becomes Invalid:
+
+IT CANNOT RETURN TO:
+- New
+- Valid
+
+Invalid is a terminal complaint validation state.
+
+==================================================
+12. VALID COMPLAINT NEXT STATUS
+==================================================
+
+Once complaint is Valid, status dropdown should allow ONLY:
+
+Resolved
+Order Canceled
+
+Therefore:
+
+New
+↓
+Valid
+↓
+Resolved
+
+OR
+
+New
+↓
+Valid
+↓
+Order Canceled
+
+Alternative:
+
+New
+↓
+Invalid
+
+==================================================
+13. IRREVERSIBLE FINAL ACTIONS
+==================================================
+
+Valid → Resolved
+
+and
+
+Valid → Order Canceled
+
+must also require confirmation.
+
+Example:
+
+"Mark this complaint as Resolved?"
+
+"This action will close the complaint and cannot be undone."
+
+For Order Canceled:
+
+"Cancel the related order due to this complaint?"
+
+"This action cannot be undone."
+
+IMPORTANT:
+
+Do NOT automatically break or change the existing Orders status system.
+
+If complaint status = Order Canceled is intended to also change the actual CRM Order status, FIRST inspect the existing Order cancellation workflow.
+
+Reuse the EXISTING Order cancellation logic.
+
+Do NOT create a second conflicting cancellation method.
+
+If the current CRM requires specific permissions/confirmation/payment handling for order cancellation, preserve those rules.
+
+==================================================
+14. REFUND OUTCOME
+==================================================
+
+Add support for tracking Refund as a complaint resolution outcome.
+
+This is needed for the top Refund metric.
+
+Recommended architecture:
+
+complaint_status:
+- New
+- Valid
+- Invalid
+- Resolved
+- Order Canceled
+
+resolution_outcome:
+- None
+- Correction / Revision
+- Refund
+- Other
+
+Do not overcomplicate if an existing resolution/action field already exists.
+
+Reuse existing architecture where possible.
+
+Refund should be selectable only by roles already authorized to handle commercial/refund decisions.
+
+Normal Designers and Support users must NOT authorize refunds.
+
+If the CRM has existing refund/payment logic, link to or reuse that system rather than creating a fake independent payment refund.
+
+==================================================
+15. COMPLAINT DETAILS MUST OPEN IN RIGHT-SIDE DRAWER
+==================================================
+
+DO NOT open a completely new full page when a complaint row is clicked.
+
+Copy the behavior from the existing Orders Page.
+
+When a complaint is clicked:
+
+A details panel/drawer should slide in from the RIGHT side.
+
+It should cover approximately half of the table/page, similar to the current Orders details experience.
+
+The complaints list should remain visible behind/next to the drawer.
+
+Reuse the current Orders side drawer component if technically practical.
+
+==================================================
+16. COMPLAINT DETAIL DRAWER
+==================================================
+
+The drawer should show complete complaint information in a clean structured format.
+
+Suggested sections:
+
+--------------------------------
+COMPLAINT INFORMATION
+--------------------------------
+
+Complaint ID
+Date Placed
+Status
+Category
+Designer
+Order ID
+
+ADMIN ONLY:
+Placed By
+
+--------------------------------
+COMPLAINT DESCRIPTION
+--------------------------------
+
+Full complaint description.
+
+Make this easy to read.
+
+Do not truncate description inside the details drawer.
+
+--------------------------------
+SCREENSHOT / EVIDENCE
+--------------------------------
+
+Display uploaded complaint screenshot if available.
+
+Allow click/open preview.
+
+More details about screenshot upload are specified below.
+
+--------------------------------
+ORDER DETAILS
+--------------------------------
+
+Pull these details DIRECTLY from the related Order.
+
+Display relevant existing information such as:
+
+Client Name
+Order ID
+Assigned Designer
+Package
+Services
+Order Status
+Delivery information where available
+
+PAYMENT:
+
+Advance Amount
+Remaining Amount
+Total Amount
+
+IMPORTANT:
+Use the actual fields/schema from the existing Order.
+
+Do not invent separate complaint payment values.
+
+--------------------------------
+SERVICES
+--------------------------------
+
+Show services included in the Order.
+
+Reuse how services are currently displayed in the Orders interface.
+
+--------------------------------
+ADMIN REVIEW
+--------------------------------
+
+Admin only:
+
+Status
+Placed By
+Admin Notes
+Resolution
+Resolution Outcome
+Resolved By
+Resolved Date
+
+Keep confidential internal information hidden from Designer.
+
+==================================================
+17. SCREENSHOT UPLOAD IN COMPLAINT FORM
+==================================================
+
+Add a screenshot/evidence upload field to the Raise Complaint form.
+
+Label:
+
+Screenshot / Evidence
+
+or
+
+Upload Screenshot
+
+Allow common image formats:
+
+PNG
+JPG
+JPEG
+WEBP
+
+If the existing upload/storage system supports PDF safely, PDF can optionally be supported.
+
+Do not introduce a new storage service if the project already uses Supabase Storage or another existing storage system.
+
+Inspect the existing file upload architecture first.
+
+==================================================
+18. SCREENSHOT STORAGE BACKEND
+==================================================
+
+Implement screenshot storage properly in backend/storage.
+
+DO NOT:
+- store massive base64 strings directly in complaint rows unless that is already the project's standard
+- expose private storage keys
+- create insecure public uploads
+
+Use the application's existing storage system.
+
+If using Supabase Storage:
+
+Create/use a suitable complaint evidence bucket/folder following existing project conventions.
+
+Store:
+
+Complaint ID
+File path/storage reference
+File name
+Uploaded by
+Created timestamp
+
+One screenshot is sufficient for V1 unless multiple files can be supported safely without unnecessary complexity.
+
+==================================================
+19. SCREENSHOT VISIBILITY
+==================================================
+
+Every user who is authorized to VIEW that complaint may view the uploaded screenshot.
+
+Example:
+
+Designer:
+Can see screenshot for complaint against them.
+
+Support/Sales:
+Can see screenshot for complaints they are authorized to see.
+
+Admin:
+Can see screenshot for all complaints.
+
+IMPORTANT:
+
+Screenshot visibility does NOT change the anonymous complainant rule.
+
+Do not display:
+- uploader name
+- upload metadata
+- storage path
+if that information could reveal who raised the complaint to the Designer.
+
+Designer should simply see:
+
+"Complaint Evidence"
+
+and the screenshot.
+
+==================================================
+20. SCREENSHOT SECURITY
+==================================================
+
+Do not expose screenshots from complaints a user cannot access.
+
+A Designer must not change URL/Complaint ID and retrieve evidence from another Designer's complaint.
+
+Support must not retrieve screenshots belonging to complaints they do not have permission to view.
+
+Use server-side/database/storage authorization.
+
+Frontend hiding alone is not enough.
+
+==================================================
+21. COMPLAINT FORM UPDATED FIELDS
+==================================================
+
+Raise Complaint form should now include:
+
+Order
+Auto-filled
+
+Client
+Auto-filled where appropriate
+
+Complaint Against / Designer
+Auto-filled from assigned Designer
+
+Category
+Required
+
+Description
+Required
+
+Screenshot / Evidence
+Optional
+
+Submit:
+File Complaint
+
+Keep form clean and easy.
+
+Do not overload it with unnecessary fields.
+
+==================================================
+22. COMPLAINT CATEGORY
+==================================================
+
+Keep the existing approved categories:
+
+Communication Issue
+Slow Response
+Delivery Delay
+Work Quality Issue
+Client Instructions Not Followed
+Revision Handling Issue
+Incorrect Information / Mistake
+Unprofessional Behavior
+Process / Policy Violation
+Unauthorized Commitment
+Other
+
+Use clean dropdown UI matching the CRM.
+
+==================================================
+23. METRIC CALCULATIONS AND DATE FILTER
+==================================================
+
+All top metrics must respect selected month/year.
+
+Example:
+
+Selected:
+August 2026
+
+All Complaints = complaints created in Aug 2026
+Valid = validated complaints from Aug 2026
+Invalid = invalid complaints from Aug 2026
+Resolved = resolved complaints belonging to selected complaint-period logic
+Refund = complaints from Aug 2026 whose resolution outcome is Refund
+
+Use one consistent filtering definition.
+
+Do not show lifetime numbers when the page is filtered to one month.
+
+==================================================
+24. ADMIN COMPLAINT PAGE
+==================================================
+
+ADMIN sees:
+
+Metric Cards:
+All Complaints
+Valid
+Invalid
+Resolved
+Refund
+
+Filters
+Search
+
+Table:
+
+Complaint ID
+Date Placed
+Placed By
+Designer
+Order ID
+Status
+
+Admin can:
+
+Open complaint drawer
+See full details
+See complainant
+View screenshot
+Change status
+Mark Valid
+Mark Invalid
+Resolve Valid complaint
+Cancel Order through approved workflow
+Record resolution
+Record Refund outcome if authorized
+
+==================================================
+25. DESIGNER COMPLAINT PAGE
+==================================================
+
+Designer sees ONLY complaints against themselves.
+
+Designer table:
+
+Complaint ID
+Date Placed
+Designer if necessary
+Order ID
+Status
+
+DO NOT show:
+Placed By
+
+Designer can:
+
+Open complaint details
+Read Category
+Read Description
+View Screenshot
+See relevant Order details
+See complaint Status
+
+Designer cannot:
+
+Change status
+Mark Valid/Invalid
+Resolve complaint
+See complainant
+See private Admin notes
+Authorize refund
+Delete complaint
+
+==================================================
+26. SUPPORT / SALES COMPLAINT PAGE
+==================================================
+
+Support/Sales sees ONLY complaints they are authorized to see based on existing role logic, primarily complaints they filed.
+
+They can:
+
+See complaint
+See status
+Open details
+See screenshot
+See related Order information
+
+They cannot:
+
+Validate complaint
+Invalidate complaint
+Resolve complaint
+Cancel Order unless their existing role already has explicit authority
+See confidential Admin notes
+
+==================================================
+27. RIGHT-SIDE DRAWER RESPONSIVE BEHAVIOR
+==================================================
+
+Desktop:
+Approximately half-width side panel consistent with Orders.
+
+Smaller screens:
+Drawer may expand to a larger percentage/full width if needed for usability.
+
+Use the existing Orders responsive implementation.
+
+Do not break mobile layout.
+
+==================================================
+28. DRAWER CLOSING BEHAVIOR
+==================================================
+
+Drawer should close using:
+
+X close button
+Existing Orders behavior if click-outside/escape is supported
+
+Closing drawer should NOT reset the Complaints table filters/search unnecessarily.
+
+If user selected:
+
+August 2026
+Valid
+
+then opens and closes complaint details, preserve that state.
+
+==================================================
+29. TABLE STATUS UI
+==================================================
+
+Status styling should reuse Orders status components.
+
+Statuses:
+
+New
+Valid
+Invalid
+Resolved
+Order Canceled
+
+Each should be visually distinguishable but consistent with the current design system.
+
+Do not introduce random new styling.
+
+==================================================
+30. STATUS DROPDOWN PERMISSIONS
+==================================================
+
+Admin/authorized management:
+Can use complaint status dropdown.
+
+Designer:
+Status is READ ONLY.
+
+Support/Sales:
+Status is READ ONLY.
+
+Use backend checks as well as frontend controls.
+
+==================================================
+31. REFUND METRIC
+==================================================
+
+Refund card should represent actual complaint cases where resolution_outcome = Refund.
+
+Clicking the Refund metric card may filter the table to Refund complaints if metric cards on Orders already support click filtering.
+
+If Orders cards are not clickable, do not invent inconsistent behavior unless cleanly supported.
+
+==================================================
+32. ORDER CANCELED COMPLAINT
+==================================================
+
+When Valid Complaint results in Order Canceled:
+
+Complaint should show:
+
+Status:
+Order Canceled
+
+Resolution/Outcome information should remain stored.
+
+If actual Order is canceled too, call/reuse the EXISTING Order cancellation functionality.
+
+DO NOT manually set random order database statuses outside the established Order workflow.
+
+==================================================
+33. ACTIVITY LOG
+==================================================
+
+Record complaint actions:
+
+Complaint created
+Screenshot uploaded
+Status changed New → Valid
+Status changed New → Invalid
+Status changed Valid → Resolved
+Status changed Valid → Order Canceled
+Refund outcome recorded
+Resolution added
+
+Reuse existing activity/audit system where available.
+
+Do not reveal complainant identity through Designer-visible logs.
+
+==================================================
+34. DO NOT ALLOW STATUS REVERSAL
+==================================================
+
+This is strict.
+
+Forbidden:
+
+Valid → New
+Valid → Invalid
+
+Invalid → New
+Invalid → Valid
+
+Resolved → Valid
+Resolved → New
+
+Order Canceled → Valid
+Order Canceled → New
+
+Final decisions are immutable through normal UI.
+
+If database correction is ever necessary, that is an Admin/developer-level exceptional operation, not a normal CRM action.
+
+==================================================
+35. UI CONSISTENCY CHECK
+==================================================
+
+Compare Complaints directly against Orders after implementation.
+
+The following should look intentionally consistent:
+
+Header
+Metric cards
+Dropdown
+Search
+Table width
+Table header
+Rows
+Badges
+Action controls
+Drawer
+Spacing
+Typography
+Responsive behavior
+
+The user should feel:
+
+"This is another CRM module built using the same system."
+
+Not:
+
+"This looks like another application added later."
+
+==================================================
+36. DO NOT BREAK EXISTING COMPLAINT SECURITY
+==================================================
+
+Preserve the existing requirement:
+
+Designer MUST NOT know who filed the complaint.
+
+Be careful especially in:
+
+Table payload
+Complaint detail API
+Screenshot metadata
+Activity logs
+Notifications
+Browser network responses
+Storage filenames
+Created-by relationships
+
+Do not accidentally leak filed_by information while redesigning the UI.
+
+==================================================
+37. DO NOT TOUCH UNRELATED FEATURES
+==================================================
+
+Do not modify:
+
+Orders functionality except minimal complaint integration
+Payments
+Users
+Production
+QC
+Notifications beyond complaint requirements
+Existing dashboard logic unrelated to Complaints
+Existing role permissions unrelated to Complaints
+Authentication
+Supabase environment
+Deployment
+Other database tables unnecessarily
+
+Do not "clean up" unrelated code.
+
+Do not perform speculative refactoring.
+
+==================================================
+38. BUILD AND TEST
+==================================================
+
+After implementation test all of these:
+
+TEST 1
+Create first complaint.
+
+Expected:
+Correct ID format:
+CMP-YYMM-###.
+
+TEST 2
+Create multiple complaints.
+
+Expected:
+Global sequence increments safely.
+
+TEST 3
+Change month.
+
+Expected:
+YYMM changes but universal number continues.
+
+TEST 4
+Admin opens Complaints page.
+
+Expected:
+Same visual layout style as Orders.
+
+TEST 5
+Change Month/Year dropdown.
+
+Expected:
+Table + metrics update.
+
+TEST 6
+Search Complaint ID.
+
+Expected:
+Correct result.
+
+TEST 7
+Admin sees Placed By.
+
+Expected:
+Visible.
+
+TEST 8
+Designer opens same complaint.
+
+Expected:
+Placed By completely hidden.
+
+TEST 9
+Click complaint.
+
+Expected:
+Right-side details drawer opens instead of navigating to a new full page.
+
+TEST 10
+Drawer shows:
+
+Complaint ID
+Date
+Designer
+Order
+Category
+Description
+Screenshot
+Order details
+Services
+Advance
+Remaining Payment
+Status
+
+TEST 11
+Upload screenshot during complaint creation.
+
+Expected:
+Screenshot successfully stored.
+
+TEST 12
+Designer views complaint.
+
+Expected:
+Screenshot visible.
+
+TEST 13
+Unauthorized Designer attempts screenshot URL.
+
+Expected:
+Access denied.
+
+TEST 14
+Admin changes New → Valid.
+
+Expected:
+Confirmation displayed and status becomes Valid.
+
+TEST 15
+Attempt Valid → Invalid.
+
+Expected:
+Not allowed.
+
+TEST 16
+Admin changes another New → Invalid.
+
+Expected:
+Invalid becomes terminal.
+
+TEST 17
+Admin changes Valid → Resolved.
+
+Expected:
+Confirmation and final status.
+
+TEST 18
+Valid → Order Canceled.
+
+Expected:
+Existing Order cancellation workflow is respected.
+
+TEST 19
+Refund resolution recorded.
+
+Expected:
+Refund metric increases appropriately.
+
+TEST 20
+Existing Orders page still works exactly as before.
+
+TEST 21
+Existing Order right-side details UI still works.
+
+TEST 22
+Existing payments still work.
+
+TEST 23
+Existing role permissions still work.
+
+TEST 24
+Production build succeeds.
+
+TEST 25
+No browser console errors.
+
+==================================================
+39. FINAL REPORT
+==================================================
+
+After completing everything, report:
+
+1. Files modified
+2. Files created
+3. Database changes
+4. Complaint ID generation implementation
+5. Screenshot storage implementation
+6. Complaint status workflow implementation
+7. Right-side drawer implementation
+8. Monthly/yearly filter implementation
+9. Metric calculations
+10. Permission/security implementation
+11. Tests performed
+12. Any existing architecture limitations
+
+Also explicitly state whether:
+
+- Orders remain functional
+- Payments remain functional
+- Existing notifications remain functional
+- Existing role system remains functional
+- Existing database records remain intact
+
+==================================================
+FINAL INSTRUCTION
+==================================================
+
+Do not rush.
+
+First inspect how Orders Page is built.
+
+Then make Complaints visually and behaviorally consistent with it.
+
+Reuse existing components whenever safely possible.
+
+Make minimal changes to shared components.
+
+The Complaints module should feel native to the existing Pixely Careers CRM and must not introduce regressions into any existing feature.

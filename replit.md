@@ -7,6 +7,8 @@ PixelCRM is an internal agency management platform for Pixely Careers, designed 
 ## Running on Replit
 
 - Start the app from the **Start application** workflow, which runs `npm run dev` and serves the web preview on port 5000.
+- The Vite development server is configured for Replit's proxied hosts and the Express/Vite app listens on `0.0.0.0:5000`.
+- Dependencies are declared in `package.json` and locked in `pnpm-lock.yaml`; the workflow starts after the dependency install completes.
 - The app requires a PostgreSQL connection through Replit's managed `DATABASE_URL` (or an optional `SUPABASE_DATABASE_URL` secret). Startup runs the existing database migrations and seed routine.
 - `SESSION_SECRET` is required for session authentication.
 - Cloudinary and Web Push (VAPID) credentials are optional; without them, uploads use database storage and background push notifications are disabled.
