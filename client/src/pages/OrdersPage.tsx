@@ -262,6 +262,9 @@ export default function OrdersPage() {
   const [editSheetOpen, setEditSheetOpen] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<OrderWithServices | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [orderToCancel, setOrderToCancel] = useState<OrderWithServices | null>(null);
+  const [cancellationReason, setCancellationReason] = useState("");
+  const [advanceDisposition, setAdvanceDisposition] = useState<"refunded" | "retained" | "">("");
   const [complaintDialogOpen, setComplaintDialogOpen] = useState(false);
   const [detailsTab, setDetailsTab] = useState<OrderDrawerTab>("overview");
   const [complaintNotes, setComplaintNotes] = useState("");
@@ -434,6 +437,21 @@ export default function OrdersPage() {
     },
   });
 
+  const cancelOrderMutation = useMutation({
+    mutationFn: async ({ id, reason, advanceRefunded }: { id: number; reason: string; advanceRefunded: boolean }) =>
+      (await apiRequest("POST", `/api/orders/${id}/cancel`, { reason, advanceRefunded })).json(),
+    onSuccess: (updated: OrderWithServices) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      if (selectedOrder?.id === updated.id) setSelectedOrder(current => current ? { ...current, ...updated } : current);
+      setOrderToCancel(null);
+      setCancellationReason("");
+      setAdvanceDisposition("");
+      toast({ title: "Order canceled", description: updated.advanceRefunded ? "The advance refund was recorded." : "The advance was recorded as retained." });
+    },
+    onError: (error: Error) => toast({ title: "Could not cancel order", description: error.message, variant: "destructive" }),
+  });
+
   const clientCaseReportMutation = useMutation({
     mutationFn: async (orderId: number) => {
       const response = await fetch(`/api/orders/${orderId}/client-case-report`, { credentials: "include" });
@@ -547,12 +565,14 @@ export default function OrdersPage() {
       ]));
 
       const canceled = order.status === "canceled";
+      const advanceWasRefunded = canceled && order.advanceRefunded === true;
       section("Financial Summary", canceled ? rows([
         ["Original Order Value", reportMoney(order.totalPrice)],
         ["Discount", reportMoney(order.discountAmount)],
         ["Original Advance", reportMoney(order.advanceAmount)],
-        ["Refunded Amount", reportMoney(order.advanceAmount)],
-        ["Net Collected", reportMoney(0)],
+        ["Advance Disposition", advanceWasRefunded ? "Refunded" : "Retained"],
+        ["Refunded Amount", reportMoney(order.refundAmount)],
+        ["Net Collected", reportMoney(advanceWasRefunded ? 0 : order.advanceAmount)],
         ["Original Remaining", reportMoney(order.remainingAmount)],
         ["Remaining Receivable", reportMoney(0)],
         ["Order Status", "Canceled"],
@@ -1310,7 +1330,7 @@ export default function OrdersPage() {
                 <>
                   <DropdownMenuSeparator className="bg-slate-800" />
                   <DropdownMenuItem
-                    onClick={() => updateOrderMutation.mutate({ id: order.id, updates: { status: 'canceled' } })}
+                    onClick={() => { setOrderToCancel(order); setCancellationReason(""); setAdvanceDisposition(""); }}
                     className="text-red-400 hover:text-red-300"
                     data-testid={`menu-cancel-${order.id}`}
                   >
@@ -1734,7 +1754,7 @@ export default function OrdersPage() {
                     )}
                     <div>
                       <p className="text-xs text-slate-500">Advance</p>
-                      <p className={selectedOrder.status === "canceled" ? "font-medium text-slate-500 line-through" : "text-green-400 font-medium"}>₨{Math.round((selectedOrder.advanceAmount || 0) / 100).toLocaleString()} {selectedOrder.status === "canceled" && <span className="no-underline text-xs text-rose-400">Refunded</span>}</p>
+                      <p className={selectedOrder.status === "canceled" && selectedOrder.advanceRefunded ? "font-medium text-slate-500 line-through" : "text-green-400 font-medium"}>₨{Math.round((selectedOrder.advanceAmount || 0) / 100).toLocaleString()} {selectedOrder.status === "canceled" && <span className={`ml-1 text-xs ${selectedOrder.advanceRefunded ? "text-rose-400" : "text-amber-300"}`}>{selectedOrder.advanceRefunded ? "Refunded" : "Retained"}</span>}</p>
                     </div>
                     <div>
                       <p className="text-xs text-slate-500">Remaining</p>
@@ -1746,7 +1766,7 @@ export default function OrdersPage() {
                       {selectedOrder.paymentStatus === 'paid' ? "Paid" : "Payment Pending"}
                     </Badge>
                   </div>
-                  {selectedOrder.status === "canceled" && <p className="text-xs text-rose-300">Canceled order — historical amounts are retained for audit and excluded from active financial totals.</p>}
+                  {selectedOrder.status === "canceled" && <div className="grid grid-cols-2 gap-3 border-t border-slate-800 pt-3 text-sm"><div><p className="text-xs text-slate-500">Net Collected</p><p className="mt-1 font-medium text-white">{formatRs(selectedOrder.advanceRefunded ? 0 : selectedOrder.advanceAmount)}</p></div><div><p className="text-xs text-slate-500">Remaining Receivable</p><p className="mt-1 font-medium text-white">Rs0</p></div><div className="col-span-2"><p className="text-xs text-slate-500">Cancellation Reason</p><p className="mt-1 text-slate-300">{selectedOrder.cancellationReason || "Legacy cancellation — reason not recorded."}</p></div></div>}
                 </div>
               )}
 
@@ -1952,6 +1972,27 @@ export default function OrdersPage() {
             )}
           </SheetContent>
         </Sheet>
+      )}
+
+      {isAdmin && (
+        <Dialog open={Boolean(orderToCancel)} onOpenChange={open => { if (!open) { setOrderToCancel(null); setCancellationReason(""); setAdvanceDisposition(""); } }}>
+          <DialogContent className="max-w-lg border-slate-800 bg-slate-900 text-white">
+            <DialogHeader><DialogTitle className="flex items-center gap-2"><XCircle className="h-5 w-5 text-rose-400" />Cancel Order</DialogTitle></DialogHeader>
+            {orderToCancel && <div className="space-y-5">
+              <div className="grid grid-cols-2 gap-3 rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm">
+                <div><p className="text-xs text-slate-500">Order ID</p><p className="mt-1 font-mono">{orderToCancel.orderNumber}</p></div>
+                <div><p className="text-xs text-slate-500">Client</p><p className="mt-1">{orderToCancel.clientName}</p></div>
+                <div><p className="text-xs text-slate-500">Current Total</p><p className="mt-1">{formatRs(orderToCancel.totalPrice)}</p></div>
+                <div><p className="text-xs text-slate-500">Advance Received</p><p className="mt-1">{formatRs(orderToCancel.advanceAmount)}</p></div>
+                <div><p className="text-xs text-slate-500">Remaining Balance</p><p className="mt-1">{formatRs(orderToCancel.remainingAmount)}</p></div>
+              </div>
+              <div className="space-y-2"><Label>Reason for Cancellation <span className="text-rose-400">*</span></Label><Textarea value={cancellationReason} onChange={event => setCancellationReason(event.target.value)} placeholder="Explain why this order is being canceled..." rows={4} className="border-slate-700 bg-slate-950" /></div>
+              <div className="space-y-3"><Label>Was the advance payment refunded to the client?</Label><div className="grid grid-cols-2 gap-2"><Button type="button" variant={advanceDisposition === "refunded" ? "default" : "outline"} onClick={() => setAdvanceDisposition("refunded")}>Yes — Advance Refunded</Button><Button type="button" variant={advanceDisposition === "retained" ? "default" : "outline"} onClick={() => setAdvanceDisposition("retained")}>No — Advance Not Refunded</Button></div></div>
+              {advanceDisposition && <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-slate-300"><p className="font-semibold text-amber-300">Confirm Order Cancellation</p><p className="mt-2">{advanceDisposition === "refunded" ? `The original advance of ${formatRs(orderToCancel.advanceAmount)} remains in history, ${formatRs(orderToCancel.advanceAmount)} is recorded as refunded, and net collected becomes Rs0.` : `The advance of ${formatRs(orderToCancel.advanceAmount)} remains collected and is marked Retained.`} The remaining {formatRs(orderToCancel.remainingAmount)} will no longer be receivable.</p></div>}
+              <div className="flex justify-end gap-3"><Button variant="ghost" onClick={() => setOrderToCancel(null)}>Keep Order</Button><Button className="bg-rose-600 hover:bg-rose-500" disabled={cancelOrderMutation.isPending || cancellationReason.trim().length < 3 || !advanceDisposition} onClick={() => cancelOrderMutation.mutate({ id: orderToCancel.id, reason: cancellationReason.trim(), advanceRefunded: advanceDisposition === "refunded" })}>{cancelOrderMutation.isPending ? "Canceling…" : "Confirm Order Cancellation"}</Button></div>
+            </div>}
+          </DialogContent>
+        </Dialog>
       )}
 
       {isAdmin && (

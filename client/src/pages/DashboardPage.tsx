@@ -356,9 +356,10 @@ export default function DashboardPage() {
   const monthlyApprovedOrders = approvedOrders.filter(o => new Date(o.createdAt!) >= monthStart);
 
   const nonCanceledApproved = approvedOrders.filter(o => o.status !== 'canceled');
-  const totalCollected = nonCanceledApproved.reduce((acc, o) => acc + (o.advanceAmount || 0), 0);
+  const collectedApproved = approvedOrders.filter(o => o.status !== 'canceled' || o.advanceRefunded === false);
+  const totalCollected = collectedApproved.reduce((acc, o) => acc + (o.advanceAmount || 0) - (o.refundAmount || 0), 0);
   const outstandingBalance = nonCanceledApproved.reduce((acc, o) => acc + (o.remainingAmount || 0), 0);
-  const monthlyCollected = monthlyApprovedOrders.filter(o => o.status !== 'canceled').reduce((acc, o) => acc + (o.advanceAmount || 0), 0);
+  const monthlyCollected = monthlyApprovedOrders.filter(o => o.status !== 'canceled' || o.advanceRefunded === false).reduce((acc, o) => acc + (o.advanceAmount || 0) - (o.refundAmount || 0), 0);
   const monthlyRemaining = monthlyApprovedOrders
     .filter(o => o.status !== 'canceled')
     .reduce((acc, o) => acc + (o.remainingAmount || 0), 0);

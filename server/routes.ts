@@ -7,7 +7,8 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-import { type User, userRoles, type InsertActivityLog, type ClientReview } from "@shared/schema";
+import { type User, userRoles, type InsertActivityLog, type ClientReview, type InsertClientSuggestion, orders, activityLogs } from "@shared/schema";
+import { and, eq, ne } from "drizzle-orm";
 import { db, pool } from "./db";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
@@ -139,6 +140,22 @@ function statusLabel(status: string | null | undefined): string {
     .join(" ");
 }
 
+function safeUser(person: User | null | undefined) {
+  if (!person) return null;
+  const { password: _password, ...safe } = person;
+  return safe;
+}
+
+function safeUserSummary(person: User | null | undefined) {
+  return person ? {
+    id: person.id,
+    name: person.name,
+    role: person.role,
+    title: person.title,
+    avatar: person.avatar,
+  } : null;
+}
+
 const PgSession = connectPgSimple(session);
 
 const scryptAsync = promisify(scrypt);
@@ -229,7 +246,7 @@ export async function registerRoutes(
       }
       req.logIn(user, (loginErr) => {
         if (loginErr) return next(loginErr);
-        return res.json(user);
+        return res.json(safeUser(user as User));
       });
     })(req, res, next);
   });
@@ -243,7 +260,7 @@ export async function registerRoutes(
 
   app.get(api.auth.me.path, (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
-    res.json(req.user);
+    res.json(safeUser(req.user as User));
   });
 
   const requireAuth = (req: any, res: any, next: any) => {
@@ -287,7 +304,7 @@ export async function registerRoutes(
 
   app.get(api.users.list.path, requireAuth, async (req, res) => {
     const users = await storage.getUsers();
-    res.json(users);
+    res.json(users.map(safeUser));
   });
 
   app.post(api.users.create.path, requireRole(["admin"]), async (req, res) => {
@@ -295,7 +312,7 @@ export async function registerRoutes(
       const input = api.users.create.input.parse(req.body);
       const hashedPassword = await hashPassword(input.password);
       const user = await storage.createUser({ ...input, password: hashedPassword });
-      res.status(201).json(user);
+      res.status(201).json(safeUser(user));
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
@@ -350,7 +367,7 @@ export async function registerRoutes(
         }
       }
 
-      res.json(updatedUser);
+      res.json(safeUser(updatedUser));
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
@@ -457,6 +474,7 @@ export async function registerRoutes(
     
     const sanitizedOrders = orders.map(o => ({
       ...o,
+      assignee: safeUser(o.assignee),
       totalPrice: (user.role === 'admin' || user.role === 'support') ? o.totalPrice : undefined,
       advanceAmount: (user.role === 'admin' || user.role === 'support' || user.role === 'designer') ? o.advanceAmount : undefined,
       remainingAmount: (user.role === 'admin' || user.role === 'support' || user.role === 'designer') ? o.remainingAmount : undefined,
@@ -613,6 +631,7 @@ export async function registerRoutes(
     }
     const sanitized = {
       ...order,
+      assignee: safeUser(order.assignee),
       totalPrice: (user.role === 'admin' || user.role === 'support') ? order.totalPrice : undefined,
       advanceAmount: (user.role === 'admin' || user.role === 'support' || user.role === 'designer') ? order.advanceAmount : undefined,
       remainingAmount: (user.role === 'admin' || user.role === 'support' || user.role === 'designer') ? order.remainingAmount : undefined,
@@ -642,15 +661,13 @@ export async function registerRoutes(
     if (user.role === "designer" && order.assignedToId !== user.id) return null;
     return order;
   };
-  const userSummary = (person: User | null | undefined) => person ? ({
-    id: person.id, name: person.name, role: person.role, title: person.title, avatar: person.avatar,
-  }) : null;
+  const userSummary = safeUserSummary;
   const feedbackProjection = async (items: any[], kind: "review" | "suggestion", role: string) => {
     const [allUsers, allOrders] = await Promise.all([storage.getUsers(), Promise.all(items.map(item => storage.getOrder(item.orderId)))]);
     const userById = new Map(allUsers.map(person => [person.id, person]));
     return Promise.all(items.map(async (item, index) => {
       const order = allOrders[index];
-      const summary = (id: number | null | undefined) => id ? userById.get(id) || null : null;
+      const summary = (id: number | null | undefined) => id ? safeUserSummary(userById.get(id)) : null;
       return kind === "review" ? { ...item, orderNumber: order?.orderNumber || null, clientName: order?.clientName || "", order: order ? { packageType: order.packageType, services: order.services, paymentStatus: order.paymentStatus, status: order.status } : undefined, reviewForDesigner: summary(item.reviewForDesignerId), createdBy: summary(item.createdById) } :
         { ...item, adminNotes: undefined, adminNotesLog: role === "admin" ? await storage.getSuggestionNotes(item.id) : undefined, orderNumber: order?.orderNumber || null, clientName: order?.clientName || "", order: order ? { packageType: order.packageType, services: order.services, status: order.status } : undefined, relatedDesigner: summary(item.relatedDesignerId), createdBy: summary(item.createdById), implementedBy: summary(item.implementedByUserId), rejectedBy: summary(item.rejectedByUserId) };
     }));
@@ -684,7 +701,7 @@ export async function registerRoutes(
         (log.details as any)?.event === "admin_note_added" || (log.details as any)?.fields?.includes?.("adminNotes")
       )))
       .map(log => user.role === "designer" && log.activityType.startsWith("complaint_")
-        ? { ...log, actor: null } : log));
+        ? { ...log, actor: null } : { ...log, actor: safeUserSummary(log.actor) }));
   });
 
   app.get(api.orders.clientCaseReport.path, requireAuth, async (req, res) => {
@@ -1415,6 +1432,76 @@ export async function registerRoutes(
     res.json(updatedOrder);
   });
 
+  app.post("/api/orders/:id/cancel", requireRole(["admin"]), async (req, res) => {
+    const orderId = Number(req.params.id);
+    if (!Number.isInteger(orderId) || orderId <= 0) return res.status(400).json({ message: "Invalid order id" });
+    const input = z.object({
+      reason: z.string().trim().min(3, "A reason for cancellation is required"),
+      advanceRefunded: z.boolean(),
+    }).parse(req.body);
+    const actor = req.user as User;
+    const existing = await storage.getOrder(orderId);
+    if (!existing) return res.sendStatus(404);
+    if (existing.status === "canceled") return res.status(409).json({ message: "This order is already canceled." });
+    const refundAmount = input.advanceRefunded ? Number(existing.advanceAmount || 0) : 0;
+    const now = new Date();
+    const updated = await db.transaction(async tx => {
+      const [order] = await tx.update(orders).set({
+        status: "canceled",
+        cancellationReason: input.reason,
+        canceledByUserId: actor.id,
+        canceledAt: now,
+        advanceRefunded: input.advanceRefunded,
+        refundAmount,
+        refundRecordedByUserId: input.advanceRefunded ? actor.id : null,
+        refundRecordedAt: input.advanceRefunded ? now : null,
+      }).where(and(eq(orders.id, orderId), ne(orders.status, "canceled"))).returning();
+      if (!order) return undefined;
+      await tx.insert(activityLogs).values([
+        {
+          orderId,
+          actorId: actor.id,
+          activityType: "status_change",
+          previousValue: existing.status,
+          newValue: "canceled",
+          details: { cancellationReason: input.reason, advanceRefunded: input.advanceRefunded, refundAmount },
+        },
+        {
+          orderId,
+          actorId: actor.id,
+          activityType: "payment_change",
+          previousValue: "advance_received",
+          newValue: input.advanceRefunded ? "refunded" : "retained",
+          details: { amount: Number(existing.advanceAmount || 0), cancellation: true },
+        },
+        {
+          orderId,
+          actorId: actor.id,
+          activityType: "payment_change",
+          previousValue: "remaining_receivable",
+          newValue: "canceled",
+          details: { amount: Number(existing.remainingAmount || 0), cancellation: true },
+        },
+      ]);
+      return order;
+    });
+    if (!updated) return res.status(409).json({ message: "This order was already canceled." });
+
+    const admins = await storage.getAdmins();
+    await notifyMany(
+      [...admins.map(admin => admin.id), existing.assignedToId],
+      "order",
+      "Order Canceled",
+      `${orderRef(existing)} for ${existing.clientName} was canceled by ${actor.name}. Advance ${input.advanceRefunded ? `refunded (${fmtRs(refundAmount)})` : `retained (${fmtRs(existing.advanceAmount || 0)})`}.`,
+      "action_required",
+      orderId,
+      "order",
+      [actor.id],
+      ["admin", "designer"],
+    );
+    res.json(updated);
+  });
+
   app.delete(api.orders.remove.path, requireRole(["admin"]), async (req, res) => {
     const orderId = Number(req.params.id);
     const user = req.user as User;
@@ -1540,7 +1627,12 @@ export async function registerRoutes(
         clientName: order.clientName,
         totalPrice: (user.role === 'admin' || user.role === 'support') ? order.totalPrice : undefined,
       } : null;
-      return { ...v, order: sanitizedOrder };
+      return {
+        ...v,
+        submittedBy: safeUserSummary(v.submittedBy),
+        reviewedBy: safeUserSummary(v.reviewedBy),
+        order: sanitizedOrder,
+      };
     }));
     
     res.json(result);
@@ -1558,7 +1650,11 @@ export async function registerRoutes(
     }
     
     const verifications = await storage.getPaymentVerificationsByOrder(orderId);
-    res.json(verifications);
+    res.json(verifications.map(v => ({
+      ...v,
+      submittedBy: safeUserSummary(v.submittedBy),
+      reviewedBy: safeUserSummary(v.reviewedBy),
+    })));
   });
 
   app.post("/api/payment-verifications", requireAuth, upload.single('screenshot'), async (req, res) => {

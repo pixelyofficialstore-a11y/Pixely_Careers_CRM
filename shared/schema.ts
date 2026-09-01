@@ -124,6 +124,13 @@ export const orders = pgTable("orders", {
   packageType: text("package_type"),
   notes: text("notes"),
   internalNotes: text("internal_notes"),
+  cancellationReason: text("cancellation_reason"),
+  canceledByUserId: integer("canceled_by_user_id").references(() => users.id),
+  canceledAt: timestamp("canceled_at"),
+  advanceRefunded: boolean("advance_refunded"),
+  refundAmount: integer("refund_amount").default(0),
+  refundRecordedByUserId: integer("refund_recorded_by_user_id").references(() => users.id),
+  refundRecordedAt: timestamp("refund_recorded_at"),
   createdById: integer("created_by_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
 });

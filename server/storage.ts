@@ -265,7 +265,8 @@ export class DatabaseStorage implements IStorage {
     // Canceled orders retain their original amounts for audit, but never count
     // in active revenue, collected, outstanding, or cash-flow metrics.
     const activeFinancialOrders = allOrders.filter(o => o.status !== "canceled");
-    const activeOrderIds = new Set(activeFinancialOrders.map(order => order.id));
+    const collectedFinancialOrders = allOrders.filter(o => o.status !== "canceled" || o.advanceRefunded === false);
+    const collectedOrderIds = new Set(collectedFinancialOrders.map(order => order.id));
     const allPaymentVerifications = await db.select().from(paymentVerifications);
     const allUsers = await db.select().from(users);
     
@@ -285,12 +286,12 @@ export class DatabaseStorage implements IStorage {
       canceled: allOrders.filter(o => o.status === 'canceled').length,
     };
 
-    const totalRevenue = activeFinancialOrders.reduce((acc, curr) => acc + (curr.advanceAmount || 0), 0);
+    const totalRevenue = collectedFinancialOrders.reduce((acc, curr) => acc + (curr.advanceAmount || 0) - (curr.refundAmount || 0), 0);
     const pendingPayments = activeFinancialOrders.reduce((acc, curr) => acc + (curr.remainingAmount || 0), 0);
     const adminUserIds = new Set(allUsers.filter(user => user.role === "admin").map(user => user.id));
     const approvedPaymentsToday = allPaymentVerifications.filter(payment =>
       payment.status === "approved" &&
-      activeOrderIds.has(payment.orderId) &&
+       collectedOrderIds.has(payment.orderId) &&
       payment.reviewedAt &&
       new Date(payment.reviewedAt) >= today
     );
@@ -317,7 +318,7 @@ export class DatabaseStorage implements IStorage {
       complaints: await this.getComplaintStats(role, userId, complaintFilters),
       finance: {
         totalRevenue,
-          monthlyRevenue: monthlyOrders.filter(order => order.status !== "canceled").reduce((acc, curr) => acc + (curr.advanceAmount || 0), 0),
+          monthlyRevenue: monthlyOrders.filter(order => order.status !== "canceled" || order.advanceRefunded === false).reduce((acc, curr) => acc + (curr.advanceAmount || 0) - (curr.refundAmount || 0), 0),
         pendingPayments,
         todayCashFlow: {
           advance: advanceReceivedToday,

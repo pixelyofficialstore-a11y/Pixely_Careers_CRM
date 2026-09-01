@@ -1,0 +1,1857 @@
+PIXELY CAREERS CRM
+MASTER TASK:
+UNIFY DETAIL VIEWS + FIX ORDER CANCELLATION/REFUND LOGIC + COMPLETE ROLE SECURITY + IMPROVE NOTIFICATIONS + BUILD CUSTOMIZABLE DASHBOARD
+
+==================================================
+CRITICAL INSTRUCTION
+==================================================
+
+This is an EXISTING PRODUCTION CRM.
+
+DO NOT rebuild the application.
+
+DO NOT reset Supabase.
+DO NOT delete existing Orders.
+DO NOT delete Complaints.
+DO NOT delete Reviews.
+DO NOT delete Suggestions.
+DO NOT rewrite authentication.
+DO NOT replace Cloudinary.
+DO NOT change working payment functionality unnecessarily.
+DO NOT create duplicate tables/modules when existing ones can be safely extended.
+
+Before making ANY change:
+
+Inspect the current implementation of:
+
+- Dashboard
+- Orders
+- Order Details drawer
+- Complaints
+- Complaint Details drawer
+- Feedback / Reviews
+- Review Details drawer
+- Suggestions
+- Suggestion Details drawer
+- Payments
+- Finance calculations
+- Notifications
+- User roles
+- Permissions
+- Supabase/RLS
+- Cloudinary
+- Activity history
+- Client Case Report
+- Nested drawer navigation
+
+The goal is to make all systems behave consistently and securely.
+
+==================================================
+PART 1 — EXACT SAME DETAIL VIEW EVERYWHERE
+==================================================
+
+THIS IS VERY IMPORTANT.
+
+Currently a Complaint, Review or Suggestion can be opened from:
+
+1. Its dedicated page
+2. Order Details → Client Experience
+
+The FULL DETAILS UI MUST BE EXACTLY THE SAME COMPONENT.
+
+Do NOT maintain:
+
+ComplaintDetailsFromOrders
+ComplaintDetailsFromComplaints
+
+or:
+
+ReviewDetailsForFeedback
+ReviewDetailsForOrder
+
+or separate Suggestion versions.
+
+There should be ONE reusable:
+
+ComplaintDetails
+ReviewDetails
+SuggestionDetails
+
+component for each entity.
+
+==================================================
+EXPECTED BEHAVIOR
+==================================================
+
+COMPLAINT:
+
+From Complaints Page:
+Click Complaint
+→ Complaint Details drawer opens.
+
+From Order → Client Experience:
+Click same Complaint
+→ EXACT SAME Complaint Details component opens.
+
+Same:
+layout
+fields
+evidence
+history
+permissions
+decision controls
+Admin Notes
+resolution
+
+Only navigation context changes.
+
+==================================================
+REVIEWS
+==================================================
+
+From Feedback → Reviews:
+Click Review
+→ Review Details drawer.
+
+From Order → Client Experience:
+Click Review
+→ EXACT SAME Review Details drawer.
+
+No simplified Order-only Review view.
+
+==================================================
+SUGGESTIONS
+==================================================
+
+From Feedback → Suggestions:
+Click Suggestion
+→ Suggestion Details drawer.
+
+From Order → Client Experience:
+Click Suggestion
+→ EXACT SAME Suggestion Details drawer.
+
+==================================================
+NESTED DRAWER CONTEXT
+==================================================
+
+Preserve the recently implemented drawer navigation.
+
+Example:
+
+Orders Page
+→ Order Details
+→ Client Experience
+→ Complaint
+
+Orders Page stays in background.
+
+Complaint Details replaces Order Details inside the same drawer shell.
+
+Show:
+
+← Back
+
+Back returns to:
+
+same Order
+same Client Experience tab
+
+X closes complete drawer.
+
+Do NOT navigate the background to Complaints.
+
+Same for Review and Suggestion.
+
+==================================================
+DIRECT MODULE VIEW
+==================================================
+
+If Complaint is opened directly from Complaints:
+
+Complaints page remains behind.
+
+If Review/Suggestion opened directly from Feedback:
+
+Feedback remains behind.
+
+The DETAILS COMPONENT remains the same.
+
+Only the parent drawer stack is different.
+
+==================================================
+PART 2 — ORDER DETAILS ACCESS
+==================================================
+
+All authenticated operational CRM users should be able to VIEW Order Details where the business wants shared order visibility.
+
+Use the actual existing roles.
+
+At minimum this includes:
+
+Admin
+Designer
+Support / Sales
+
+However:
+
+"Everyone can see Order Details" DOES NOT mean everyone can see every confidential internal field.
+
+Order details can be broadly visible while individual sensitive sub-records remain permission-controlled.
+
+Examples:
+
+Admin Notes:
+Admin only.
+
+Complaint reporter identity:
+Protected according to Complaint permissions.
+
+Sensitive management controls:
+Admin only.
+
+==================================================
+PART 3 — ORDER CANCELLATION WORKFLOW
+==================================================
+
+The existing Cancel Order action must be improved.
+
+DO NOT immediately cancel the Order when user clicks:
+
+Cancel Order
+
+Open a structured cancellation modal.
+
+==================================================
+CANCEL ORDER MODAL
+==================================================
+
+Title:
+
+Cancel Order
+
+Show:
+
+Order ID
+Client
+Current Total
+Advance Received
+Remaining Balance
+
+Required field:
+
+Reason for Cancellation
+
+Placeholder:
+
+"Explain why this order is being canceled..."
+
+Reason MUST be required.
+
+Then ask:
+
+Was the advance payment refunded to the client?
+
+Options:
+
+Yes — Advance Refunded
+No — Advance Not Refunded
+
+The user must select one.
+
+==================================================
+CANCELLATION CONFIRMATION
+==================================================
+
+Before final action show:
+
+"Confirm Order Cancellation"
+
+Explain financial effect depending on selected option.
+
+==================================================
+CASE A — ADVANCE WAS REFUNDED
+==================================================
+
+Example:
+
+Order Total:
+Rs8,000
+
+Advance Received:
+Rs4,000
+
+Remaining:
+Rs4,000
+
+If:
+
+Advance Refunded = YES
+
+Then:
+
+Order Status:
+Canceled
+
+Original Advance:
+Rs4,000 remains historically stored.
+
+Refunded Amount:
+Rs4,000
+
+NET COLLECTED:
+Rs0
+
+Remaining Receivable:
+Rs0
+
+Financial dashboards must:
+
+REMOVE Rs4,000 from Collected.
+
+REMOVE Rs4,000 from Remaining.
+
+Exclude this canceled Order from active Revenue calculations according to existing business logic.
+
+==================================================
+CASE B — ADVANCE WAS NOT REFUNDED
+==================================================
+
+Example:
+
+Order Total:
+Rs8,000
+
+Advance Received:
+Rs4,000
+
+Remaining:
+Rs4,000
+
+If:
+
+Advance Refunded = NO
+
+Then:
+
+Order Status:
+Canceled
+
+Collected remains:
+Rs4,000
+
+because Pixely retained the advance.
+
+Remaining Receivable:
+Rs0
+
+Therefore finance metrics must:
+
+KEEP Rs4,000 in Collected.
+
+REMOVE Rs4,000 from Remaining.
+
+Do NOT show Rs4,000 as still receivable.
+
+==================================================
+VERY IMPORTANT ACCOUNTING RULE
+==================================================
+
+Never rewrite historical payment values to zero.
+
+If Rs4,000 was originally received:
+
+Keep:
+
+advance_amount = Rs4,000
+
+historically.
+
+Track:
+
+was_advance_refunded
+refund_amount
+net_collected
+cancellation status
+
+Financial reports calculate the NET position.
+
+==================================================
+PART 4 — CANCELED ORDER PAYMENT DISPLAY
+==================================================
+
+Inside Order Details:
+
+If canceled + advance refunded:
+
+Advance Received:
+Rs4,000
+STRIKETHROUGH
+
+Badge:
+Refunded
+
+Remaining:
+Rs4,000
+STRIKETHROUGH
+
+Badge:
+Canceled
+
+Net Collected:
+Rs0
+
+Remaining Receivable:
+Rs0
+
+==================================================
+IF ADVANCE NOT REFUNDED
+==================================================
+
+Show:
+
+Advance Received:
+Rs4,000
+
+Badge:
+Retained
+
+Remaining:
+Rs4,000
+STRIKETHROUGH
+
+Badge:
+Canceled
+
+Net Collected:
+Rs4,000
+
+Remaining Receivable:
+Rs0
+
+This immediately explains the financial position.
+
+==================================================
+PART 5 — CANCELLATION DATA
+==================================================
+
+Store safely:
+
+cancellation_reason
+
+canceled_by_user_id
+
+canceled_at
+
+advance_refunded boolean
+
+refund_amount
+
+refund_recorded_by_user_id if applicable
+
+refund_recorded_at if applicable
+
+Reuse existing fields where appropriate.
+
+Do not create duplicates unnecessarily.
+
+==================================================
+PART 6 — CANCELLATION HISTORY
+==================================================
+
+Create clear Order Activity entries.
+
+Example if refunded:
+
+Order canceled by Soban Masood
+Sep 01, 2026 · 8:15 PM
+
+Reason:
+"Client requested cancellation after service dispute."
+
+Advance refund recorded
+Rs4,000 refunded to client.
+
+Remaining balance removed
+Rs4,000 is no longer receivable.
+
+==================================================
+IF NOT REFUNDED
+==================================================
+
+Order canceled by Soban Masood
+
+Reason:
+"Client discontinued service."
+
+Advance retained
+Rs4,000 remains recorded as collected.
+
+Remaining balance canceled
+Rs4,000 is no longer receivable.
+
+==================================================
+PART 7 — CANCELLATION MUST BE ATOMIC
+==================================================
+
+Where possible perform cancellation operations server-side atomically.
+
+For Refunded cancellation:
+
+1. Store cancellation reason.
+2. Mark Order canceled.
+3. Store advance_refunded = true.
+4. Record refund amount.
+5. Update/derive finance exclusion.
+6. Write Activity.
+7. Write audit history.
+
+For Non-refunded cancellation:
+
+1. Store cancellation reason.
+2. Mark Order canceled.
+3. Store advance_refunded = false.
+4. Keep advance collected.
+5. Remove remaining receivable.
+6. Write Activity.
+
+Do not allow half-updated Orders.
+
+==================================================
+PART 8 — DUPLICATE CANCELLATION PROTECTION
+==================================================
+
+Once Order is canceled:
+
+Do not allow Cancel Order again.
+
+Do not allow duplicate refund.
+
+Do not subtract the same financial amount twice.
+
+Make operation idempotent.
+
+==================================================
+PART 9 — FINANCE CALCULATION RULES
+==================================================
+
+Audit EVERY place finance totals are calculated:
+
+Dashboard
+
+Orders metrics
+
+Payments
+
+Analytics
+
+Monthly Revenue
+
+Today's Revenue
+
+Collected
+
+Remaining
+
+Any role dashboard financial metric
+
+Client Case Report
+
+Use one consistent financial logic.
+
+==================================================
+NORMAL ACTIVE ORDER
+==================================================
+
+Collected:
+approved payments received.
+
+Remaining:
+outstanding balance.
+
+==================================================
+CANCELED + REFUNDED
+==================================================
+
+Collected contribution:
+0
+
+Remaining contribution:
+0
+
+==================================================
+CANCELED + NOT REFUNDED
+==================================================
+
+Collected contribution:
+advance retained
+
+Remaining contribution:
+0
+
+==================================================
+DO NOT HARDCODE DASHBOARD SUBTRACTIONS
+==================================================
+
+Prefer finance calculations that derive correct values from Order/payment/refund state.
+
+Do not manually decrement a stored dashboard counter.
+
+The database records should be source of truth.
+
+==================================================
+PART 10 — COMPLAINT PERMISSIONS
+==================================================
+
+This must be audited carefully.
+
+Use ACTUAL existing role strings.
+
+Business requirement:
+
+ADMIN:
+
+Can:
+Create Complaint
+See all Complaints
+See who reported each Complaint
+See Complaints against every user
+See all Complaint evidence
+See Internal Admin Notes
+Confirm/Dismiss complaints
+Resolve complaints
+Refund/cancel where authorized
+Manage Complaint decisions
+
+==================================================
+SUPPORT / SALES
+==================================================
+
+Support can create Complaints.
+
+Support can see Complaints THEY personally created.
+
+Support should NOT automatically see every Complaint in the CRM.
+
+Support cannot:
+
+see Admin Notes
+make management decisions
+Confirm
+Dismiss
+Resolve
+Refund
+manage other users' Complaints
+
+unless their actual role has separate explicit management permission.
+
+==================================================
+DESIGNER
+==================================================
+
+Designer can create a Complaint.
+
+Designer can see:
+
+1. Complaints THEY personally created.
+
+AND
+
+2. Complaints filed AGAINST them.
+
+Designer cannot see every Complaint in CRM.
+
+Designer cannot:
+
+see who filed a Complaint against them
+see Admin Notes
+Confirm/Dismiss Complaint
+Resolve Complaint
+Refund/cancel Order through Complaint decision controls
+
+==================================================
+VERY IMPORTANT DESIGNER ANONYMITY
+==================================================
+
+If Complaint is against Designer:
+
+Designer can see:
+
+Complaint ID
+Order
+Category
+Description
+Evidence
+Status
+Allowed Resolution
+History with protected actors
+
+Designer MUST NOT see:
+
+Reported By
+reported_by_user_id
+reporter role
+reporter identity
+Admin Notes
+
+==================================================
+DESIGNER'S OWN COMPLAINT
+==================================================
+
+If Designer personally created a Complaint:
+
+They obviously know they created it.
+
+The CRM may show:
+
+Recorded By:
+You
+
+or their own identity.
+
+The anonymity rule only protects another person's identity when Complaint is against them.
+
+==================================================
+PART 11 — REVIEW PERMISSIONS
+==================================================
+
+Reviews can be recorded by:
+
+Admin
+Support / Sales
+Designer
+
+==================================================
+ADMIN
+==================================================
+
+Can add/update Reviews for all Orders.
+
+Can view all Reviews.
+
+==================================================
+SUPPORT / SALES
+==================================================
+
+Can add Reviews for Orders/clients they can access.
+
+Business requirement says Sales can record Reviews for all relevant client Orders.
+
+Map this to actual Support/Sales permissions.
+
+==================================================
+DESIGNER
+==================================================
+
+Designer can:
+
+Add Review for their assigned client Orders.
+
+Update Review for their assigned client Orders.
+
+View Reviews for their assigned clients.
+
+Do NOT expose Reviews belonging to unrelated Designers if their Order permissions do not permit it.
+
+==================================================
+PART 12 — SUGGESTION PERMISSIONS
+==================================================
+
+Suggestions can be added by:
+
+Admin
+Support / Sales
+Designer
+
+==================================================
+ADMIN
+==================================================
+
+Can:
+
+View all
+Add
+Implement
+Reject
+See Internal Admin Notes
+Add Internal Admin Notes
+
+==================================================
+SUPPORT / SALES
+==================================================
+
+Can:
+
+Add Suggestions for client Orders they can access.
+
+View their authorized Suggestions.
+
+Cannot:
+
+Implement
+Reject
+See Internal Admin Notes
+
+==================================================
+DESIGNER
+==================================================
+
+Can:
+
+Add Suggestions for their assigned clients.
+
+View Suggestions related to their client Orders.
+
+Cannot:
+
+Implement
+Reject
+See Internal Admin Notes
+
+==================================================
+PART 13 — INTERNAL ADMIN NOTES SECURITY
+==================================================
+
+This applies to:
+
+Complaints
+Suggestions
+
+Internal Admin Notes are ADMIN-ONLY.
+
+Do not only hide them on frontend.
+
+API/database queries must not return them to:
+
+Designer
+Support/Sales
+
+Use server authorization / RLS / safe field selection.
+
+==================================================
+PART 14 — MANAGEMENT CONTROLS SECURITY
+==================================================
+
+Controls such as:
+
+Confirm Complaint
+Dismiss Complaint
+Resolve Complaint
+Refund Complaint
+Implement Suggestion
+Reject Suggestion
+Admin Notes
+
+must be visible ONLY to Admin/authorized management.
+
+Designer and Support should not even receive these abilities through APIs.
+
+==================================================
+PART 15 — PERMISSION SECURITY AUDIT
+==================================================
+
+Test URL manipulation.
+
+Example:
+
+Designer manually enters:
+
+/complaints/123
+
+for unrelated Complaint.
+
+Expected:
+Access denied.
+
+Support enters another Support employee's Complaint.
+
+Expected:
+Access denied unless business rules explicitly permit it.
+
+Designer opens unrelated Review/Suggestion.
+
+Expected:
+Access denied.
+
+Do not depend only on hidden sidebar/table rows.
+
+==================================================
+PART 16 — ORDER DETAILS SHARED ACCESS
+==================================================
+
+While Order Details are broadly viewable by CRM staff, related entities must still obey their own permission rules.
+
+Example:
+
+Designer opens an Order.
+
+Order has 3 Complaints.
+
+If only 1 Complaint is visible under Designer permission:
+
+show only that authorized Complaint.
+
+Do not leak hidden Complaint count/details if that information itself is restricted.
+
+==================================================
+PART 17 — NOTIFICATION SYSTEM REFINEMENT
+==================================================
+
+Audit current Notifications.
+
+Main goals:
+
+- useful
+- role-based
+- no duplicates
+- clickable
+- connected to correct record
+- no unnecessary spam
+
+==================================================
+NOTIFICATION PRINCIPLE
+==================================================
+
+Every notification should answer:
+
+WHAT happened?
+WHICH Order/record?
+DO I need to act?
+WHERE do I click?
+
+==================================================
+DESIGNER NOTIFICATIONS
+==================================================
+
+Useful notifications:
+
+New Order Assigned
+
+Complaint Filed Against You
+
+Complaint You Created Updated
+
+Review Recorded for Your Client
+
+QC Changes Required — if existing QC workflow exists
+
+Payment Confirmed — where useful
+
+Order Cancellation related to their Order
+
+Do NOT send irrelevant global notifications.
+
+==================================================
+SUPPORT NOTIFICATIONS
+==================================================
+
+Useful:
+
+Complaint They Created Updated
+
+Order/Client event requiring Support action
+
+Review/Suggestion related actions only where useful
+
+Do not notify Support about every Designer event.
+
+==================================================
+ADMIN NOTIFICATIONS
+==================================================
+
+Useful:
+
+New Complaint requiring management decision
+
+Refund/cancellation event
+
+Critical payment/cancellation issue
+
+New Suggestion only if management wants to review it — avoid excessive spam
+
+Do not notify Admin of every harmless Review if dashboard already captures Reviews.
+
+==================================================
+NOTIFICATION DEEP LINKS
+==================================================
+
+Click:
+
+Complaint notification
+→ open correct Complaint drawer.
+
+Review notification
+→ correct Review.
+
+Suggestion notification
+→ correct Suggestion.
+
+Order notification
+→ correct Order.
+
+Use existing nested drawer / query state.
+
+==================================================
+NOTIFICATION PRIVACY
+==================================================
+
+Designer notification:
+
+"A complaint has been filed against you for Order PX-XXXX-XXX."
+
+Do NOT include reporter identity.
+
+==================================================
+NO DUPLICATE NOTIFICATIONS
+==================================================
+
+One action = one notification.
+
+Audit backend triggers + frontend calls.
+
+Do not generate duplicate records.
+
+==================================================
+PART 18 — NOTIFICATION READ STATE
+==================================================
+
+If not already present:
+
+Notifications should support:
+
+Unread
+Read
+
+Clicking notification:
+marks read.
+
+Optional:
+Mark All as Read.
+
+Do not build excessive complexity.
+
+==================================================
+PART 19 — HOME / DASHBOARD MUST BECOME CUSTOMIZABLE
+==================================================
+
+The Dashboard should become customizable PER USER.
+
+Users should decide which cards appear first and which appear lower.
+
+Do NOT make one global layout change for everyone when a user rearranges their own Dashboard.
+
+==================================================
+EDIT DASHBOARD BUTTON
+==================================================
+
+Add:
+
+Customize Dashboard
+
+or a small settings/edit icon.
+
+When enabled:
+
+Cards become draggable/reorderable.
+
+On hover in edit mode show a drag handle.
+
+==================================================
+DRAG & DROP
+==================================================
+
+Users should be able to drag cards:
+
+up
+down
+left
+right
+
+according to the current responsive grid.
+
+Example:
+
+User wants:
+
+Valid Complaints
+above
+Revenue
+
+They can move it.
+
+==================================================
+SHOW / HIDE CARDS
+==================================================
+
+In Customize Dashboard mode:
+
+Allow user to choose:
+
+Visible
+Hidden
+
+for optional cards.
+
+Do NOT allow essential security/system elements to disappear if required.
+
+==================================================
+SAVE PER USER
+==================================================
+
+Dashboard layout should be saved per logged-in user.
+
+Preferred:
+
+Supabase user preferences / dashboard layout JSON
+
+rather than browser localStorage only.
+
+This allows preferences to survive:
+
+logout
+different browser
+different computer
+
+If existing user_settings/preferences architecture exists:
+
+reuse it.
+
+==================================================
+DASHBOARD PREFERENCE MODEL
+==================================================
+
+Conceptually store:
+
+user_id
+
+card_order
+
+hidden_cards
+
+updated_at
+
+Do not create dozens of columns.
+
+JSON layout configuration is appropriate if consistent with existing architecture.
+
+==================================================
+RESET DEFAULT
+==================================================
+
+Add:
+
+Reset to Default
+
+This restores role-specific default dashboard layout.
+
+==================================================
+PART 20 — ROLE-SPECIFIC DASHBOARD CARDS
+==================================================
+
+ADMIN may have:
+
+Orders This Month
+
+Revenue
+
+Collected
+
+Remaining
+
+Valid/Confirmed Complaints
+
+Refund Cases
+
+Reviews
+
+Average Rating
+
+Suggestions
+
+Payments Pending
+
+etc.
+
+==================================================
+DESIGNER
+==================================================
+
+Designer should see relevant personal cards:
+
+Assigned Orders
+
+Active Orders
+
+Delivered Orders
+
+Reviews Received
+
+Average Rating
+
+Complaints Against Me
+
+Complaints I Created
+
+Suggestions
+
+Pending client work
+
+where existing data supports it.
+
+Do not show agency-wide confidential finance unless already authorized.
+
+==================================================
+SUPPORT / SALES
+==================================================
+
+Support/Sales cards may include:
+
+Orders Created/Handled
+
+Complaints Filed
+
+Pending Complaint Decisions for their cases
+
+Reviews Recorded
+
+Suggestions Recorded
+
+Client follow-ups if later implemented
+
+Do not expose unrelated employee data.
+
+==================================================
+PART 21 — DASHBOARD CARD CLICK ACTIONS
+==================================================
+
+Where useful, cards should open related filtered page.
+
+Example:
+
+Confirmed Complaints
+→ Complaints filtered Confirmed.
+
+Reviews
+→ Feedback → Reviews.
+
+Suggestions
+→ Feedback → Suggestions.
+
+Payments Pending
+→ Payments filtered Pending.
+
+Assigned Orders
+→ Orders filtered to user.
+
+==================================================
+PART 22 — DASHBOARD CUSTOMIZATION UX
+==================================================
+
+Normal mode:
+
+No drag handles.
+
+No editing clutter.
+
+Customize mode:
+
+Show:
+
+drag handle
+hide/show
+Reset
+Save
+
+Use smooth visual feedback.
+
+Do not accidentally open card link while dragging.
+
+==================================================
+PART 23 — DASHBOARD RESPONSIVENESS
+==================================================
+
+Desktop:
+multi-column grid.
+
+Tablet/mobile:
+reflow cards while preserving relative order.
+
+Do not store pixel coordinates.
+
+Store logical ordering.
+
+==================================================
+PART 24 — ACTIVITY / AUDIT IMPROVEMENT
+==================================================
+
+Every important action should be recorded consistently.
+
+Examples:
+
+Order created
+Designer assigned
+Order canceled
+Cancellation reason recorded
+Advance refunded
+Advance retained
+Complaint created
+Complaint confirmed/dismissed/resolved
+Review recorded
+Suggestion recorded/implemented/rejected
+Admin note added
+Payment approved
+
+Use human language.
+
+==================================================
+PART 25 — CANCELLATION ACTIVITY MUST RECORD REASON
+==================================================
+
+Example:
+
+Order canceled by Soban Masood
+Sep 01, 2026 · 8:15 PM
+
+Reason:
+"Client requested cancellation due to change of requirements."
+
+Advance:
+Refunded — Rs4,000
+
+or:
+
+Advance:
+Retained — Rs4,000
+
+==================================================
+PART 26 — CLIENT CASE REPORT UPDATE
+==================================================
+
+The Client Case Report must reflect cancellation correctly.
+
+If canceled:
+
+ORDER STATUS
+Canceled
+
+CANCELLATION
+
+Canceled By
+Soban Masood
+
+Canceled On
+Sep 01, 2026 · 8:15 PM
+
+Cancellation Reason
+[reason]
+
+ADVANCE DISPOSITION
+
+Refunded
+or
+Retained
+
+Original Advance
+Rs4,000
+
+Refunded Amount
+Rs4,000 or Rs0
+
+Net Collected
+Rs0 or Rs4,000
+
+Original Remaining
+Rs4,000
+
+Remaining Receivable
+Rs0
+
+==================================================
+PART 27 — FULL SECURITY CHECK
+==================================================
+
+After implementation perform role-by-role security testing.
+
+Create test accounts or use current:
+
+Admin
+Designer
+Support/Sales
+
+==================================================
+ADMIN TEST
+==================================================
+
+Admin can:
+
+View all Orders
+
+View all Complaints
+
+See Complaint reporter
+
+Manage Complaints
+
+Manage Suggestions
+
+See Admin Notes
+
+Add Reviews/Suggestions
+
+Cancel Order
+
+Choose refund state
+
+See finance correctly
+
+Customize own Dashboard
+
+==================================================
+DESIGNER TEST
+==================================================
+
+Designer can:
+
+View Order Details where allowed
+
+Add Review for own client
+
+Add Suggestion for own client
+
+Create Complaint
+
+See Complaints they created
+
+See Complaints against them
+
+Cannot see reporter for Complaint against them
+
+Cannot see unrelated Complaints
+
+Cannot see Admin Notes
+
+Cannot Confirm/Dismiss/Resolve Complaint
+
+Cannot Implement/Reject Suggestion
+
+Cannot perform Admin refund controls
+
+Can customize own Dashboard
+
+==================================================
+SUPPORT / SALES TEST
+==================================================
+
+Support can:
+
+View authorized Orders
+
+Add Reviews
+
+Add Suggestions
+
+Create Complaints
+
+See Complaints they created
+
+Cannot see all global Complaints
+
+Cannot see Admin Notes
+
+Cannot manage Complaint decisions
+
+Cannot manage Suggestion decision
+
+Can customize own Dashboard
+
+==================================================
+PART 28 — API / BACKEND SECURITY
+==================================================
+
+Do NOT trust client-side role checks.
+
+Every write and sensitive read must be protected server-side.
+
+Audit:
+
+Complaint fetch
+Complaint note fetch
+Complaint updates
+Suggestion updates
+Admin Notes
+Order cancellation
+Refund marking
+Dashboard preferences
+Review updates
+
+==================================================
+PART 29 — RLS
+==================================================
+
+If Supabase RLS is enabled:
+
+Review policies.
+
+Do not disable RLS globally.
+
+Ensure role rules are consistent with server/API authorization.
+
+==================================================
+PART 30 — SECURITY AGAINST IDOR
+==================================================
+
+Test changing entity IDs manually.
+
+A Designer must not be able to access another user's restricted Complaint just by changing:
+
+/complaints/5 → /complaints/6
+
+Same for:
+
+Reviews
+Suggestions
+Orders
+Admin Notes
+Cloudinary evidence references returned through protected API
+
+==================================================
+PART 31 — CLOUDINARY SECURITY
+==================================================
+
+Continue:
+
+Cloudinary stores screenshots.
+
+Supabase stores URL only.
+
+No secrets frontend.
+
+No Base64.
+
+Do not expose upload secrets.
+
+==================================================
+PART 32 — CONSISTENT PAGE DESIGN
+==================================================
+
+Audit:
+
+Orders
+Complaints
+Feedback
+Payments
+Dashboard
+
+They should use the same:
+
+spacing
+table style
+filters
+drawers
+status badges
+buttons
+empty states
+typography
+search layout
+
+Fix obvious inconsistencies within scope.
+
+Do NOT globally redesign everything.
+
+==================================================
+PART 33 — REMOVE USELESS UI
+==================================================
+
+Examples:
+
+Do not show "All Designers" to a Designer who can only see themselves.
+
+Do not display a status dropdown to roles who cannot change it.
+
+Do not display empty Admin Notes sections to unauthorized users.
+
+Do not display "Reported By" to Designer for Complaint against them.
+
+Do not show Review workflow/progress.
+
+Do not show Suggestion intermediate workflow.
+
+==================================================
+PART 34 — STATUS TERMINOLOGY
+==================================================
+
+Use the currently approved human-readable terms.
+
+Complaint:
+
+New
+Confirmed
+Dismissed
+Resolved
+Refunded
+
+If backend still uses:
+
+valid
+invalid
+
+map them cleanly.
+
+Suggestion:
+
+New
+Implemented
+Rejected
+
+Review:
+
+NO WORKFLOW STATUS.
+
+Order:
+
+use existing Order status naming consistently.
+
+==================================================
+PART 35 — PERFORMANCE
+==================================================
+
+Do not make Dashboard customization or interconnected details cause large unnecessary queries.
+
+Orders list:
+lightweight.
+
+Open Order drawer:
+load details.
+
+Open child record:
+load child details.
+
+Dashboard:
+fetch only required metrics.
+
+==================================================
+PART 36 — DO NOT "IMPROVE EVERYTHING" RANDOMLY
+==================================================
+
+IMPORTANT:
+
+The business wants overall improvement, but DO NOT perform speculative rewrites.
+
+After implementing all requirements above:
+
+Audit other screens.
+
+If you find additional improvements that are:
+
+LOW RISK
+CLEARLY BENEFICIAL
+CONSISTENT WITH CURRENT DESIGN
+
+you may make small UI consistency improvements.
+
+For any larger architectural or business-logic change:
+
+DO NOT implement automatically.
+
+List it in:
+
+"Recommended Future Improvements"
+
+at the end.
+
+==================================================
+PART 37 — REGRESSION TESTING
+==================================================
+
+MANDATORY TEST:
+
+Login
+Logout
+Dashboard
+Dashboard customization
+Save layout
+Reset layout
+Orders
+Order Detail
+Order cancellation
+Advance refunded cancellation
+Advance retained cancellation
+Finance cards
+Analytics
+Payments
+Complaints
+Complaint creation by Admin
+Complaint creation by Designer
+Complaint creation by Support
+Complaint visibility rules
+Complaint anonymity
+Admin Notes
+Reviews
+Review creation by Designer
+Review creation by Support
+Suggestions
+Suggestion creation by Designer
+Suggestion creation by Support
+Suggestion management by Admin
+Nested drawer navigation
+Notifications
+Notification deep links
+Cloudinary screenshots
+Client Case Report
+Production build
+Console
+Server logs
+
+==================================================
+PART 38 — FINANCE TEST CASE 1
+==================================================
+
+Order:
+
+Total = Rs8,000
+Advance = Rs4,000
+Remaining = Rs4,000
+
+Cancel:
+
+Advance Refunded = YES
+
+Expected:
+
+Order Canceled
+
+Original Advance = Rs4,000
+
+Refund = Rs4,000
+
+Net Collected = Rs0
+
+Remaining Receivable = Rs0
+
+Collected Dashboard decreases/excludes Rs4,000
+
+Remaining Dashboard decreases/excludes Rs4,000
+
+==================================================
+PART 39 — FINANCE TEST CASE 2
+==================================================
+
+Order:
+
+Total = Rs8,000
+Advance = Rs4,000
+Remaining = Rs4,000
+
+Cancel:
+
+Advance Refunded = NO
+
+Expected:
+
+Order Canceled
+
+Advance Retained = Rs4,000
+
+Net Collected = Rs4,000
+
+Remaining Receivable = Rs0
+
+Collected Dashboard STILL includes Rs4,000
+
+Remaining Dashboard excludes Rs4,000
+
+==================================================
+PART 40 — SAME DETAIL COMPONENT TEST
+==================================================
+
+Open CMP from Complaints Page.
+
+Take note of fields/layout.
+
+Then:
+
+Orders → same Order → Client Experience → same CMP.
+
+Expected:
+
+EXACT SAME Complaint Details component.
+
+Repeat for Review and Suggestion.
+
+==================================================
+PART 41 — FINAL REPORT FROM REPLIT
+==================================================
+
+After completion provide:
+
+1. Detail component unification
+2. Cancellation workflow
+3. Finance logic
+4. Complaint permissions
+5. Review permissions
+6. Suggestion permissions
+7. Admin Notes security
+8. Notification changes
+9. Dashboard customization architecture
+10. RLS/security changes
+11. Files changed
+12. Database migrations
+13. Tests performed
+14. Finance test results
+15. Role test results
+16. Any limitations
+17. Recommended Future Improvements
+
+Explicitly confirm:
+
+No existing Orders were deleted.
+
+Existing financial history was preserved.
+
+Cloudinary was preserved.
+
+Complaint reporter anonymity was preserved.
+
+Internal Admin Notes remain Admin-only.
+
+Designer can add Reviews and Suggestions.
+
+Support/Sales can add Reviews and Suggestions.
+
+Designer and Support can create Complaints according to the specified rules.
+
+Dashboard layouts are stored per user.
+
+No unrelated major feature was intentionally rewritten.
+
+==================================================
+FINAL PRINCIPLE
+==================================================
+
+Pixely CRM should behave like ONE connected operational system.
+
+ORDER = central business record.
+
+COMPLAINT = issue/case record.
+
+REVIEW = recorded client feedback.
+
+SUGGESTION = recorded improvement idea with Implement/Reject decision.
+
+PAYMENT = financial transaction/history.
+
+ACTIVITY = human-readable audit trail.
+
+DASHBOARD = customizable personal workspace.
+
+Every important record must be connected.
+
+Every role must see only what they are authorized to see.
+
+Every important action must be traceable.
+
+Every financial number must remain historically accurate.
+
+The frontend should stay simple.
+
+The backend should enforce the rules strongly.
