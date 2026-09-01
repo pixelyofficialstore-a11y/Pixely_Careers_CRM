@@ -69,7 +69,7 @@ export function ComplaintDialog({ order, orders = [], open, onOpenChange }: Prop
     setEvidence(file); setPreview(URL.createObjectURL(file));
   };
   const canSubmit = Boolean(selectedOrder?.assignedToId && category && description.trim());
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="bg-slate-900 border-slate-800 text-white sm:max-w-lg">
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="bg-slate-900 border-slate-800 text-white sm:max-w-lg max-h-[90vh] overflow-y-auto">
     <DialogHeader><DialogTitle>New Complaint</DialogTitle><DialogDescription className="text-slate-400">Link a clear account of the issue to an assigned order.</DialogDescription></DialogHeader>
     <div className="space-y-5 py-2">
       {orders.length > 0 && <div className="space-y-2"><Label htmlFor="complaint-order">Order</Label><Select value={selectedOrderId} onValueChange={setSelectedOrderId}><SelectTrigger id="complaint-order" className="bg-slate-950 border-slate-700"><SelectValue placeholder="Select an eligible order" /></SelectTrigger><SelectContent>{eligibleOrders.map(item => <SelectItem key={item.id} value={String(item.id)}>#{item.orderNumber || item.id} · {item.clientName} · {item.assignee?.name || "Assigned designer"}</SelectItem>)}</SelectContent></Select></div>}
