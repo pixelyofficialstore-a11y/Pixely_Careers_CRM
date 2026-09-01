@@ -2,7 +2,9 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
 import { format } from "date-fns";
-import { AlertTriangle, CalendarDays, CheckCircle2, ClipboardCheck, FileWarning, Loader2, Search, XCircle } from "lucide-react";
+import { AlertTriangle, CalendarDays, CheckCircle2, ClipboardCheck, Download, FileWarning, Filter, Loader2, Search, X, XCircle, DollarSign } from "lucide-react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { complaintCategories, complaintStatuses, type ComplaintHistoryEntry, type ComplaintCategoryConfig, type ComplaintResponse, type ComplaintStats, type OrderWithServices } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -73,17 +75,132 @@ export default function ComplaintsPage() {
   const { data: orders = [] } = useQuery<OrderWithServices[]>({ queryKey: ["/api/orders"], enabled: user?.role === "admin" || user?.role === "support" });
   const stats = statsResponse?.complaints; const isAdmin = user?.role === "admin"; const canCreate = isAdmin || user?.role === "support";
   const categoryOptions = categories.length ? categories.filter(c => c.isActive) : complaintCategories.map(key => ({ key, label: complaintCategoryLabels[key] }));
-  const cards = [{ key: "all", label: "All Complaints", value: stats?.all ?? complaints.length, tone: "text-blue-300" }, { key: "valid", label: "Valid", value: stats?.valid ?? complaints.filter(c => c.status === "valid").length, tone: "text-amber-300" }, { key: "invalid", label: "Invalid", value: stats?.invalid ?? complaints.filter(c => c.status === "invalid").length, tone: "text-slate-300" }, { key: "resolved", label: "Resolved", value: stats?.resolved ?? complaints.filter(c => c.status === "resolved").length, tone: "text-emerald-300" }, { key: "refund", label: "Refund", value: stats?.refund ?? complaints.filter(c => c.resolutionOutcome === "refund").length, tone: "text-violet-300" }];
+  const cards = [
+    { key: "all", label: "All Complaints", value: stats?.all ?? complaints.length, icon: FileWarning, iconClass: "bg-blue-500/10 text-blue-500", testId: "stat-complaints-all" },
+    { key: "valid", label: "Valid", value: stats?.valid ?? complaints.filter(c => c.status === "valid").length, icon: CheckCircle2, iconClass: "bg-amber-500/10 text-amber-400", testId: "stat-complaints-valid" },
+    { key: "invalid", label: "Invalid", value: stats?.invalid ?? complaints.filter(c => c.status === "invalid").length, icon: XCircle, iconClass: "bg-slate-500/10 text-slate-400", testId: "stat-complaints-invalid" },
+    { key: "resolved", label: "Resolved", value: stats?.resolved ?? complaints.filter(c => c.status === "resolved").length, icon: ClipboardCheck, iconClass: "bg-emerald-500/10 text-emerald-400", testId: "stat-complaints-resolved" },
+    { key: "refund", label: "Refund", value: stats?.refund ?? complaints.filter(c => c.resolutionOutcome === "refund").length, icon: DollarSign, iconClass: "bg-violet-500/10 text-violet-400", testId: "stat-complaints-refund" },
+  ];
   const filteredComplaints = useMemo(
     () => outcome === "refund" ? complaints.filter(complaint => complaint.resolutionOutcome === "refund") : complaints,
     [complaints, outcome],
   );
   const pageSize = 10; const pages = Math.max(1, Math.ceil(filteredComplaints.length / pageSize)); const visible = useMemo(() => filteredComplaints.slice((page - 1) * pageSize, page * pageSize), [filteredComplaints, page]);
   const openComplaint = (id: number) => { setSelectedId(id); setLocation(`/complaints/${id}`); };
+  const hasActiveFilters = Boolean(search) || status !== "all" || category !== "all" || outcome === "refund";
+  const clearFilters = () => {
+    setSearch("");
+    setStatus("all");
+    setOutcome("");
+    setCategory("all");
+    setMonth(String(now.getMonth() + 1));
+    setYear(String(now.getFullYear()));
+    setPage(1);
+  };
+  const exportComplaintsPDF = () => {
+    const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const marginX = 32;
+    const contentWidth = pageWidth - marginX * 2;
+    const reportMonth = format(new Date(Number(year), Number(month) - 1, 1), "MMMM yyyy");
+    const BRAND: [number, number, number] = [37, 99, 235];
+    const INK: [number, number, number] = [30, 41, 59];
+    const MUTED: [number, number, number] = [100, 116, 139];
+    const LINE: [number, number, number] = [226, 232, 240];
+    const SOFT_BLUE: [number, number, number] = [239, 246, 255];
+
+    doc.setFillColor(...SOFT_BLUE);
+    doc.roundedRect(marginX, 24, contentWidth, 64, 8, 8, "F");
+    doc.setFillColor(...BRAND);
+    doc.roundedRect(marginX, 24, 7, 64, 3, 3, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(19);
+    doc.setTextColor(...INK);
+    doc.text("Pixely Careers", marginX + 20, 50);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(...MUTED);
+    doc.text(`Complaints Report  •  ${reportMonth}`, marginX + 20, 68);
+    doc.setFontSize(8.5);
+    doc.text(`Generated ${format(new Date(), "MMM dd, yyyy · h:mm a")}`, pageWidth - marginX, 68, { align: "right" });
+
+    const rows = filteredComplaints.length > 0
+      ? filteredComplaints.map(complaint => [
+        complaint.complaintNumber,
+        complaint.orderNumber || `#${complaint.orderId}`,
+        complaint.clientName || "Not Specified",
+        complaintCategoryLabels[complaint.category as keyof typeof complaintCategoryLabels] || titleCase(complaint.category),
+        complaint.complaintAgainst?.name || "Not Specified",
+        titleCase(complaint.status),
+        complaint.createdAt ? format(new Date(complaint.createdAt), "MMM dd, yyyy") : "Not Specified",
+      ])
+      : [["No complaints found.", "", "", "", "", "", ""]];
+
+    autoTable(doc, {
+      startY: 112,
+      head: [["Complaint ID", "Order", "Client", "Category", "Complaint Against", "Status", "Date"]],
+      body: rows,
+      theme: "grid",
+      styles: {
+        font: "helvetica",
+        fontSize: 8,
+        cellPadding: 5,
+        textColor: INK,
+        lineColor: LINE,
+        lineWidth: 0.35,
+        valign: "middle",
+      },
+      headStyles: {
+        fillColor: BRAND,
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+      },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      didDrawPage: data => {
+        doc.setFontSize(8);
+        doc.setTextColor(...MUTED);
+        doc.text(`Complaints Report  •  Page ${data.pageNumber}`, pageWidth - marginX, doc.internal.pageSize.getHeight() - 20, { align: "right" });
+      },
+    });
+
+    const suffix = `${year}-${String(month).padStart(2, "0")}`;
+    doc.save(`complaints-${suffix}.pdf`);
+  };
   return <div className="p-4 md:p-8 space-y-6">
-    <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between"><div><div className="flex items-center gap-3"><FileWarning className="w-7 h-7 text-rose-300" /><h1 className="text-2xl md:text-3xl font-bold font-display text-white">{isAdmin ? "Complaints Management" : user?.role === "designer" ? "Complaints About My Work" : "Complaints I Filed"}</h1></div><p className="text-slate-400 mt-2">Review order-linked complaints for {format(new Date(Number(year), Number(month) - 1, 1), "MMMM yyyy")}.</p></div>{canCreate && <Button onClick={() => setCreateOpen(true)} className="bg-rose-600 hover:bg-rose-500">New Complaint</Button>}</div>
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">{cards.map(card => <button key={card.key} onClick={() => { if (card.key === "refund") { setStatus("all"); setOutcome("refund"); } else { setStatus(card.key); setOutcome(""); } setPage(1); }} className={`rounded-xl border p-4 text-left transition-colors ${(card.key === "refund" ? outcome === "refund" : status === card.key && !outcome) ? "border-blue-500/60 bg-blue-500/10" : "glass-panel border-slate-800 hover:border-slate-700"}`}><p className="text-xs text-slate-500">{card.label}</p><p className={`text-2xl font-bold mt-1 ${card.tone}`}>{card.value}</p></button>)}</div>
-    <div className="glass-panel rounded-2xl p-4"><div className="flex flex-col xl:flex-row gap-3"><div className="relative flex-1"><Search className="absolute left-3 top-3 w-4 h-4 text-slate-500" /><Input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Search complaint, order, client, or designer" className="pl-9 bg-slate-950 border-slate-700" /></div><Select value={month} onValueChange={v => { setMonth(v); setPage(1); }}><SelectTrigger className="w-full xl:w-44 bg-slate-950 border-slate-700"><CalendarDays className="w-4 h-4 mr-2" /><SelectValue /></SelectTrigger><SelectContent>{Array.from({ length: 12 }, (_, i) => <SelectItem key={i + 1} value={String(i + 1)}>{format(new Date(2024, i, 1), "MMMM")}</SelectItem>)}</SelectContent></Select><Select value={year} onValueChange={v => { setYear(v); setPage(1); }}><SelectTrigger className="w-full xl:w-32 bg-slate-950 border-slate-700"><SelectValue /></SelectTrigger><SelectContent>{[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(v => <SelectItem key={v} value={String(v)}>{v}</SelectItem>)}</SelectContent></Select><Select value={category} onValueChange={v => { setCategory(v); setPage(1); }}><SelectTrigger className="w-full xl:w-52 bg-slate-950 border-slate-700"><SelectValue placeholder="All categories" /></SelectTrigger><SelectContent><SelectItem value="all">All categories</SelectItem>{categoryOptions.map(item => <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>)}</SelectContent></Select></div><div className="flex gap-2 flex-wrap mt-4">{["all", ...complaintStatuses].map(value => <Button key={value} size="sm" variant={status === value && !outcome ? "secondary" : "ghost"} onClick={() => { setStatus(value); setOutcome(""); setPage(1); }}>{titleCase(value)}</Button>)}</div></div>
+    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div>
+        <div className="flex items-center gap-3"><FileWarning className="w-7 h-7 text-rose-300" /><h1 className="text-2xl md:text-3xl font-bold font-display text-white">{isAdmin ? "Complaints Management" : user?.role === "designer" ? "Complaints About My Work" : "Complaints I Filed"}</h1></div>
+        <p className="text-slate-400 mt-2">Review order-linked complaints for {format(new Date(Number(year), Number(month) - 1, 1), "MMMM yyyy")}.</p>
+      </div>
+      <div className="flex items-center gap-3 flex-wrap w-full md:w-auto">
+        <div className="relative w-full md:w-64">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+          <Input placeholder="Search Complaint ID or Client..." className="pl-10 bg-slate-900 border-slate-800 text-white" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} data-testid="input-search-complaints" />
+          {isLoading && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 animate-spin" />}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap" data-testid="complaint-filters">
+          <Filter className="w-4 h-4 text-slate-500 hidden md:block" aria-hidden="true" />
+          <Select value={status} onValueChange={v => { setStatus(v); setOutcome(""); setPage(1); }}>
+            <SelectTrigger className="w-36 bg-slate-900 border-slate-800 text-white" data-testid="select-complaint-status-filter"><SelectValue placeholder="All statuses" /></SelectTrigger>
+            <SelectContent className="bg-slate-900 border-slate-800 text-white"><SelectItem value="all">All statuses</SelectItem>{complaintStatuses.map(value => <SelectItem key={value} value={value}>{titleCase(value)}</SelectItem>)}</SelectContent>
+          </Select>
+          <Select value={category} onValueChange={v => { setCategory(v); setPage(1); }}>
+            <SelectTrigger className="w-44 bg-slate-900 border-slate-800 text-white" data-testid="select-complaint-category-filter"><SelectValue placeholder="All categories" /></SelectTrigger>
+            <SelectContent className="bg-slate-900 border-slate-800 text-white"><SelectItem value="all">All categories</SelectItem>{categoryOptions.map(item => <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>)}</SelectContent>
+          </Select>
+          {hasActiveFilters && <Button type="button" variant="ghost" size="sm" onClick={clearFilters} className="text-slate-400 hover:text-white" data-testid="button-clear-complaint-filters"><X className="w-4 h-4 mr-1" />Clear</Button>}
+        </div>
+        {isAdmin && <Button variant="outline" onClick={exportComplaintsPDF} data-testid="button-export-complaints"><Download className="w-4 h-4 mr-2" />Export PDF</Button>}
+        {canCreate && <Button onClick={() => setCreateOpen(true)} className="bg-primary" data-testid="button-create-complaint"><CheckCircle2 className="w-4 h-4 mr-2" />New Complaint</Button>}
+      </div>
+    </div>
+    <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">{cards.map(card => { const Icon = card.icon; return <div key={card.key} className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3" data-testid={card.testId}><div className={`p-2 rounded-lg ${card.iconClass}`}><Icon className="w-5 h-5" /></div><div><p className="text-xs text-slate-500">{card.label}</p><p className="font-bold text-white">{card.value}</p></div></div>; })}</div>
+    <div className="flex flex-wrap items-center gap-3">
+      <Select value={month} onValueChange={v => { setMonth(v); setPage(1); }}><SelectTrigger className="w-40 bg-slate-900 border-slate-800 text-white"><CalendarDays className="w-4 h-4 mr-2" /><SelectValue /></SelectTrigger><SelectContent className="bg-slate-900 border-slate-800 text-white">{Array.from({ length: 12 }, (_, i) => <SelectItem key={i + 1} value={String(i + 1)}>{format(new Date(2024, i, 1), "MMMM")}</SelectItem>)}</SelectContent></Select>
+      <Select value={year} onValueChange={v => { setYear(v); setPage(1); }}><SelectTrigger className="w-28 bg-slate-900 border-slate-800 text-white"><SelectValue /></SelectTrigger><SelectContent className="bg-slate-900 border-slate-800 text-white">{[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(v => <SelectItem key={v} value={String(v)}>{v}</SelectItem>)}</SelectContent></Select>
+      {outcome === "refund" && <Button type="button" variant="secondary" size="sm" onClick={() => { setOutcome(""); setPage(1); }}>Refund only <X className="w-3 h-3 ml-1" /></Button>}
+    </div>
     {isLoading ? <div className="glass-panel p-16 text-center"><Loader2 className="mx-auto animate-spin text-blue-400" /></div> : isError ? <div className="glass-panel p-12 text-center"><AlertTriangle className="mx-auto text-rose-400 mb-3" /><p className="text-white">Could not load complaints</p><Button variant="outline" className="mt-4" onClick={() => refetch()}>Try Again</Button></div> : !visible.length ? <div className="glass-panel p-12 text-center"><ClipboardCheck className="w-12 h-12 text-slate-600 mx-auto mb-4" /><p className="text-white font-semibold">No complaints found</p><p className="text-sm text-slate-500 mt-2">Try another month or filter.</p></div> : <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden"><div className="p-5 border-b border-slate-800"><h2 className="font-bold text-white">Complaints</h2><p className="text-sm text-slate-500">{complaints.length} shown</p></div><div className="table-scroll-wrapper"><Table><TableHeader className="bg-slate-900/50"><TableRow className="border-slate-800 hover:bg-transparent"><TableHead>Complaint ID</TableHead><TableHead>Order</TableHead><TableHead>Client</TableHead><TableHead>Category</TableHead><TableHead>Complaint Against</TableHead>{isAdmin && <TableHead>Placed By</TableHead>}<TableHead>Status</TableHead><TableHead>Date</TableHead></TableRow></TableHeader><TableBody>{visible.map(c => <TableRow key={c.id} onClick={() => openComplaint(c.id)} className="border-slate-800 hover:bg-slate-900/50 cursor-pointer"><TableCell className="font-mono text-xs text-blue-300">{c.complaintNumber}</TableCell><TableCell className="text-sm text-white">#{c.orderNumber || c.orderId}</TableCell><TableCell className="text-sm text-slate-300">{c.clientName}</TableCell><TableCell className="text-sm text-slate-400">{categoryOptions.find(x => x.key === c.category)?.label || titleCase(c.category)}</TableCell><TableCell className="text-sm text-slate-300">{c.complaintAgainst?.name || "—"}</TableCell>{isAdmin && <TableCell className="text-sm text-slate-300">{c.filedBy?.name || "—"}</TableCell>}<TableCell><ComplaintStatusBadge status={c.status} /></TableCell><TableCell className="text-xs text-slate-500 whitespace-nowrap">{c.createdAt ? format(new Date(c.createdAt), "MMM dd, yyyy") : "—"}</TableCell></TableRow>)}</TableBody></Table></div><div className="flex items-center justify-between p-4 border-t border-slate-800 text-sm text-slate-500"><span>Page {page} of {pages}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Previous</Button><Button size="sm" variant="outline" disabled={page >= pages} onClick={() => setPage(p => p + 1)}>Next</Button></div></div></div>}
     <ComplaintDrawer id={selectedId} open={selectedId !== null} onOpenChange={open => { if (!open) { setSelectedId(null); setLocation("/complaints"); } }} /><ComplaintDialog order={null} orders={orders} open={createOpen} onOpenChange={setCreateOpen} />
   </div>;
