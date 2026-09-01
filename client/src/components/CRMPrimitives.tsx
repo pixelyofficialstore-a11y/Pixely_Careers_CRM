@@ -7,7 +7,7 @@ export function PageHeader({ eyebrow, title, description, actions, className, te
   eyebrow?: string; title: string; description?: string; actions?: React.ReactNode; className?: string; testId?: string;
 }) {
   return <header className={cn("crm-page-header", className)} data-testid={testId}>
-    <div><p className="crm-eyebrow">{eyebrow}</p><h1 className="crm-title">{title}</h1>{description && <p className="crm-description">{description}</p>}</div>
+    <div className="min-w-0"><>{eyebrow && <p className="crm-eyebrow">{eyebrow}</p>}</><h1 className="crm-title">{title}</h1>{description && <p className="crm-description">{description}</p>}</div>
     {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
   </header>;
 }
@@ -17,7 +17,7 @@ export function MetricCard({ label, value, note, icon: Icon = Activity, tone = "
 }) {
   const toneClass = { cyan: "text-cyan-300", success: "text-emerald-300", warning: "text-amber-300", danger: "text-rose-300" }[tone];
   const content = <><div className="flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-[.13em] text-slate-500">{label}</span><Icon aria-hidden="true" className={cn("h-[15px] w-[15px] stroke-[1.7]", toneClass)} /></div><p className="mt-2 text-[1.4rem] font-semibold tracking-tight text-slate-100">{value}</p>{note && <p className="mt-0.5 text-[11px] text-slate-500">{note}</p>}</>;
-  const classes = cn("glass-panel w-full rounded-[.42rem] p-3.5 text-left transition-colors hover:border-cyan-400/30", onClick && "cursor-pointer focus-visible:ring-2 focus-visible:ring-ring", className);
+  const classes = cn("crm-metric-card glass-panel w-full rounded-[.65rem] p-4 text-left transition-colors hover:border-cyan-400/30", onClick && "cursor-pointer focus-visible:ring-2 focus-visible:ring-ring", className);
   return onClick ? <button type="button" onClick={onClick} className={classes} data-testid={testId}>{content}</button> : <div className={classes} data-testid={testId}>{content}</div>;
 }
 

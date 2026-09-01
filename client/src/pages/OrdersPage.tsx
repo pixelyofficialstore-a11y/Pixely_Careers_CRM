@@ -92,7 +92,7 @@ import { ComplaintStatusBadge } from "@/components/StatusBadge";
 import { ComplaintDetails } from "@/pages/ComplaintsPage";
 import { ReviewForm, ReviewDetails, SuggestionDetails, type Review } from "@/pages/FeedbackPage";
 import { getOrderAccounting } from "@shared/order-accounting";
-import { PageHeader } from "@/components/CRMPrimitives";
+import { MetricCard as CRMMetricCard, PageHeader } from "@/components/CRMPrimitives";
 
 const FALLBACK_SERVICE_TYPES = [
   "ATS CV",
@@ -1391,37 +1391,13 @@ export default function OrdersPage() {
       </div>
 
       {isAdmin && (
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-          <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
-            <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500"><Package className="w-5 h-5" /></div>
-            <div><p className="text-xs text-slate-500">Total Monthly</p><p className="font-bold text-white">{approvedMonthlyOrders.length}</p></div>
-          </div>
-          <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
-            <div className="p-2 bg-green-500/10 rounded-lg text-green-500"><CheckCircle2 className="w-5 h-5" /></div>
-            <div><p className="text-xs text-slate-500">Delivered</p><p className="font-bold text-white">{approvedMonthlyOrders.filter(o => o.status === 'delivered').length}</p></div>
-          </div>
-          <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
-            <div className="p-2 bg-indigo-500/10 rounded-lg text-indigo-500"><TrendingUp className="w-5 h-5" /></div>
-            <div>
-              <p className="text-xs text-slate-500">Monthly Revenue</p>
-              <p className="font-bold text-white" data-testid="text-monthly-revenue">₨{Math.round(monthlyRevenue / 100).toLocaleString()}</p>
-            </div>
-          </div>
-          <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
-            <div className="p-2 bg-green-500/10 rounded-lg text-green-500"><TrendingUp className="w-5 h-5" /></div>
-            <div><p className="text-xs text-slate-500">Collected</p><p className="font-bold text-white">₨{Math.round(approvedMonthlyOrders.reduce((acc, o) => acc + getOrderAccounting(o).netCollected, 0) / 100).toLocaleString()}</p></div>
-          </div>
-          <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
-            <div className="p-2 bg-red-500/10 rounded-lg text-red-500"><AlertCircle className="w-5 h-5" /></div>
-            <div><p className="text-xs text-slate-500">Remaining</p><p className="font-bold text-white">₨{Math.round(approvedMonthlyOrders.reduce((acc, o) => acc + getOrderAccounting(o).remainingReceivable, 0) / 100).toLocaleString()}</p></div>
-          </div>
-          <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
-            <div className="p-2 bg-purple-500/10 rounded-lg text-purple-500"><CalendarIcon className="w-5 h-5" /></div>
-            <div>
-              <p className="text-xs text-slate-500">Today's Revenue</p>
-              <p className="font-bold text-white">₨{Math.round(approvedTodayOrders.reduce((acc, o) => acc + getOrderAccounting(o).accountedTotal, 0) / 100).toLocaleString()}</p>
-            </div>
-          </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
+          <CRMMetricCard label="Total monthly" value={approvedMonthlyOrders.length} icon={Package} />
+          <CRMMetricCard label="Delivered" value={approvedMonthlyOrders.filter(o => o.status === 'delivered').length} icon={CheckCircle2} tone="success" />
+          <CRMMetricCard label="Monthly revenue" value={`Rs${Math.round(monthlyRevenue / 100).toLocaleString()}`} icon={TrendingUp} testId="text-monthly-revenue" />
+          <CRMMetricCard label="Collected" value={`Rs${Math.round(approvedMonthlyOrders.reduce((acc, o) => acc + getOrderAccounting(o).netCollected, 0) / 100).toLocaleString()}`} icon={TrendingUp} tone="success" />
+          <CRMMetricCard label="Remaining" value={`Rs${Math.round(approvedMonthlyOrders.reduce((acc, o) => acc + getOrderAccounting(o).remainingReceivable, 0) / 100).toLocaleString()}`} icon={AlertCircle} tone="warning" />
+          <CRMMetricCard label="Today's revenue" value={`Rs${Math.round(approvedTodayOrders.reduce((acc, o) => acc + getOrderAccounting(o).accountedTotal, 0) / 100).toLocaleString()}`} icon={CalendarIcon} />
         </div>
       )}
 

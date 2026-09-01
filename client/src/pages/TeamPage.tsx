@@ -47,7 +47,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { User, SupportDesignerAssignment } from "@shared/schema";
 import { useLocation } from "wouter";
-import { PageHeader } from "@/components/CRMPrimitives";
+import { MetricCard as CRMMetricCard, PageHeader } from "@/components/CRMPrimitives";
 
 function cn(...inputs: any[]) {
   return inputs.filter(Boolean).join(" ");
@@ -128,19 +128,10 @@ export default function TeamPage() {
         </Dialog>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
-          <div className="p-2 bg-purple-500/10 rounded-lg text-purple-400"><Shield className="w-5 h-5" /></div>
-          <div><p className="text-xs text-slate-500">Admins</p><p className="font-bold text-white">{teamMembers?.filter(u => u.role === 'admin').length || 0}</p></div>
-        </div>
-        <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
-          <div className="p-2 bg-blue-500/10 rounded-lg text-blue-400"><Headphones className="w-5 h-5" /></div>
-          <div><p className="text-xs text-slate-500">Support</p><p className="font-bold text-white">{teamMembers?.filter(u => u.role === 'support').length || 0}</p></div>
-        </div>
-        <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
-          <div className="p-2 bg-green-500/10 rounded-lg text-green-400"><Palette className="w-5 h-5" /></div>
-          <div><p className="text-xs text-slate-500">Designers</p><p className="font-bold text-white">{teamMembers?.filter(u => u.role === 'designer').length || 0}</p></div>
-        </div>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <CRMMetricCard label="Admins" value={teamMembers?.filter(u => u.role === 'admin').length || 0} icon={Shield} />
+        <CRMMetricCard label="Support" value={teamMembers?.filter(u => u.role === 'support').length || 0} icon={Headphones} />
+        <CRMMetricCard label="Designers" value={teamMembers?.filter(u => u.role === 'designer').length || 0} icon={Palette} />
       </div>
 
       <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">

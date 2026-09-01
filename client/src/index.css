@@ -5,31 +5,48 @@
 @tailwind utilities;
 
 :root {
-  --background: 222 42% 7%;
-  --foreground: 210 24% 93%;
+  --app-bg: 222 42% 7%;
+  --sidebar-bg: 222 34% 9%;
+  --surface-1: 222 34% 10%;
+  --surface-2: 222 30% 13%;
+  --surface-3: 222 28% 16%;
+  --border-default: 220 23% 20%;
+  --border-hover: 181 42% 30%;
+  --text-primary: 210 24% 93%;
+  --text-secondary: 215 16% 72%;
+  --text-muted: 215 16% 56%;
+  --accent-primary: 181 64% 45%;
+  --accent-secondary: 207 78% 58%;
+  --success: 158 64% 46%;
+  --warning: 38 92% 58%;
+  --danger: 2 68% 58%;
+  --neutral: 215 16% 56%;
+
+  --background: var(--app-bg);
+  --foreground: var(--text-primary);
   
-  --card: 222 34% 10%;
-  --card-foreground: 210 24% 93%;
+  --card: var(--surface-1);
+  --card-foreground: var(--text-primary);
   
-  --popover: 222 34% 12%;
-  --popover-foreground: 210 24% 93%;
+  --popover: var(--surface-2);
+  --popover-foreground: var(--text-primary);
   
-  --primary: 181 64% 45%;
-  --primary-foreground: 222 42% 7%;
+  --primary: var(--accent-primary);
+  --primary-foreground: var(--app-bg);
   
-  --secondary: 222 28% 16%;
-  --secondary-foreground: 210 24% 93%;
+  --secondary: var(--surface-3);
+  --secondary-foreground: var(--text-primary);
   
-  --muted: 222 28% 16%;
-  --muted-foreground: 215 16% 64%;
+  --muted: var(--surface-3);
+  --muted-foreground: var(--text-secondary);
   
   --accent: 181 42% 18%;
   --accent-foreground: 181 64% 76%;
   
-  --destructive: 2 58% 44%;
-  --destructive-foreground: 210 28% 94%;
+  --destructive: var(--danger);
+  --destructive-foreground: var(--text-primary);
 
-  --border: 220 23% 20%;
+  --border: var(--border-default);
   --input: 220 23% 22%;
   --ring: 181 64% 48%;
   
@@ -81,7 +98,7 @@
   .glass-panel {
     background: hsl(var(--card));
     border: 1px solid hsl(var(--border) / .9);
-    box-shadow: 0 8px 24px hsl(222 45% 3% / .16);
+    box-shadow: 0 6px 18px hsl(222 45% 3% / .12);
   }
   
   .text-gradient {
@@ -144,25 +161,25 @@
   .crm-section {
     overflow: hidden;
     border: 1px solid hsl(var(--border) / .9);
-    border-radius: .42rem;
+    border-radius: .65rem;
     background: hsl(var(--card) / .92);
   }
   .crm-section-header {
     padding: .85rem 1rem;
     border-bottom: 1px solid hsl(var(--border) / .8);
   }
-  .crm-table thead tr { background: hsl(222 30% 14%); }
+  .crm-table thead tr { background: hsl(var(--surface-2)); }
   .crm-table th {
-    height: 2.45rem;
-    color: hsl(var(--muted-foreground));
-    font-size: .66rem;
+    height: 2.65rem;
+    color: hsl(var(--text-secondary));
+    font-size: .64rem;
     font-weight: 700;
-    letter-spacing: .09em;
+    letter-spacing: .075em;
     text-transform: uppercase;
   }
-  .crm-table td { padding-top: .65rem; padding-bottom: .65rem; }
+  .crm-table td { padding-top: .7rem; padding-bottom: .7rem; }
   .crm-table tbody tr { border-color: hsl(var(--border) / .65); }
-  .crm-table tbody tr:hover { background: hsl(181 40% 18% / .13); }
+  .crm-table tbody tr:hover { background: hsl(var(--accent-primary) / .055); }
   .crm-control {
     border-color: hsl(var(--input));
     background: hsl(222 39% 8% / .75);
@@ -173,6 +190,9 @@
   .crm-control:focus-visible {
     border-color: hsl(var(--ring));
     box-shadow: 0 0 0 3px hsl(var(--ring) / .16);
+  }
+  .crm-metric-card {
+    min-height: 6.5rem;
   }
   @media (min-width: 1024px) {
     .crm-page { padding: 1.75rem 2rem; }

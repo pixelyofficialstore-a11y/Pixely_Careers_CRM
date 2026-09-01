@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { ComplaintDetails } from "./ComplaintsPage";
 import { ReviewDetails, SuggestionDetails } from "./FeedbackPage";
 import { getOrderAccounting } from "@shared/order-accounting";
+import { MetricCard as CRMMetricCard, PageHeader } from "@/components/CRMPrimitives";
 
 type Order = {
   id: number; orderNumber?: string | null; clientName: string; status: string;
@@ -41,18 +42,8 @@ const title = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, c =
 const dateLabel = (value?: string | Date | null) => value ? format(new Date(value), "MMM d, yyyy") : "—";
 
 function Metric({ icon: Icon, label, value, note, tone = "cyan" }: { icon: typeof Users; label: string; value: string | number; note?: string; tone?: string }) {
-  const toneClasses: Record<string, string> = {
-    cyan: "text-cyan-400",
-    amber: "text-amber-400",
-    emerald: "text-emerald-400",
-    rose: "text-rose-400",
-    slate: "text-slate-400",
-  };
-  return <div className="glass-panel rounded-xl border border-slate-800/80 p-4 transition-colors hover:border-cyan-400/30">
-    <div className="flex items-center justify-between"><span className="text-xs font-medium uppercase tracking-[.12em] text-slate-500">{label}</span><Icon className={cn("h-4 w-4", toneClasses[tone] || toneClasses.cyan)} /></div>
-    <div className="mt-3 text-2xl font-semibold tracking-tight text-slate-100">{value}</div>
-    {note && <p className="mt-1 text-xs text-slate-500">{note}</p>}
-  </div>;
+  const cardTone = tone === "amber" ? "warning" : tone === "emerald" ? "success" : tone === "rose" ? "danger" : "cyan";
+  return <CRMMetricCard label={label} value={value} icon={Icon} tone={cardTone} note={note} />;
 }
 
 function Empty({ title: heading, copy }: { title: string; copy: string }) {
@@ -159,8 +150,8 @@ export default function AnalyticsPage() {
     }
   };
 
-  return <div className="min-h-[100dvh] space-y-6 p-4 text-slate-100 sm:p-6 lg:p-8">
-    <header className="flex flex-col gap-3 border-b border-slate-800/80 pb-6 sm:flex-row sm:items-end sm:justify-between"><div><div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-[.18em] text-cyan-300"><BarChart3 className="h-4 w-4" />Operations cockpit</div><h1 className="text-3xl font-semibold tracking-tight text-slate-100" data-testid="text-analytics-title">Analytics</h1><p className="mt-1 text-sm text-slate-500">Workload and client experience, without composite scores.</p></div><div className="text-right text-xs text-slate-600">Updated {format(new Date(), "MMM d, h:mm a")}</div></header>
+  return <div className="crm-page space-y-5">
+    <PageHeader eyebrow="Performance analytics" title="Analytics" description="Workload and client experience, without composite scores." actions={<div className="text-right text-xs text-slate-600">Updated {format(new Date(), "MMM d, h:mm a")}</div>} testId="text-analytics-title" />
     <Tabs defaultValue="designers" className="w-full"><TabsList className="mb-5 h-auto flex-wrap justify-start gap-1 rounded-xl border border-slate-800 bg-slate-900/70 p-1"><TabsTrigger value="designers" className="gap-2 rounded-lg px-4 py-2 data-[state=active]:bg-cyan-500/15 data-[state=active]:text-cyan-200"><Users className="h-4 w-4" />Designer Performance</TabsTrigger><TabsTrigger value="marketing" className="gap-2 rounded-lg px-4 py-2 data-[state=active]:bg-cyan-500/15 data-[state=active]:text-cyan-200"><Megaphone className="h-4 w-4" />Marketing Analytics</TabsTrigger><TabsTrigger value="support" className="gap-2 rounded-lg px-4 py-2 data-[state=active]:bg-cyan-500/15 data-[state=active]:text-cyan-200"><Headphones className="h-4 w-4" />Support Performance</TabsTrigger></TabsList>
       <TabsContent value="designers" className="space-y-5">
         <div className="flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-900/50 p-3 sm:flex-row sm:items-center sm:justify-between"><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Period</span><div className="flex rounded-lg border border-slate-700 bg-slate-950 p-1"><button className={cn("rounded-md px-3 py-1.5 text-sm", period === "selected" ? "bg-cyan-500/15 text-cyan-200" : "text-slate-500")} onClick={() => setPeriod("selected")}>Selected period</button><button className={cn("rounded-md px-3 py-1.5 text-sm", period === "all" ? "bg-cyan-500/15 text-cyan-200" : "text-slate-500")} onClick={() => setPeriod("all")}>All time</button></div>{period === "selected" && <><Select value={month} onValueChange={setMonth}><SelectTrigger className="w-32 border-slate-700 bg-slate-950"><CalendarDays className="mr-2 h-4 w-4 text-slate-500" /><SelectValue /></SelectTrigger><SelectContent>{months.map((m, i) => <SelectItem key={m} value={String(i)}>{m}</SelectItem>)}</SelectContent></Select><Select value={year} onValueChange={setYear}><SelectTrigger className="w-24 border-slate-700 bg-slate-950"><SelectValue /></SelectTrigger><SelectContent>{years.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent></Select></>}</div><Button variant="outline" className="border-slate-700" onClick={exportDesignerPDF}><Download className="mr-2 h-4 w-4" />Export PDF</Button></div>
