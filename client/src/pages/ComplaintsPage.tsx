@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
 import { format } from "date-fns";
-import { AlertTriangle, CalendarDays, CheckCircle2, ClipboardCheck, Download, FileWarning, FileText, Filter, Loader2, MoreVertical, Search, X, XCircle, DollarSign } from "lucide-react";
+import { AlertTriangle, CalendarDays, CheckCircle2, ClipboardCheck, Download, FileWarning, Filter, Loader2, Search, X, XCircle, DollarSign } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { complaintCategories, complaintStatuses, type ComplaintHistoryEntry, type ComplaintCategoryConfig, type ComplaintResponse, type ComplaintStats, type OrderWithServices } from "@shared/schema";
@@ -17,7 +17,6 @@ import { ComplaintStatusBadge } from "@/components/StatusBadge";
 import { complaintCategoryLabels, ComplaintDialog } from "@/components/ComplaintDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
@@ -205,7 +204,7 @@ export default function ComplaintsPage() {
         <TableHead className="text-slate-400">Designer</TableHead>
         {isAdmin && <TableHead className="text-slate-400">Placed By</TableHead>}
         <TableHead className="text-slate-400">Status</TableHead>
-        <TableHead className="text-right text-slate-400">Actions</TableHead>
+        <TableHead className="text-right text-slate-400">Details</TableHead>
       </TableRow>
     </TableHeader>
   );
@@ -230,18 +229,9 @@ export default function ComplaintsPage() {
       </TableCell>}
       <TableCell><ComplaintStatusBadge status={complaint.status} /></TableCell>
       <TableCell className="text-right">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-white" aria-label={`Open actions for ${complaint.complaintNumber}`} data-testid={`button-menu-complaint-${complaint.id}`}>
-              <MoreVertical className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="border-slate-800 bg-slate-900">
-            <DropdownMenuItem onClick={() => openComplaint(complaint.id)} className="text-slate-300 hover:text-white" data-testid={`menu-view-complaint-${complaint.id}`}>
-              <FileText className="mr-2 h-4 w-4" />View Details
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Button variant="outline" size="sm" onClick={() => openComplaint(complaint.id)} data-testid={`button-view-complaint-${complaint.id}`}>
+          View Details
+        </Button>
       </TableCell>
     </TableRow>
   );
