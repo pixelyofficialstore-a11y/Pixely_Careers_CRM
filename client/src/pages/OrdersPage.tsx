@@ -88,7 +88,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { OrderWithServices, User, SupportDesignerAssignment, ServiceCatalogItem, PackageConfig, PlatformCatalogItem, PaymentVerification, ComplaintResponse, ComplaintHistoryEntry, ActivityLogWithActor, ClientReview, ClientSuggestion } from "@shared/schema";
 import { ComplaintDialog } from "@/components/ComplaintDialog";
-import { ComplaintStatusBadge } from "@/components/StatusBadge";
+import { AdvancePaymentStatusBadge, ComplaintStatusBadge, OrderStatusBadge, PaymentLineStatusBadge, SuggestionStatusBadge } from "@/components/StatusBadge";
 import { ComplaintDetails } from "@/pages/ComplaintsPage";
 import { ReviewForm, ReviewDetails, SuggestionDetails, type Review } from "@/pages/FeedbackPage";
 import { getOrderAccounting } from "@shared/order-accounting";
@@ -784,26 +784,8 @@ export default function OrdersPage() {
   // Approved today's orders — for Total Revenue of the day
   const approvedTodayOrders = todayOrders;
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "pending_payment": return <Badge variant="secondary" className="bg-orange-500/10 text-orange-500 border-orange-500/20">Pending Payment</Badge>;
-      case "new": return <Badge variant="secondary" className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">New</Badge>;
-      case "working": return <Badge variant="secondary" className="bg-blue-500/10 text-blue-500 border-blue-500/20">Working</Badge>;
-      case "ready": return <Badge variant="secondary" className="bg-green-500/10 text-green-500 border-green-500/20">Ready</Badge>;
-      case "delivered": return <Badge variant="secondary" className="bg-slate-500/10 text-slate-400 border-slate-500/20">Delivered</Badge>;
-      case "canceled": return <Badge variant="secondary" className="bg-red-500/10 text-red-500 border-red-500/20">Canceled</Badge>;
-      default: return null;
-    }
-  };
-
-  const getAdvancePaymentStatusBadge = (status: string | null | undefined) => {
-    switch (status) {
-      case "pending": return <Badge variant="secondary" className="bg-orange-500/10 text-orange-500 border-orange-500/20">Pending</Badge>;
-      case "approved": return <Badge variant="secondary" className="bg-green-500/10 text-green-500 border-green-500/20">Approved</Badge>;
-      case "disapproved": return <Badge variant="secondary" className="bg-red-500/10 text-red-500 border-red-500/20">Disapproved</Badge>;
-      default: return <Badge variant="secondary" className="bg-slate-500/10 text-slate-400 border-slate-500/20">-</Badge>;
-    }
-  };
+  const getStatusBadge = (status: string) => <OrderStatusBadge status={status} />;
+  const getAdvancePaymentStatusBadge = (status: string | null | undefined) => <AdvancePaymentStatusBadge status={status} />;
 
   const getServicesDisplay = (order: OrderWithServices) => {
     const services = order.services;
@@ -1085,7 +1067,7 @@ export default function OrdersPage() {
 
   const renderOrderRow = (order: OrderWithServices) => (
     <TableRow key={order.id} className="border-slate-800 hover:bg-slate-900/50" data-testid={`row-order-${order.id}`}>
-      <TableCell className="font-mono text-xs text-blue-400">{order.orderNumber || "—"}</TableCell>
+       <TableCell className="whitespace-nowrap font-mono text-xs text-cyan-300">{order.orderNumber || "—"}</TableCell>
       {isAdmin && (
         <TableCell>
           <div className="min-w-28">
@@ -1096,10 +1078,10 @@ export default function OrdersPage() {
           </div>
         </TableCell>
       )}
-      <TableCell className="text-slate-400 text-xs">{order.createdAt ? format(new Date(order.createdAt), "MMM dd, yyyy") : "Not Specified"}</TableCell>
-      <TableCell className="text-white font-medium">{order.clientName || "Not Specified"}</TableCell>
+       <TableCell className="whitespace-nowrap text-xs text-slate-400">{order.createdAt ? format(new Date(order.createdAt), "MMM dd, yyyy") : "Not Specified"}</TableCell>
+       <TableCell className="min-w-36 whitespace-nowrap font-medium text-white">{order.clientName || "Not Specified"}</TableCell>
       <TableCell>
-        <span className={order.clientType === "international" ? "text-purple-300 text-sm" : "text-blue-300 text-sm"}>
+         <span className="whitespace-nowrap text-sm text-slate-300">
           {getClientTypeLabel(order)}
         </span>
       </TableCell>
@@ -1121,9 +1103,9 @@ export default function OrdersPage() {
           <span className="text-slate-500 text-sm">-</span>
         )}
       </TableCell>
-      <TableCell className="text-slate-300 text-sm">{getServicesDisplay(order)}</TableCell>
+       <TableCell className="min-w-40 text-sm text-slate-300">{getServicesDisplay(order)}</TableCell>
       {!isDesigner && (
-        <TableCell>
+       <TableCell className="whitespace-nowrap">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-[10px] text-slate-400">
               {order.assignee?.name?.charAt(0) || "?"}
@@ -1132,7 +1114,7 @@ export default function OrdersPage() {
           </div>
         </TableCell>
       )}
-      <TableCell>
+       <TableCell className="whitespace-nowrap">
         <Select
           defaultValue={order.status}
           onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { status: val } })}
@@ -1148,8 +1130,8 @@ export default function OrdersPage() {
         </Select>
       </TableCell>
       {!isDesigner && (
-        <TableCell>
-          {isAdmin ? (
+       <TableCell className="whitespace-nowrap">
+         {isAdmin ? (
             <Select
               defaultValue={order.advancePaymentStatus || "pending"}
               onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { advancePaymentStatus: val } })}
@@ -1174,11 +1156,9 @@ export default function OrdersPage() {
             defaultValue={order.paymentStatus || "pending"}
             onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { paymentStatus: val } })}
           >
-            <SelectTrigger className="w-28 bg-transparent border-0 h-auto p-0 focus:ring-0 shadow-none hover:bg-white/5 rounded px-2 py-1" data-testid={`select-payment-${order.id}`}>
-              <SelectValue>
-                <Badge variant="outline" className={cn("border-0", order.paymentStatus === 'paid' ? "text-green-500" : "text-yellow-500")}>
-                  {order.paymentStatus === 'paid' ? "Paid" : "Pending"}
-                </Badge>
+           <SelectTrigger className="h-auto w-28 rounded border-0 bg-transparent p-0 px-2 py-1 shadow-none hover:bg-white/5 focus:ring-0" data-testid={`select-payment-${order.id}`}>
+             <SelectValue>
+               <PaymentLineStatusBadge status={order.paymentStatus} />
               </SelectValue>
             </SelectTrigger>
             <SelectContent className="bg-slate-900 border-slate-800">
@@ -1187,23 +1167,27 @@ export default function OrdersPage() {
             </SelectContent>
           </Select>
         ) : (
-          <Badge variant="outline" className={cn("border-0", order.paymentStatus === 'paid' ? "text-green-500" : "text-yellow-500")} data-testid={`badge-payment-${order.id}`}>
-            {order.paymentStatus === 'paid' ? "Paid" : "Pending"}
-          </Badge>
+           <PaymentLineStatusBadge status={order.paymentStatus} />
         )}
       </TableCell>
-      {canSeeAmounts && (
-        <TableCell className="text-white font-medium text-right">{formatRs(order.totalPrice)}</TableCell>
+       {canSeeAmounts && (
+         <TableCell className="whitespace-nowrap text-right font-medium text-white">{formatRs(order.totalPrice)}</TableCell>
       )}
       {canSeeAmounts && (
-        <TableCell className="text-green-400 font-medium text-right">{formatRs(order.advanceAmount)}</TableCell>
+         <TableCell className="whitespace-nowrap text-right font-medium">
+           <span className={order.status === "canceled" && order.advanceRefunded ? "text-slate-500 line-through" : Number(order.advanceAmount || 0) > 0 ? "text-emerald-300" : "text-slate-500"}>{formatRs(order.advanceAmount)}</span>
+           {order.status === "canceled" && <span className={cn("ml-1 text-[10px]", order.advanceRefunded ? "text-rose-300" : "text-slate-400")}>{order.advanceRefunded ? "Refunded" : "Retained"}</span>}
+         </TableCell>
       )}
       {canSeeAmounts && (
-        <TableCell className="text-red-400 font-medium text-right">{formatRs(order.remainingAmount)}</TableCell>
+         <TableCell className="whitespace-nowrap text-right font-medium">
+           <span className={order.status === "canceled" ? "text-slate-500 line-through" : getOrderAccounting(order).remainingReceivable > 0 ? "text-rose-300" : "text-emerald-300"}>{formatRs(order.status === "canceled" ? order.remainingAmount : getOrderAccounting(order).remainingReceivable)}</span>
+           {order.status === "canceled" && <span className="ml-1 text-[10px] text-rose-300">Canceled</span>}
+         </TableCell>
       )}
       <TableCell className="text-right">
         <div className="flex justify-end gap-1">
-          {(isAdmin || isSupport) && (
+           {(isAdmin || isSupport || isDesigner) && (
             <Button
               variant="ghost"
               size="icon"
@@ -1770,7 +1754,7 @@ export default function OrdersPage() {
                   <section className="rounded-xl border border-slate-800 bg-slate-950 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <div><h4 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Complaints</h4><p className="mt-1 text-xs text-slate-600">{selectedOrderComplaints.filter(item => item.status === "confirmed").length} currently confirmed</p></div>
-                      {(isAdmin || isSupport) && <Button size="sm" variant="outline" disabled={!selectedOrder.assignedToId} onClick={() => setComplaintDialogOpen(true)}><FileWarning className="mr-2 h-4 w-4" />Raise Complaint</Button>}
+                      {(isAdmin || isSupport || isDesigner) && <Button size="sm" variant="outline" disabled={!selectedOrder.assignedToId} onClick={() => setComplaintDialogOpen(true)}><FileWarning className="mr-2 h-4 w-4" />{isDesigner ? "Report Client Issue" : "Raise Complaint"}</Button>}
                     </div>
                     <div className="mt-4 space-y-2">{selectedOrderComplaints.length ? selectedOrderComplaints.map(complaint => <button key={complaint.id} onClick={() => openNestedDrawer({ kind: "complaint", id: complaint.id })} className="flex w-full items-center justify-between rounded-lg border border-slate-800 bg-slate-900 p-3 text-left hover:border-slate-700"><div><p className="font-mono text-xs text-blue-400">{complaint.complaintNumber}</p><p className="mt-1 text-xs text-slate-500">{titleCase(complaint.category)}</p></div><ComplaintStatusBadge status={complaint.status} /></button>) : <p className="py-4 text-sm text-slate-500">No visible complaints.</p>}</div>
                   </section>
@@ -1782,7 +1766,7 @@ export default function OrdersPage() {
 
                   <section className="rounded-xl border border-slate-800 bg-slate-950 p-4">
                     <div className="flex items-center justify-between gap-3"><div><h4 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Suggestions</h4><p className="mt-1 text-xs text-slate-600">{selectedOrderSuggestions.length} recorded</p></div><Button size="sm" variant="outline" onClick={() => setLocation(`/feedback?order=${selectedOrder.id}&action=suggestion`)}><Lightbulb className="mr-2 h-4 w-4" />Add Suggestion</Button></div>
-                    <div className="mt-4 space-y-2">{selectedOrderSuggestions.length ? selectedOrderSuggestions.slice(0, 4).map(suggestion => <button key={suggestion.id} onClick={() => openNestedDrawer({ kind: "suggestion", id: suggestion.id })} className="flex w-full items-center justify-between rounded-lg border border-slate-800 bg-slate-900 p-3 text-left hover:border-slate-700"><div><p className="font-mono text-xs text-blue-400">{suggestion.suggestionNumber}</p><p className="mt-1 text-xs text-slate-500">Client suggestion</p></div><Badge className="bg-blue-500/10 text-blue-300">{titleCase(suggestion.status)}</Badge></button>) : <p className="py-4 text-sm text-slate-500">No suggestions recorded.</p>}</div>
+                    <div className="mt-4 space-y-2">{selectedOrderSuggestions.length ? selectedOrderSuggestions.slice(0, 4).map(suggestion => <button key={suggestion.id} onClick={() => openNestedDrawer({ kind: "suggestion", id: suggestion.id })} className="flex w-full items-center justify-between rounded-lg border border-slate-800 bg-slate-900 p-3 text-left hover:border-slate-700"><div><p className="font-mono text-xs text-blue-400">{suggestion.suggestionNumber}</p><p className="mt-1 text-xs text-slate-500">Client suggestion</p></div><SuggestionStatusBadge status={suggestion.status} /></button>) : <p className="py-4 text-sm text-slate-500">No suggestions recorded.</p>}</div>
                   </section>
                 </div>
               )}

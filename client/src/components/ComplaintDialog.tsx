@@ -18,6 +18,16 @@ export const complaintCategoryLabels: Record<(typeof complaintCategories)[number
   unprofessional_behavior: "Unprofessional Behavior", process_policy_violation: "Process / Policy Violation",
   unauthorized_commitment: "Unauthorized Commitment", other: "Other",
 };
+const clientComplaintCategoryKeys = new Set([
+  "communication_issue",
+  "slow_response",
+  "instructions_not_followed",
+  "revision_handling_issue",
+  "unprofessional_behavior",
+  "process_policy_violation",
+  "unauthorized_commitment",
+  "other",
+]);
 
 type Props = { order: OrderWithServices | null; orders?: OrderWithServices[]; open: boolean; onOpenChange: (open: boolean) => void };
 const errorText = (error: Error) => error.message.match(/"message":"([^"]+)"/)?.[1] || "Check the complaint details and try again.";
@@ -33,7 +43,8 @@ export function ComplaintDialog({ order, orders = [], open, onOpenChange }: Prop
   const [preview, setPreview] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const { data: categoryConfigs = [] } = useQuery<ComplaintCategoryConfig[]>({ queryKey: ["/api/complaint-categories"], staleTime: 300000 });
-  const availableCategories = categoryConfigs.length ? categoryConfigs.filter(item => item.isActive) : complaintCategories.map((key, i) => ({ id: -i - 1, key, label: complaintCategoryLabels[key], isActive: true, sortOrder: i, createdAt: null }));
+  const availableCategories = (categoryConfigs.length ? categoryConfigs.filter(item => item.isActive) : complaintCategories.map((key, i) => ({ id: -i - 1, key, label: complaintCategoryLabels[key], isActive: true, sortOrder: i, createdAt: null })))
+    .filter(item => !isDesigner || clientComplaintCategoryKeys.has(item.key));
   const eligibleOrders = useMemo(
     () => orders.filter(item => item.assignedToId && (!isDesigner || item.assignedToId === user?.id)),
     [orders, isDesigner, user?.id],
@@ -83,11 +94,11 @@ export function ComplaintDialog({ order, orders = [], open, onOpenChange }: Prop
   };
   const canSubmit = Boolean(selectedOrder?.assignedToId && category && description.trim());
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="bg-slate-900 border-slate-800 text-white sm:max-w-lg max-h-[90vh] overflow-y-auto">
-    <DialogHeader><DialogTitle>New Complaint</DialogTitle><DialogDescription className="text-slate-400">Link a clear account of the issue to an assigned order.</DialogDescription></DialogHeader>
+    <DialogHeader><DialogTitle>New Complaint</DialogTitle><DialogDescription className="text-slate-400">{isDesigner ? "Report a client issue from one of your assigned orders." : "Link a clear account of the issue to an assigned order."}</DialogDescription></DialogHeader>
     <div className="space-y-5 py-2">
       {orders.length > 0 && <div className="space-y-2"><Label htmlFor="complaint-order">Order</Label><Select value={selectedOrderId} onValueChange={setSelectedOrderId}><SelectTrigger id="complaint-order" className="bg-slate-950 border-slate-700"><SelectValue placeholder="Select an eligible order" /></SelectTrigger><SelectContent>{eligibleOrders.map(item => <SelectItem key={item.id} value={String(item.id)}>#{item.orderNumber || item.id} · {item.clientName} · {item.assignee?.name || "Assigned designer"}</SelectItem>)}</SelectContent></Select></div>}
        {!selectedOrder ? <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200 flex gap-3"><AlertTriangle className="w-5 h-5 shrink-0" />Select an eligible order with an assigned designer.</div> :
-         <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-300">Complaint against <span className="font-medium text-white">{isDesigner ? selectedOrder.clientName : (selectedOrder.assignee?.name || "Assigned designer")}</span></div>}
+          <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-300">Complaint against <span className="font-medium text-white">{isDesigner ? selectedOrder.clientName : (selectedOrder.assignee?.name || "Assigned designer")}</span><span className="ml-1 text-xs text-slate-500">({isDesigner ? "Client" : "Designer"})</span></div>}
       <div className="space-y-2"><Label htmlFor="complaint-category">Category</Label><Select value={category} onValueChange={setCategory}><SelectTrigger id="complaint-category" className="bg-slate-950 border-slate-700"><SelectValue placeholder="Select a category" /></SelectTrigger><SelectContent>{availableCategories.map(item => <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>)}</SelectContent></Select></div>
       <div className="space-y-2"><Label htmlFor="complaint-description">Description</Label><Textarea id="complaint-description" value={description} onChange={e => setDescription(e.target.value)} placeholder="Describe what happened and include the relevant facts." rows={5} maxLength={5000} className="bg-slate-950 border-slate-700 resize-none" /><p className="text-xs text-slate-500">{description.length}/5000</p></div>
       <div className="space-y-2"><Label htmlFor="complaint-evidence">Evidence <span className="text-slate-500">(optional)</span></Label><input ref={inputRef} id="complaint-evidence" type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={e => onFile(e.target.files?.[0])} />

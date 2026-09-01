@@ -547,21 +547,27 @@ export default function DashboardPage() {
 
   // Designer Dashboard
   if (isDesigner) {
-    const designerOrders = orders || [];
+    const designerOrders = approvedOrders;
     const designerCompleted = designerOrders.filter(order => order.status === "ready" || order.status === "delivered");
     const designerActive = designerOrders.filter(order => order.status === "new" || order.status === "working");
     const designerNewComplaints = Math.max(0, (dashboardStats?.complaints?.all || 0) - (dashboardStats?.complaints?.confirmed || 0) - (dashboardStats?.complaints?.dismissed || 0) - (dashboardStats?.complaints?.resolved || 0) - (dashboardStats?.complaints?.refund || 0));
+    const designerAttention = [
+      { label: "New orders assigned", value: designerOrders.filter(order => order.status === "new").length, tone: "warning" as const },
+      { label: "Confirmed complaints", value: dashboardStats?.complaints?.confirmed ?? 0, tone: "danger" as const },
+      { label: "Orders ready to deliver", value: designerOrders.filter(order => order.status === "ready").length, tone: "success" as const },
+    ].filter(item => item.value > 0);
+    const recentDesignerOrders = [...designerOrders].sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()).slice(0, 6);
     return (
       <div className="crm-page space-y-5">
-        <PageHeader eyebrow="Operations overview" title="My Dashboard" description={`Welcome back, ${user?.name}. Here are your assigned orders.`} />
+        <PageHeader eyebrow="My workspace" title="Designer Dashboard" description="Track assigned client work, feedback and service quality." actions={<div className="text-right"><p className="text-[10px] font-bold uppercase tracking-[.13em] text-slate-500">Today</p><p className="mt-1 text-sm font-medium text-slate-200">{format(new Date(), "MMM dd, yyyy")}</p></div>} />
 
         <section className="space-y-3">
           <DashboardSectionHeading icon={Activity} title="Quick Overview" description="Your assigned production workload." />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <CRMMetricCard label="Today's orders" value={todayOrders.length} icon={Calendar} testId="stat-today-orders" />
             <CRMMetricCard label="Active orders" value={designerActive.length} icon={Activity} tone="warning" testId="stat-active-orders" />
+            <CRMMetricCard label="New orders" value={designerOrders.filter(order => order.status === "new").length} icon={Clock} tone="warning" testId="stat-new-orders" />
             <CRMMetricCard label="Completed this month" value={designerCompleted.filter(order => new Date(order.createdAt!) >= monthStart).length} icon={CheckCircle2} tone="success" testId="stat-monthly-completed" />
-            <CRMMetricCard label="Open case records" value={designerNewComplaints} icon={FileWarning} tone="danger" onClick={() => setLocation("/complaints")} testId="stat-open-cases" />
+            <CRMMetricCard label="Confirmed complaints" value={dashboardStats?.complaints?.confirmed ?? 0} icon={FileWarning} tone="danger" onClick={() => setLocation("/complaints")} testId="stat-confirmed-complaints" />
           </div>
         </section>
 
@@ -578,16 +584,14 @@ export default function DashboardPage() {
           </SectionCard>
           <SectionCard title="Needs Attention" eyebrow="Your queue" description="Items that need a response from you.">
             <div className="p-4">
-              <DashboardRow label="New case records" value={designerNewComplaints} tone={designerNewComplaints ? "danger" : "success"} note="Complaints filed by you or about your assigned work" />
-              <DashboardRow label="Orders waiting to start" value={designerOrders.filter(order => order.status === "new").length} tone="warning" />
-              <DashboardRow label="Orders ready to deliver" value={designerOrders.filter(order => order.status === "ready").length} tone="success" />
+              {designerAttention.length ? <div>{designerAttention.map(item => <DashboardRow key={item.label} label={item.label} value={item.value} tone={item.tone} />)}</div> : <EmptyState title="Nothing requires attention." description="Your assigned queue is clear." icon={CheckCircle2} />}
               <Button variant="outline" className="mt-4 w-full" onClick={() => setLocation("/orders")}>Open assigned orders <ArrowUpRight className="ml-2 h-4 w-4" /></Button>
             </div>
           </SectionCard>
         </section>
-        <SectionCard title="Recent Assigned Orders" eyebrow="Production history" description="Your latest order assignments.">
+        <SectionCard title="Recent Activity" eyebrow="Production history" description="Latest activity from your assigned orders.">
           <div className="p-4">
-            {designerOrders.length ? <div className="space-y-1">{designerOrders.slice(0, 6).map(order => <button key={order.id} type="button" onClick={() => setLocation(`/orders?order=${encodeURIComponent(order.orderNumber || String(order.id))}`)} className="flex w-full items-center justify-between gap-4 rounded-lg px-2 py-3 text-left transition-colors hover:bg-cyan-400/[.04]"><span className="min-w-0"><span className="block truncate font-mono text-xs text-cyan-300">{order.orderNumber || `#${order.id}`}</span><span className="mt-1 block truncate text-sm text-slate-200">{order.clientName}</span></span><span className="shrink-0 text-right text-xs text-slate-500">{titleCase(order.status)}<span className="block">{format(new Date(order.createdAt!), "MMM dd")}</span></span></button>)}</div> : <EmptyState title="No orders assigned yet" description="Assigned production work will appear here." icon={ShoppingCart} />}
+            {recentDesignerOrders.length ? <div className="space-y-1">{recentDesignerOrders.map(order => <button key={order.id} type="button" onClick={() => setLocation(`/orders?order=${encodeURIComponent(order.orderNumber || String(order.id))}`)} className="flex w-full items-center justify-between gap-4 rounded-lg px-2 py-3 text-left transition-colors hover:bg-cyan-400/[.04]"><span className="min-w-0"><span className="block truncate font-mono text-xs text-cyan-300">{order.orderNumber || `#${order.id}`}</span><span className="mt-1 block truncate text-sm text-slate-200">{order.clientName}</span></span><span className="shrink-0 text-right text-xs text-slate-500">{titleCase(order.status)}<span className="block">{format(new Date(order.createdAt!), "MMM dd")}</span></span></button>)}</div> : <EmptyState title="No assigned activity yet" description="Assigned production work will appear here." icon={ShoppingCart} />}
           </div>
         </SectionCard>
       </div>
@@ -596,33 +600,49 @@ export default function DashboardPage() {
 
   // Support Dashboard
   if (isSupport) {
-    const supportOrders = orders || [];
+    const supportOrders = approvedOrders;
     const supportNewComplaints = Math.max(0, (dashboardStats?.complaints?.all || 0) - (dashboardStats?.complaints?.confirmed || 0) - (dashboardStats?.complaints?.dismissed || 0) - (dashboardStats?.complaints?.resolved || 0) - (dashboardStats?.complaints?.refund || 0));
+    const supportActive = supportOrders.filter(order => order.status === "new" || order.status === "working");
+    const supportCompleted = supportOrders.filter(order => order.status === "ready" || order.status === "delivered");
+    const supportAttention = [
+      { label: "New case records", value: supportNewComplaints, href: "/complaints", tone: "warning" as const },
+      { label: "Pending payment orders", value: supportOrders.filter(order => order.paymentStatus === "pending").length, href: "/payments", tone: "danger" as const },
+      { label: "Orders waiting to start", value: supportOrders.filter(order => order.status === "new").length, href: "/orders", tone: "warning" as const },
+    ].filter(item => item.value > 0);
+    const recentSupportOrders = [...supportOrders].sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()).slice(0, 6);
     return (
       <div className="crm-page space-y-5">
-        <PageHeader eyebrow="Operations overview" title="Support Dashboard" description={`Welcome back, ${user?.name}. Here's an overview of your orders.`} />
+        <PageHeader eyebrow="Client operations" title="Support Dashboard" description="Manage client orders, feedback and service-related activity." actions={<div className="text-right"><p className="text-[10px] font-bold uppercase tracking-[.13em] text-slate-500">Today</p><p className="mt-1 text-sm font-medium text-slate-200">{format(new Date(), "MMM dd, yyyy")}</p></div>} />
 
         <section className="space-y-3">
           <DashboardSectionHeading icon={Activity} title="Quick Overview" description="Operational records available to Support." />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <CRMMetricCard label="Today's orders" value={todayOrders.length} icon={Calendar} testId="stat-today-orders" />
-            <CRMMetricCard label="Orders this month" value={monthlyOrders.length} icon={ShoppingCart} testId="stat-monthly-orders" />
-            <CRMMetricCard label="Pending payment" value={supportOrders.filter(order => order.paymentStatus === "pending").length} icon={Clock} tone="warning" testId="stat-pending-payment" />
-            <CRMMetricCard label="Open case records" value={supportNewComplaints} icon={FileWarning} tone="danger" onClick={() => setLocation("/complaints")} testId="stat-open-cases" />
+            <CRMMetricCard label="Orders handled" value={supportOrders.length} icon={ShoppingCart} testId="stat-orders-handled" />
+            <CRMMetricCard label="Active orders" value={supportActive.length} icon={Activity} tone="warning" testId="stat-active-orders" />
+            <CRMMetricCard label="Reviews recorded" value={feedbackStats?.reviews.all ?? 0} icon={MessageSquareHeart} onClick={() => openFeedback("reviews")} testId="stat-feedback-reviews" />
+            <CRMMetricCard label="Complaints filed" value={dashboardStats?.complaints?.all ?? 0} icon={FileWarning} tone="danger" onClick={() => setLocation("/complaints")} testId="stat-complaints-filed" />
           </div>
         </section>
 
         <ClientExperienceGrid stats={feedbackStats} role={user?.role} onOpenFeedback={openFeedback} />
-        <ComplaintStatsGrid stats={dashboardStats?.complaints} totalTitle="Complaints Filed" />
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <SectionCard title="Order Operations" eyebrow="Support queue" description="Current order status across your operational view.">
-            <div className="p-4"><DashboardRow label="New" value={supportOrders.filter(order => order.status === "new").length} tone="warning" /><DashboardRow label="In progress" value={supportOrders.filter(order => order.status === "working").length} /><DashboardRow label="Ready" value={readyOrders.length} tone="success" /><DashboardRow label="Delivered" value={deliveredOrders.length} tone="success" /><DashboardRow label="Canceled" value={canceledOrders.length} tone="danger" /></div>
+            <div className="p-4"><DashboardRow label="Orders handled this month" value={monthlyOrders.length} /><DashboardRow label="Active" value={supportActive.length} tone="warning" /><DashboardRow label="Completed / delivered" value={supportCompleted.length} tone="success" /><DashboardRow label="Canceled" value={canceledOrders.length} tone="danger" /></div>
           </SectionCard>
           <SectionCard title="Payment Operations" eyebrow="Support queue" description="Payment status without exposing finance balances.">
-            <div className="p-4"><DashboardRow label="Paid orders" value={supportOrders.filter(order => order.paymentStatus === "paid").length} tone="success" /><DashboardRow label="Pending orders" value={supportOrders.filter(order => order.paymentStatus === "pending").length} tone="warning" /><DashboardRow label="Open case records" value={supportNewComplaints} tone={supportNewComplaints ? "danger" : "success"} /><Button variant="outline" className="mt-4 w-full" onClick={() => setLocation("/payments")}>Open payment records <ArrowUpRight className="ml-2 h-4 w-4" /></Button></div>
+            <div className="p-4"><DashboardRow label="Paid orders" value={supportOrders.filter(order => order.paymentStatus === "paid").length} tone="success" /><DashboardRow label="Pending orders" value={supportOrders.filter(order => order.paymentStatus === "pending").length} tone="danger" /><DashboardRow label="Resolved complaints" value={dashboardStats?.complaints?.resolved ?? 0} tone="success" /><Button variant="outline" className="mt-4 w-full" onClick={() => setLocation("/payments")}>Open payment records <ArrowUpRight className="ml-2 h-4 w-4" /></Button></div>
           </SectionCard>
         </div>
+        <ComplaintStatsGrid stats={dashboardStats?.complaints} totalTitle="Complaints Filed" />
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <SectionCard title="Needs Attention" eyebrow="Action queue" description="Open items that may need a response.">
+            <div className="p-4">{supportAttention.length ? <div>{supportAttention.map(item => <button key={item.label} type="button" onClick={() => setLocation(item.href)} className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-3 text-left transition-colors hover:bg-cyan-400/[.04]"><span className="text-sm text-slate-300">{item.label}</span><span className={cn("font-mono text-lg", item.tone === "danger" ? "text-rose-300" : "text-amber-300")}>{item.value}</span></button>)}</div> : <EmptyState title="Nothing urgent requires attention." description="The support queue is clear." icon={CheckCircle2} />}</div>
+          </SectionCard>
+          <SectionCard title="Recent Activity" eyebrow="Client operations" description="Latest orders in your authorized support view.">
+            <div className="p-4">{recentSupportOrders.length ? <div className="space-y-1">{recentSupportOrders.map(order => <button key={order.id} type="button" onClick={() => setLocation(`/orders?order=${encodeURIComponent(order.orderNumber || String(order.id))}`)} className="flex w-full items-center justify-between gap-4 rounded-lg px-2 py-3 text-left transition-colors hover:bg-cyan-400/[.04]"><span className="min-w-0"><span className="block truncate font-mono text-xs text-cyan-300">{order.orderNumber || `#${order.id}`}</span><span className="mt-1 block truncate text-sm text-slate-200">{order.clientName}</span></span><span className="shrink-0 text-right text-xs text-slate-500">{titleCase(order.status)}<span className="block">{format(new Date(order.createdAt!), "MMM dd")}</span></span></button>)}</div> : <EmptyState title="No recent activity" description="Support order activity will appear here." icon={Activity} />}</div>
+          </SectionCard>
+        </section>
       </div>
     );
   }

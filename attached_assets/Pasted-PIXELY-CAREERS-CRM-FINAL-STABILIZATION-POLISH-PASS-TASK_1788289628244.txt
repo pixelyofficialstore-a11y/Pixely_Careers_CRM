@@ -1,0 +1,1375 @@
+PIXELY CAREERS CRM
+FINAL STABILIZATION & POLISH PASS
+
+TASK:
+1. Fix semantic data/status coloring without making CRM overly colorful.
+2. Polish Orders tables and financial data presentation.
+3. Improve Designer Dashboard layout/spacing.
+4. Improve Support Dashboard layout/spacing.
+5. Complete Designer → Client Complaint functionality.
+6. Perform final role/security isolation tests.
+7. Preserve the current Pixely CRM theme and all existing functionality.
+
+==================================================
+CRITICAL INSTRUCTION
+==================================================
+
+THIS IS A FINAL REFINEMENT PASS.
+
+The current dark navy + Pixely cyan CRM theme is APPROVED.
+
+DO NOT redesign the theme again.
+
+DO NOT:
+- change the global visual direction
+- rebuild pages
+- change authentication
+- replace Supabase
+- reset database
+- change Cloudinary
+- rewrite finance logic
+- change approved Complaint workflows
+- change Review logic
+- change Suggestion logic
+- break Notifications
+- break Orders
+- break Payments
+- break Analytics
+- remove existing data
+- perform destructive migrations
+
+Focus on:
+
+CONSISTENCY
+SPACING
+SEMANTIC COLORS
+ROLE DASHBOARDS
+SECURITY
+FINAL POLISH
+
+==================================================
+SUPABASE SAFETY
+==================================================
+
+Supabase is already connected and working.
+
+DO NOT change:
+
+- Supabase URL
+- credentials
+- connection
+- existing tables unnecessarily
+- existing columns unnecessarily
+- existing records
+- existing relationships unnecessarily
+- working RLS policies unnecessarily
+
+FIRST inspect the existing schema.
+
+If a field required for Designer → Client Complaints already exists:
+
+USE IT.
+
+If not:
+
+add ONLY the minimum missing column/relationship required.
+
+Use additive safe migrations only.
+
+No DROP.
+No RESET.
+No destructive migration.
+
+==================================================
+PART 1 — FIX STATUS / DATA COLORING
+==================================================
+
+The CRM now has the right base theme, but some data/status coloring needs refinement.
+
+We DO want semantic colors for important business states.
+
+We DO NOT want every field, amount and label to use a different bright color.
+
+Use the Pixely dark theme as the default.
+
+Most normal information should remain:
+
+- white
+- muted blue-gray
+- Pixely cyan for links/interactions
+
+Semantic colors should only highlight states that actually matter.
+
+==================================================
+STATUS COLOR SYSTEM
+==================================================
+
+Use one consistent global StatusBadge component.
+
+--------------------------------
+GREEN — COMPLETED / POSITIVE
+--------------------------------
+
+Use green for:
+
+Delivered
+Ready
+Resolved
+Implemented
+Approved
+Paid
+Payment Received
+Completed
+
+Examples:
+
+Payment:
+Paid → Green
+
+Advance Payment:
+Approved → Green
+
+Order:
+Ready → Green
+Delivered → Green
+
+Complaint:
+Resolved → Green
+
+Suggestion:
+Implemented → Green
+
+--------------------------------
+RED — PROBLEM / MONEY DUE / NEGATIVE
+--------------------------------
+
+Use red for:
+
+Canceled
+Refunded
+Rejected
+Payment Pending where payment is currently due / requires action
+Outstanding remaining payment
+Critical finance/action states
+
+Examples:
+
+Payment:
+Pending → Red
+
+Remaining Balance:
+Rs1,500 → Red
+
+Order:
+Canceled → Red
+
+Complaint:
+Refunded → Red
+
+Suggestion:
+Rejected → Red
+
+IMPORTANT:
+
+Do not use extremely bright neon red.
+
+Use the existing CRM semantic red styling.
+
+--------------------------------
+YELLOW / AMBER — WAITING / IN PROGRESS
+--------------------------------
+
+Use amber/yellow for:
+
+New
+Awaiting action
+Confirmed Complaint
+Processing
+Pending operational state where it is not specifically money due
+
+Examples:
+
+Order:
+New → Amber
+
+Complaint:
+New → Amber
+Confirmed → Amber
+
+Payment verification waiting for Admin:
+Amber or Red depending on existing payment-action language.
+
+For the Payment column specifically:
+
+If client payment is still outstanding:
+RED.
+
+--------------------------------
+GRAY / SLATE — NEUTRAL
+--------------------------------
+
+Use gray/slate for:
+
+Dismissed
+Inactive
+Disabled
+Not applicable
+No rating
+Closed neutral states
+
+==================================================
+PART 2 — FINANCIAL VALUE COLORS
+==================================================
+
+In Orders tables / Order Details:
+
+TOTAL BILL
+Use normal primary white text.
+
+Example:
+Rs3,000
+
+ADVANCE
+If received/approved:
+Green.
+
+Example:
+Rs1,500
+
+REMAINING
+If greater than 0 and still receivable:
+Red.
+
+Example:
+Rs1,500
+
+If remaining = 0:
+Use green or muted positive text.
+
+Example:
+Rs0
+
+Do not color Total Bill blue/purple/red.
+
+Total Bill is neutral information.
+
+==================================================
+CANCELED ORDERS
+==================================================
+
+If advance refunded:
+
+Original Advance remains historically visible.
+
+Use:
+
+strikethrough
+Refunded badge
+
+Net collected = 0.
+
+If advance retained:
+
+Advance remains green/neutral positive because money was retained.
+
+Use:
+
+Retained badge.
+
+Remaining should be canceled/struck and no longer counted as receivable.
+
+==================================================
+PART 3 — DO NOT OVER-COLOR CRM
+==================================================
+
+Current theme should remain primarily:
+
+dark navy
+white
+muted blue-gray
+Pixely cyan
+
+Colors such as:
+
+green
+red
+amber
+
+must only communicate meaning.
+
+Do NOT make:
+
+Client names
+Designer names
+Order IDs
+Dates
+Normal totals
+Labels
+Descriptions
+
+randomly colorful.
+
+Order IDs / clickable record IDs may remain Pixely cyan/blue.
+
+==================================================
+PART 4 — ORDERS TABLE FINAL VISUAL POLISH
+==================================================
+
+Inspect BOTH:
+
+Today's Orders
+Monthly Orders
+
+They must use exactly the same design system.
+
+Improve:
+
+- vertical alignment
+- row spacing
+- column spacing
+- status alignment
+- finance values
+- actions
+- designer avatar alignment
+- consistent dropdown height
+- responsive horizontal scrolling
+
+==================================================
+ORDER TABLE FINANCE EXAMPLE
+==================================================
+
+Designer        Status       Adv. Payment       Payment       Total Bill       Advance       Remaining
+
+Syed Fareed     Ready        Approved           Pending       Rs1,500          Rs500         Rs1,000
+
+Visual rules:
+
+Ready:
+Green badge
+
+Approved:
+Green badge
+
+Pending:
+Red badge
+
+Total:
+White
+
+Advance:
+Green
+
+Remaining:
+Red
+
+==================================================
+PAID EXAMPLE
+==================================================
+
+Muhammad Anas   Delivered    Approved           Paid          Rs1,000          Rs1,000       Rs0
+
+Delivered:
+Green
+
+Approved:
+Green
+
+Paid:
+Green
+
+Advance:
+Green
+
+Remaining Rs0:
+Green or muted-positive
+
+==================================================
+PART 5 — DROPDOWN COLORING
+==================================================
+
+The dropdown surface itself should remain consistent dark navy.
+
+Do NOT color the whole dropdown box bright red/green.
+
+Only:
+
+status text
+small status chip
+icon/accent
+
+should carry semantic color.
+
+This keeps the CRM professional.
+
+==================================================
+PART 6 — TODAY / MONTHLY ORDERS TABS
+==================================================
+
+Current theme is close.
+
+Ensure both tabs use the shared Pixely segmented tab system.
+
+Selected:
+
+subtle cyan/turquoise tinted background
+thin cyan border/accent
+light/cyan text
+
+Unselected:
+
+dark surface
+muted text
+
+No saturated royal blue.
+
+Apply same tab styling to:
+
+Today's Orders / Monthly Orders
+Reviews / Suggestions
+Analytics period controls
+Order Detail tabs
+Designer Detail tabs
+
+==================================================
+PART 7 — SUPPORT DASHBOARD FINAL REDESIGN/POLISH
+==================================================
+
+Inspect the CURRENT Support Dashboard.
+
+Do not simply copy Admin Dashboard data.
+
+Use the SAME:
+
+- page spacing
+- cards
+- typography
+- section hierarchy
+- surfaces
+- Pixely colors
+- grid
+- Needs Attention rows
+- Recent Activity design
+
+as Admin Dashboard.
+
+Only the DATA should differ.
+
+==================================================
+SUPPORT DASHBOARD STRUCTURE
+==================================================
+
+Use:
+
+1. Header
+2. Quick Overview
+3. Client Operations
+4. Client Experience
+5. Needs Attention
+6. Recent Activity
+
+==================================================
+SUPPORT HEADER
+==================================================
+
+CLIENT OPERATIONS
+
+Support Dashboard
+
+Manage client orders, feedback and service-related activity.
+
+Right side:
+Current date
+
+Keep spacing identical to Admin Dashboard.
+
+==================================================
+SUPPORT QUICK OVERVIEW
+==================================================
+
+Use 4 balanced cards.
+
+Recommended, based on existing data:
+
+Orders Handled
+
+Active Orders
+
+Reviews Recorded
+
+Complaints Filed
+
+If another existing metric is more useful based on current Support workflow, use it.
+
+Do not invent unsupported metrics.
+
+==================================================
+SUPPORT CLIENT OPERATIONS
+==================================================
+
+Use a balanced summary section showing:
+
+Orders handled this month
+
+Active
+
+Completed / Delivered
+
+Canceled
+
+Use actual authorized orders only.
+
+==================================================
+SUPPORT CLIENT EXPERIENCE
+==================================================
+
+Show:
+
+Reviews Recorded
+
+Suggestions Recorded
+
+Complaints Filed
+
+Resolved Complaints related to their cases where permitted
+
+Do not expose Admin-only information.
+
+==================================================
+SUPPORT NEEDS ATTENTION
+==================================================
+
+Use compact rows.
+
+Possible items:
+
+Complaint I Filed Updated
+
+Client Order Requires Action
+
+Payment/Order item requiring Support action
+
+Do not create artificial tasks.
+
+==================================================
+SUPPORT DASHBOARD SPACING
+==================================================
+
+Specifically audit:
+
+- section gaps
+- card widths
+- card heights
+- left/right alignment
+- row alignment
+- page margins
+- header spacing
+- text baselines
+
+Support Dashboard must look like it was designed at the SAME TIME as Admin Dashboard.
+
+==================================================
+PART 8 — DESIGNER DASHBOARD FINAL REDESIGN/POLISH
+==================================================
+
+Inspect the CURRENT Designer Dashboard.
+
+Bring it fully into the same visual system as Admin.
+
+Do not expose agency-wide data.
+
+==================================================
+DESIGNER DASHBOARD STRUCTURE
+==================================================
+
+Use:
+
+1. Header
+2. Quick Overview
+3. My Orders
+4. Client Experience
+5. Needs Attention
+6. Recent Activity
+
+==================================================
+DESIGNER HEADER
+==================================================
+
+MY WORKSPACE
+
+Designer Dashboard
+
+Track assigned client work, feedback and service quality.
+
+Right:
+Current date
+
+==================================================
+DESIGNER QUICK OVERVIEW
+==================================================
+
+Use 4 balanced cards.
+
+Recommended:
+
+Active Orders
+
+Pending / New Orders
+
+Completed This Month
+
+Complaints Against Me
+
+Only use genuine existing data.
+
+==================================================
+DESIGNER MY ORDERS
+==================================================
+
+Compact summary:
+
+Active
+
+Ready / Delivered
+
+Canceled
+
+Total handled during selected/current period
+
+Do not show agency-wide totals.
+
+==================================================
+DESIGNER CLIENT EXPERIENCE
+==================================================
+
+Show:
+
+Average Client Rating
+
+Reviews Received
+
+Confirmed Complaints Against Me
+
+Suggestions Related to My Orders
+
+Optional compact bottom metrics:
+
+Facebook Reviews
+
+Video Testimonials
+
+Resolved Complaints
+
+Implemented Suggestions
+
+Use EXACT same alignment system as Admin Client Experience.
+
+==================================================
+DESIGNER NEEDS ATTENTION
+==================================================
+
+Possible rows:
+
+New Order Assigned
+
+Complaint Against Me
+
+Client Complaint I Filed Updated
+
+Order needing work
+
+Relevant payment/order update
+
+Only show real actionable data.
+
+==================================================
+DESIGNER RECENT ACTIVITY
+==================================================
+
+Use authorized events only:
+
+Order assigned
+
+Order status changed
+
+Review recorded
+
+Complaint updated
+
+Suggestion added
+
+Payment approved
+
+Do not leak another Designer's/client's private records.
+
+==================================================
+PART 9 — DESIGNER CAN FILE COMPLAINT AGAINST CLIENT
+==================================================
+
+This is REQUIRED.
+
+Designer must be able to create a Complaint about a Client connected to an Order they are assigned to.
+
+Do not create a separate Complaint module.
+
+Use existing Complaints system.
+
+==================================================
+COMPLAINT TARGET TYPES
+==================================================
+
+Complaint should support:
+
+Designer / Team Member
+
+Client
+
+Use the existing schema if possible.
+
+If missing, add minimum safe field such as:
+
+complaint_target_type
+
+with values:
+
+user
+client
+
+or equivalent consistent with current architecture.
+
+Do not change existing Complaint IDs.
+
+==================================================
+DESIGNER → CLIENT COMPLAINT FORM
+==================================================
+
+Designer opens an Order they are assigned to.
+
+Raise Complaint.
+
+Allow:
+
+Complaint About:
+Client
+
+Client should automatically be derived from the related Order.
+
+Do not allow Designer to type arbitrary client name/id.
+
+Fields:
+
+Related Order
+
+Client
+
+Category
+
+Complaint Details
+
+Evidence Screenshot
+
+==================================================
+CLIENT COMPLAINT CATEGORIES
+==================================================
+
+Use clear useful categories.
+
+Suggested examples:
+
+Communication Issue
+
+Repeated Requirement Changes
+
+Missing Information
+
+Unprofessional Behavior
+
+Out-of-Scope Request
+
+Payment / Cooperation Issue
+
+Other
+
+Reuse existing categories where applicable.
+
+Do not create too many categories.
+
+==================================================
+PART 10 — CLIENT COMPLAINT SECURITY
+==================================================
+
+Designer may raise Client Complaint ONLY for Orders:
+
+assigned to that Designer
+or otherwise explicitly authorized to them.
+
+Server-side validation is mandatory.
+
+Changing order_id/client_id manually must NOT allow access.
+
+==================================================
+PART 11 — CLIENT COMPLAINT DOES NOT HURT DESIGNER ANALYTICS
+==================================================
+
+VERY IMPORTANT:
+
+A Complaint CREATED BY Designer AGAINST Client must NOT count as:
+
+Confirmed Complaint Against Designer
+
+Designer quality issue
+
+Designer negative performance metric
+
+Analytics must distinguish:
+
+complaint_target_type = client
+
+from:
+
+complaint_target_type = designer/user
+
+Only genuine complaints AGAINST the Designer should affect Designer complaint metrics.
+
+==================================================
+PART 12 — CLIENT COMPLAINT ADMIN MANAGEMENT
+==================================================
+
+Admin can view/manage Client Complaints.
+
+Admin may:
+
+Confirm
+
+Dismiss
+
+Resolve
+
+Use current Complaint workflow where appropriate.
+
+Do not expose Client Complaint management to unrelated employees.
+
+==================================================
+PART 13 — SUPPORT/DESIGNER DATA ISOLATION
+==================================================
+
+Perform a final serious permission audit.
+
+A Designer must NOT be able to see another Designer's unrelated client/order data.
+
+A Support user must NOT see data outside their existing authorized scope.
+
+Admin can see all.
+
+==================================================
+DESIGNER SECURITY RULE
+==================================================
+
+Designer can see:
+
+Their assigned Orders
+
+Their clients
+
+Reviews for their clients
+
+Suggestions related to their authorized Orders
+
+Complaints they created
+
+Complaints against them
+
+Client Complaints they created
+
+Designer cannot see:
+
+Another Designer's unrelated Orders
+
+Another Designer's client data
+
+Another Designer's Reviews
+
+Another Designer's Suggestions
+
+Another Designer's Complaints
+
+Admin Notes
+
+Reporter identity for complaint against them
+
+Admin management controls
+
+==================================================
+SUPPORT SECURITY RULE
+==================================================
+
+Respect current Support → Assigned Designers mapping.
+
+If Support is assigned specific Designers, inspect existing authorization.
+
+Support should only access:
+
+Orders/client records within their assigned/authorized operational scope
+
+plus Complaints they personally filed
+
+unless existing business rules intentionally grant wider visibility.
+
+Do not automatically grant all Support users company-wide client visibility.
+
+==================================================
+PART 14 — IDOR SECURITY TESTS
+==================================================
+
+Perform explicit tests.
+
+TEST 1:
+
+Login Designer A.
+
+Open authorized Order.
+
+Expected:
+success.
+
+Manually change URL/API ID to Designer B's unrelated Order.
+
+Expected:
+ACCESS DENIED.
+
+--------------------------------
+
+TEST 2:
+
+Designer A tries to request another Designer's Review ID.
+
+Expected:
+ACCESS DENIED.
+
+--------------------------------
+
+TEST 3:
+
+Designer A requests another Designer's Suggestion.
+
+Expected:
+ACCESS DENIED.
+
+--------------------------------
+
+TEST 4:
+
+Designer A requests unrelated Client Complaint.
+
+Expected:
+ACCESS DENIED.
+
+--------------------------------
+
+TEST 5:
+
+Designer attempts to create Client Complaint by manually sending unrelated order_id.
+
+Expected:
+SERVER REJECTS REQUEST.
+
+--------------------------------
+
+TEST 6:
+
+Designer tries to access Admin Notes API.
+
+Expected:
+NOT RETURNED / ACCESS DENIED.
+
+--------------------------------
+
+TEST 7:
+
+Designer opens Complaint against them.
+
+Expected:
+
+Complaint visible.
+
+Reported By identity NOT visible.
+
+--------------------------------
+
+TEST 8:
+
+Support user tries to access records outside assigned scope.
+
+Expected:
+ACCESS DENIED according to current Support assignment rules.
+
+==================================================
+PART 15 — FRONTEND SECURITY IS NOT ENOUGH
+==================================================
+
+Do not only hide records/buttons.
+
+Enforce permissions through:
+
+server/API authorization
+
+and existing Supabase/RLS where applicable.
+
+Do not disable RLS.
+
+Do not replace current working policies globally.
+
+Only add narrow missing policies if actually required.
+
+==================================================
+PART 16 — SIDEBAR / NOTIFICATION COUNTERS FINAL TEST
+==================================================
+
+Since Notifications were recently updated, verify them during final testing.
+
+Admin:
+
+Complaint badge =
+New actionable Complaints.
+
+Payment badge =
+Pending actionable payment approvals.
+
+Bell =
+Unread notifications.
+
+These three counts are separate concepts.
+
+Designer:
+
+Complaint badge only relevant to Designer.
+
+Support:
+
+Complaint badge only relevant to Support.
+
+Ensure no data leaking through badge numbers.
+
+==================================================
+PART 17 — FINAL DESIGN CONSISTENCY AUDIT
+==================================================
+
+Compare:
+
+Admin Dashboard
+
+Designer Dashboard
+
+Support Dashboard
+
+Orders
+
+Complaints
+
+Feedback
+
+Payments
+
+Analytics
+
+Team
+
+They should use the SAME:
+
+PageHeader
+
+MetricCard
+
+SectionCard
+
+StatusBadge
+
+SegmentedTabs
+
+DataTable
+
+Button styles
+
+Spacing
+
+Typography
+
+Accent colors
+
+Surfaces
+
+==================================================
+PART 18 — SUPPORT/DESIGNER MOBILE RESPONSIVENESS
+==================================================
+
+Test both dashboards at:
+
+Desktop
+
+Tablet
+
+Mobile
+
+Cards should:
+
+4 → 2 → 1/2 columns logically.
+
+No horizontal overflow.
+
+Needs Attention rows should wrap cleanly.
+
+==================================================
+PART 19 — FINAL COLOR QA
+==================================================
+
+Review screens visually.
+
+Ask:
+
+Is normal information mostly white/muted/cyan?
+
+Are only meaningful states green/red/amber?
+
+Are there unnecessary purple/blue/green colored blocks?
+
+If yes:
+simplify them.
+
+The CRM should NOT look overly colorful.
+
+==================================================
+PART 20 — SPECIFIC ORDER TABLE COLOR QA
+==================================================
+
+Check rows like:
+
+Status = New
+Amber
+
+Status = Ready
+Green
+
+Status = Delivered
+Green
+
+Status = Canceled
+Red
+
+Advance Payment = Approved
+Green
+
+Payment = Paid
+Green
+
+Payment = Pending
+Red
+
+Total Bill
+White
+
+Advance Received
+Green
+
+Remaining > 0
+Red
+
+Remaining = 0
+Green/muted positive
+
+Use this consistently on:
+
+Today's Orders
+
+Monthly Orders
+
+Order Details
+
+Finance summaries where appropriate.
+
+==================================================
+PART 21 — DISABLED USER DISPLAY
+==================================================
+
+On Team page:
+
+Active
+Green
+
+Disabled
+Red or muted-red
+
+Do not make role badges overly colorful.
+
+Role badges may use restrained colors:
+
+Admin:
+subtle purple if currently established
+
+Support:
+subtle blue
+
+Designer:
+subtle green
+
+Keep these muted.
+
+==================================================
+PART 22 — FINAL SPACING QA
+==================================================
+
+For Admin, Designer and Support Dashboard inspect:
+
+Top page padding
+
+Header-to-first-section gap
+
+Section title-to-card gap
+
+Card-to-card gap
+
+Column widths
+
+Bottom spacing
+
+Typography baselines
+
+No section should feel:
+
+too crowded
+
+or
+
+randomly empty.
+
+==================================================
+PART 23 — DO NOT ADD MORE FEATURES
+==================================================
+
+After completing this task:
+
+DO NOT invent additional modules.
+
+DO NOT redesign Analytics again.
+
+DO NOT change Dashboard structure again beyond spacing/polish needed for Designer/Support.
+
+DO NOT add composite performance scoring.
+
+DO NOT introduce unnecessary charts.
+
+This is a FINALIZATION pass.
+
+==================================================
+PART 24 — FINAL BUILD & REGRESSION TEST
+==================================================
+
+Test:
+
+Admin Dashboard
+
+Designer Dashboard
+
+Support Dashboard
+
+Orders Today
+
+Orders Monthly
+
+Order Details
+
+Create Order
+
+Order Status changes
+
+Payment statuses
+
+Payments page
+
+Complaints
+
+Designer → Client Complaint
+
+Complaint Details
+
+Reviews
+
+Suggestions
+
+Notifications
+
+Complaint badges
+
+Payment badges
+
+Team
+
+Analytics
+
+Client Case Report
+
+Supabase connection
+
+Cloudinary
+
+Nested drawers
+
+Permissions
+
+==================================================
+PART 25 — FINAL REPLIT REPORT
+==================================================
+
+When finished provide a concise report:
+
+1. Semantic color changes
+2. Order table changes
+3. Support Dashboard changes
+4. Designer Dashboard changes
+5. Client Complaint functionality
+6. Schema changes, if any
+7. Security tests performed
+8. Role-isolation results
+9. Notification/badge tests
+10. Build result
+
+Explicitly confirm:
+
+- Current Pixely theme was preserved.
+- CRM was not made overly colorful.
+- Pending payment is clearly highlighted.
+- Paid/received payment is clearly positive.
+- Remaining receivable is clearly highlighted.
+- Support Dashboard now matches Admin design quality.
+- Designer Dashboard now matches Admin design quality.
+- Designer can raise Complaint against their assigned client.
+- Client Complaints do not reduce Designer performance metrics.
+- Designer cannot access unrelated client/order data.
+- Support cannot access data outside authorized scope.
+- Admin Notes remain Admin-only.
+- Complaint reporter anonymity remains protected.
+- Existing Supabase connection and data were preserved.
+- No destructive database migration was performed.
+- Production build passes.
+
+==================================================
+FINAL PRODUCT STANDARD
+==================================================
+
+The final Pixely CRM should now feel FINISHED.
+
+Use Pixely cyan/navy as the core visual language.
+
+Use:
+
+GREEN only when something is successfully completed/received.
+
+RED only when something is canceled, refunded, rejected, outstanding or requires serious attention.
+
+AMBER only when something is new/waiting.
+
+Keep everything else calm and professional.
+
+Admin, Support and Designer should feel like they are using the SAME CRM.
+
+Only their permissions and operational information should differ.
+
+After this pass, avoid further broad UI restructuring and move forward to Production Team policies/rules.

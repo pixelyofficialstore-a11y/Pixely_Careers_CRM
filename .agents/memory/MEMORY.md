@@ -1,3 +1,4 @@
+- [Semantic status colors](semantic-status-colors.md) — shared badges carry business meaning; ordinary record fields stay white, muted, or Pixely cyan.
 - [Order PATCH role enforcement](order-patch-authorization.md) — admin owns order details; support is limited to operational status/assignment, designers to assigned production status.
 - [Notification delivery ownership](notification-delivery-ownership.md) — the server alone sends browser push; clients show only one in-app alert per incoming notification.
 - [Vite HMR periodic refresh](vite-hmr-reload-loop.md) — dev-preview reloads on Vite HMR reconnect after dev-server blips/restarts; NOT an app bug, absent in prod; do NOT set hmr.clientPort in middleware mode

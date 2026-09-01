@@ -45,6 +45,7 @@ import { cn } from "@/lib/utils";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/CRMPrimitives";
+import { PaymentStatusBadge } from "@/components/StatusBadge";
 
 interface PaymentVerification {
   id: number;
@@ -205,18 +206,7 @@ export default function PaymentsPage() {
     return o.status !== "canceled" && (o.remainingAmount || 0) > 0 && o.paymentStatus !== "paid";
   }) || [];
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "pending_confirmation":
-        return <Badge variant="outline" className="border-0 text-yellow-500"><Clock className="w-3 h-3 mr-1" /> Pending</Badge>;
-      case "approved":
-        return <Badge variant="outline" className="border-0 text-green-500"><CheckCircle2 className="w-3 h-3 mr-1" /> Approved</Badge>;
-      case "disapproved":
-        return <Badge variant="outline" className="border-0 text-red-500"><XCircle className="w-3 h-3 mr-1" /> Disapproved</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
+  const getStatusBadge = (status: string) => <PaymentStatusBadge status={status} />;
 
   const getTypeBadge = (type: string) => {
     switch (type) {
@@ -432,7 +422,7 @@ export default function PaymentsPage() {
                   </div>
                 </TableCell>
                 <TableCell>{getTypeBadge(payment.paymentType)}</TableCell>
-                <TableCell className="text-white font-medium">
+                <TableCell className="whitespace-nowrap text-white font-medium">
                   ₨{Math.round((payment.amount || 0) / 100).toLocaleString()}
                 </TableCell>
                 <TableCell>
