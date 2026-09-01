@@ -1,12 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { 
   ShoppingCart, 
   DollarSign, 
   ArrowUpRight,
-  ArrowUp,
-  ArrowDown,
   Clock,
   CheckCircle2,
   XCircle,
@@ -149,34 +147,13 @@ function CashFlowCard({
 function ComplaintStatsGrid({
   stats,
   totalTitle,
-  canReorder = false,
 }: {
   stats: NonNullable<DashboardStats["complaints"]> | undefined;
   totalTitle: string;
-  canReorder?: boolean;
 }) {
   const defaultOrder = ["all", "valid", "invalid", "resolved", "refund"] as const;
   type ComplaintMetric = typeof defaultOrder[number];
-  const [order, setOrder] = useState<ComplaintMetric[]>([...defaultOrder]);
   const values = stats ?? { all: 0, valid: 0, invalid: 0, resolved: 0, refund: 0 };
-
-  useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem("pixelcrm.dashboard.complaints.order");
-      if (!stored) return;
-      const parsed: unknown = JSON.parse(stored);
-      if (
-        Array.isArray(parsed) &&
-        parsed.length === defaultOrder.length &&
-        parsed.every((item): item is ComplaintMetric => typeof item === "string" && defaultOrder.includes(item as ComplaintMetric)) &&
-        new Set(parsed).size === defaultOrder.length
-      ) {
-        setOrder(parsed);
-      }
-    } catch {
-      // A corrupt or unavailable preference should never break the dashboard.
-    }
-  }, []);
 
   const metrics: Record<ComplaintMetric, {
     title: string;
@@ -228,37 +205,14 @@ function ComplaintStatsGrid({
     },
   };
 
-  const moveMetric = (metric: ComplaintMetric, direction: -1 | 1) => {
-    setOrder(current => {
-      const index = current.indexOf(metric);
-      const nextIndex = index + direction;
-      if (index < 0 || nextIndex < 0 || nextIndex >= current.length) return current;
-      const next = [...current];
-      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
-      try {
-        window.localStorage.setItem("pixelcrm.dashboard.complaints.order", JSON.stringify(next));
-      } catch {
-        // The visual order still works when browser storage is unavailable.
-      }
-      return next;
-    });
-  };
-
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2">
         <FileWarning className="w-5 h-5 text-red-400" />
         <h2 className="text-lg font-semibold text-white">Complaint Overview</h2>
-        </div>
-        {canReorder && (
-          <span className="text-xs text-slate-500">
-            Hover a row to reorder
-          </span>
-        )}
       </div>
       <div className="space-y-3">
-        {order.map((metricKey, index) => {
+        {defaultOrder.map((metricKey) => {
           const metric = metrics[metricKey];
           const Icon = metric.icon;
           return (
@@ -278,30 +232,6 @@ function ComplaintStatsGrid({
               </div>
               <div className="flex shrink-0 items-center gap-3">
                 <p className={cn("text-2xl font-bold font-display", metric.valueClass)}>{metric.value}</p>
-                {canReorder && (
-                  <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                    <button
-                      type="button"
-                      aria-label={`Move ${metric.title} up`}
-                      title={`Move ${metric.title} up`}
-                      disabled={index === 0}
-                      onClick={() => moveMetric(metricKey, -1)}
-                      className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-30"
-                    >
-                      <ArrowUp className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`Move ${metric.title} down`}
-                      title={`Move ${metric.title} down`}
-                      disabled={index === order.length - 1}
-                      onClick={() => moveMetric(metricKey, 1)}
-                      className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-30"
-                    >
-                      <ArrowDown className="h-4 w-4" />
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
           );
@@ -616,7 +546,7 @@ export default function DashboardPage() {
         />
       </div>
 
-      <ComplaintStatsGrid stats={dashboardStats?.complaints} totalTitle="All Complaints" canReorder={isAdmin} />
+      <ComplaintStatsGrid stats={dashboardStats?.complaints} totalTitle="All Complaints" />
 
       {/* Finance Section - Admin Only */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
