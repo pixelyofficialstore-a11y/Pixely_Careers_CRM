@@ -180,6 +180,42 @@
     padding: .85rem 1rem;
     border-bottom: 1px solid hsl(var(--border) / .8);
   }
+  .settings-panel {
+    overflow: hidden;
+    border: 1px solid hsl(var(--border) / .9);
+    border-radius: .65rem;
+    background: hsl(var(--card) / .92);
+  }
+  .settings-table thead tr {
+    background: hsl(var(--surface-2));
+    border-bottom: 1px solid hsl(var(--border) / .8);
+  }
+  .settings-table th {
+    padding: .75rem 1.25rem;
+    color: hsl(var(--text-secondary));
+    font-size: .64rem;
+    font-weight: 700;
+    letter-spacing: .075em;
+    text-align: left;
+    text-transform: uppercase;
+  }
+  .settings-table tbody tr {
+    border-bottom: 1px solid hsl(var(--border) / .65);
+    transition: background-color 180ms ease;
+  }
+  .settings-table tbody tr:last-child { border-bottom: 0; }
+  .settings-table tbody tr:hover { background: hsl(var(--accent-primary) / .055); }
+  .settings-table td { padding: .8rem 1.25rem; }
+  .settings-list-item {
+    border: 1px solid hsl(var(--border) / .9);
+    border-radius: .65rem;
+    background: hsl(var(--card) / .92);
+    transition: border-color 180ms ease, background-color 180ms ease;
+  }
+  .settings-list-item:hover {
+    border-color: hsl(var(--border-hover));
+    background: hsl(var(--surface-2));
+  }
   .crm-table thead tr { background: hsl(var(--surface-2)); }
   .crm-table th {
     height: 2.65rem;

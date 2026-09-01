@@ -52,24 +52,24 @@ export default function AdminSettingsPage() {
   }
 
   return (
-    <div className="crm-page space-y-6">
+    <div className="crm-page admin-settings-page space-y-5">
       <PageHeader eyebrow="System configuration" title="Admin Settings" description="Manage services, packages, marketing platforms, and complaint categories." />
 
-      <Tabs defaultValue="services" className="space-y-4">
-        <TabsList className="bg-slate-900 border border-slate-800">
-          <TabsTrigger value="services" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white gap-2">
+      <Tabs defaultValue="services" className="space-y-5">
+        <TabsList className="w-full justify-start overflow-x-auto sm:w-fit">
+          <TabsTrigger value="services" className="gap-2">
             <Wrench className="w-4 h-4" />
             Services
           </TabsTrigger>
-          <TabsTrigger value="packages" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white gap-2">
+          <TabsTrigger value="packages" className="gap-2">
             <Package className="w-4 h-4" />
             Packages
           </TabsTrigger>
-          <TabsTrigger value="platforms" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white gap-2">
+          <TabsTrigger value="platforms" className="gap-2">
             <Globe className="w-4 h-4" />
             Platforms
           </TabsTrigger>
-          <TabsTrigger value="complaints" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white gap-2">
+          <TabsTrigger value="complaints" className="gap-2">
             <FileWarning className="w-4 h-4" />
             Complaint Categories
           </TabsTrigger>
@@ -127,19 +127,19 @@ function ComplaintCategoriesSection() {
   });
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+     <div className="space-y-5">
+       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-lg font-semibold text-white">Complaint Categories</h2>
-          <p className="text-sm text-slate-400">Choose the dropdown options available when admins or sales/support raise complaints.</p>
+           <h2 className="text-base font-semibold text-slate-100">Complaint Categories</h2>
+           <p className="text-xs text-slate-500">Choose the dropdown options available when admins or sales/support raise complaints.</p>
         </div>
-        <Button onClick={() => setAddOpen(true)} className="bg-blue-600 hover:bg-blue-700 gap-2">
+         <Button onClick={() => setAddOpen(true)} className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
           <Plus className="w-4 h-4" /> Add Category
         </Button>
       </div>
-      <div className="rounded-xl border border-slate-800 bg-slate-900/50 overflow-hidden">
+       <div className="settings-panel overflow-hidden">
         {isLoading ? <div className="py-12 text-center text-slate-500">Loading categories…</div> : (
-          <table className="w-full">
+           <table className="settings-table w-full">
             <thead><tr className="border-b border-slate-800">
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase">Category</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase">Status</th>
@@ -166,16 +166,16 @@ function ComplaintCategoriesSection() {
         )}
       </div>
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+        <DialogContent className="border-border bg-[hsl(var(--popover))] text-foreground">
           <DialogHeader><DialogTitle>Add Complaint Category</DialogTitle></DialogHeader>
-          <div className="space-y-2 py-2"><Label>Category name</Label><Input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="e.g. Missed Deadline" className="bg-slate-800 border-slate-700" /></div>
+          <div className="space-y-2 py-2"><Label>Category name</Label><Input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="e.g. Missed Deadline" className="crm-control" /></div>
           <DialogFooter><Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button><Button disabled={!newLabel.trim() || createMutation.isPending} onClick={() => createMutation.mutate(newLabel.trim())}>Add Category</Button></DialogFooter>
         </DialogContent>
       </Dialog>
       <Dialog open={!!editItem} onOpenChange={open => !open && setEditItem(null)}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+        <DialogContent className="border-border bg-[hsl(var(--popover))] text-foreground">
           <DialogHeader><DialogTitle>Edit Complaint Category</DialogTitle></DialogHeader>
-          <div className="space-y-2 py-2"><Label>Category name</Label><Input value={editLabel} onChange={e => setEditLabel(e.target.value)} className="bg-slate-800 border-slate-700" /></div>
+          <div className="space-y-2 py-2"><Label>Category name</Label><Input value={editLabel} onChange={e => setEditLabel(e.target.value)} className="crm-control" /></div>
           <DialogFooter><Button variant="outline" onClick={() => setEditItem(null)}>Cancel</Button><Button disabled={!editLabel.trim() || updateMutation.isPending} onClick={() => editItem && updateMutation.mutate({ id: editItem.id, label: editLabel.trim() })}>Save Changes</Button></DialogFooter>
         </DialogContent>
       </Dialog>
@@ -248,27 +248,27 @@ function ServicesSection() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+     <div className="space-y-5">
+       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-lg font-semibold text-white">Services Catalog</h2>
-          <p className="text-sm text-slate-400">
+           <h2 className="text-base font-semibold text-slate-100">Services Catalog</h2>
+           <p className="text-xs text-slate-500">
             These services will be available when creating a Custom Package order.
           </p>
         </div>
         <Button
           onClick={() => { setAddOpen(true); setNewName(""); }}
-          className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
+           className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
         >
           <Plus className="w-4 h-4" />
           Add Service
         </Button>
       </div>
 
-      <div className="rounded-xl border border-slate-800 bg-slate-900/50 overflow-hidden">
+       <div className="settings-panel overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-6 h-6 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : services.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-slate-500">
@@ -277,7 +277,7 @@ function ServicesSection() {
             <p className="text-sm">Add your first service to get started</p>
           </div>
         ) : (
-          <table className="w-full">
+           <table className="settings-table w-full">
             <thead>
               <tr className="border-b border-slate-800">
                 <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Service Name</th>
@@ -329,7 +329,7 @@ function ServicesSection() {
       </div>
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+        <DialogContent className="border-border bg-[hsl(var(--popover))] text-foreground">
           <DialogHeader>
             <DialogTitle>Add New Service</DialogTitle>
           </DialogHeader>
@@ -339,7 +339,7 @@ function ServicesSection() {
               placeholder="e.g. LinkedIn Banner"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+              className="crm-control placeholder:text-slate-500"
               onKeyDown={(e) => { if (e.key === "Enter" && newName.trim()) createMutation.mutate(newName.trim()); }}
             />
           </div>
@@ -350,7 +350,7 @@ function ServicesSection() {
             <Button
               onClick={() => createMutation.mutate(newName.trim())}
               disabled={!newName.trim() || createMutation.isPending}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {createMutation.isPending ? "Adding..." : "Add Service"}
             </Button>
@@ -359,7 +359,7 @@ function ServicesSection() {
       </Dialog>
 
       <Dialog open={!!editItem} onOpenChange={(o) => { if (!o) setEditItem(null); }}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+        <DialogContent className="border-border bg-[hsl(var(--popover))] text-foreground">
           <DialogHeader>
             <DialogTitle>Edit Service</DialogTitle>
           </DialogHeader>
@@ -368,7 +368,7 @@ function ServicesSection() {
             <Input
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
-              className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+              className="crm-control placeholder:text-slate-500"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && editItem && editName.trim()) {
                   updateMutation.mutate({ id: editItem.id, name: editName.trim() });
@@ -383,7 +383,7 @@ function ServicesSection() {
             <Button
               onClick={() => editItem && updateMutation.mutate({ id: editItem.id, name: editName.trim() })}
               disabled={!editName.trim() || updateMutation.isPending}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {updateMutation.isPending ? "Saving..." : "Save Changes"}
             </Button>
@@ -392,7 +392,7 @@ function ServicesSection() {
       </Dialog>
 
       <AlertDialog open={!!deleteItem} onOpenChange={(o) => { if (!o) setDeleteItem(null); }}>
-        <AlertDialogContent className="bg-slate-900 border-slate-800 text-white">
+        <AlertDialogContent className="border-border bg-[hsl(var(--popover))] text-foreground">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Service</AlertDialogTitle>
             <AlertDialogDescription className="text-slate-400">
@@ -403,7 +403,7 @@ function ServicesSection() {
             <AlertDialogCancel className="border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteItem && deleteMutation.mutate(deleteItem.id)}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete
             </AlertDialogAction>
@@ -488,31 +488,31 @@ function PackagesSection() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+     <div className="space-y-5">
+       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-lg font-semibold text-white">Package Configuration</h2>
-          <p className="text-sm text-slate-400">
+           <h2 className="text-base font-semibold text-slate-100">Package Configuration</h2>
+           <p className="text-xs text-slate-500">
             Manage package names and add custom packages available when creating orders.
-            The <span className="text-blue-400 font-medium">Custom Order</span> type is always available.
+             The <span className="font-medium text-cyan-300">Custom Order</span> type is always available.
           </p>
         </div>
         <Button
           onClick={() => { setAddOpen(true); setNewLabel(""); setNewKey(""); }}
-          className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
+           className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
         >
           <Plus className="w-4 h-4" />
           Add Package
         </Button>
       </div>
 
-      <div className="rounded-xl border border-slate-800 bg-slate-900/50 overflow-hidden">
+       <div className="settings-panel overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-6 h-6 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : (
-          <table className="w-full">
+           <table className="settings-table w-full">
             <thead>
               <tr className="border-b border-slate-800">
                 <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Label</th>
@@ -526,7 +526,7 @@ function PackagesSection() {
                 <tr key={pkg.id} className="hover:bg-slate-800/30 transition-colors">
                   <td className="px-5 py-3.5 text-sm font-medium text-white">{pkg.label}</td>
                   <td className="px-5 py-3.5">
-                    <code className="text-xs bg-slate-800 text-blue-300 px-2 py-0.5 rounded">{pkg.key}</code>
+                    <code className="rounded border border-slate-800 bg-slate-950 px-2 py-0.5 text-xs text-cyan-300">{pkg.key}</code>
                   </td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-2">
@@ -567,7 +567,7 @@ function PackagesSection() {
               <tr className="hover:bg-slate-800/30 transition-colors opacity-60">
                 <td className="px-5 py-3.5 text-sm font-medium text-white">Custom Order</td>
                 <td className="px-5 py-3.5">
-                  <code className="text-xs bg-slate-800 text-blue-300 px-2 py-0.5 rounded">custom</code>
+                  <code className="rounded border border-slate-800 bg-slate-950 px-2 py-0.5 text-xs text-cyan-300">custom</code>
                 </td>
                 <td className="px-5 py-3.5">
                   <Badge variant="outline" className="text-xs border-slate-600 text-slate-400">System</Badge>
@@ -582,7 +582,7 @@ function PackagesSection() {
       </div>
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+        <DialogContent className="border-border bg-[hsl(var(--popover))] text-foreground">
           <DialogHeader>
             <DialogTitle>Add New Package</DialogTitle>
           </DialogHeader>
@@ -593,7 +593,7 @@ function PackagesSection() {
                 placeholder="e.g. Premium Bundle"
                 value={newLabel}
                 onChange={(e) => handleLabelChange(e.target.value)}
-                className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+                className="crm-control placeholder:text-slate-500"
               />
             </div>
             <div className="space-y-1.5">
@@ -602,7 +602,7 @@ function PackagesSection() {
                 placeholder="e.g. premium_bundle"
                 value={newKey}
                 onChange={(e) => setNewKey(e.target.value.toLowerCase().replace(/\s+/g, "_"))}
-                className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 font-mono text-sm"
+                className="crm-control font-mono text-sm placeholder:text-slate-500"
               />
             </div>
           </div>
@@ -613,7 +613,7 @@ function PackagesSection() {
             <Button
               onClick={() => createMutation.mutate({ key: newKey, label: newLabel })}
               disabled={!newLabel.trim() || !newKey.trim() || createMutation.isPending}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {createMutation.isPending ? "Adding..." : "Add Package"}
             </Button>
@@ -622,7 +622,7 @@ function PackagesSection() {
       </Dialog>
 
       <Dialog open={!!editItem} onOpenChange={(o) => { if (!o) setEditItem(null); }}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+        <DialogContent className="border-border bg-[hsl(var(--popover))] text-foreground">
           <DialogHeader>
             <DialogTitle>Edit Package</DialogTitle>
           </DialogHeader>
@@ -632,7 +632,7 @@ function PackagesSection() {
               <Input
                 value={editLabel}
                 onChange={(e) => setEditLabel(e.target.value)}
-                className="bg-slate-800 border-slate-700 text-white"
+                className="crm-control"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && editItem && editLabel.trim()) {
                     updateMutation.mutate({ id: editItem.id, label: editLabel.trim() });
@@ -642,7 +642,7 @@ function PackagesSection() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-slate-400 text-xs">Package Key (cannot be changed)</Label>
-              <code className="block text-xs bg-slate-800 text-blue-300 px-3 py-2 rounded border border-slate-700">{editItem?.key}</code>
+              <code className="block rounded border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-cyan-300">{editItem?.key}</code>
             </div>
           </div>
           <DialogFooter>
@@ -652,7 +652,7 @@ function PackagesSection() {
             <Button
               onClick={() => editItem && updateMutation.mutate({ id: editItem.id, label: editLabel.trim() })}
               disabled={!editLabel.trim() || updateMutation.isPending}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {updateMutation.isPending ? "Saving..." : "Save Changes"}
             </Button>
@@ -661,7 +661,7 @@ function PackagesSection() {
       </Dialog>
 
       <AlertDialog open={!!deleteItem} onOpenChange={(o) => { if (!o) setDeleteItem(null); }}>
-        <AlertDialogContent className="bg-slate-900 border-slate-800 text-white">
+        <AlertDialogContent className="border-border bg-[hsl(var(--popover))] text-foreground">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Package</AlertDialogTitle>
             <AlertDialogDescription className="text-slate-400">
@@ -753,13 +753,13 @@ function PlatformsSection() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+     <div className="space-y-5">
+       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-lg font-semibold text-white">Marketing Platforms</h2>
-          <p className="text-sm text-slate-400">Configure where clients come from. Enable "Campaign Fields" for platforms that use Facebook-style ad tracking.</p>
+           <h2 className="text-base font-semibold text-slate-100">Marketing Platforms</h2>
+           <p className="text-xs text-slate-500">Configure where clients come from. Enable "Campaign Fields" for platforms that use Facebook-style ad tracking.</p>
         </div>
-        <Button onClick={() => setAddOpen(true)} className="bg-blue-600 hover:bg-blue-700 gap-2">
+         <Button onClick={() => setAddOpen(true)} className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
           <Plus className="w-4 h-4" /> Add Platform
         </Button>
       </div>
@@ -771,9 +771,9 @@ function PlatformsSection() {
       ) : (
         <div className="space-y-2">
           {platforms.map((item) => (
-            <div key={item.id} className="flex items-center justify-between p-3 bg-slate-900 border border-slate-800 rounded-lg">
+           <div key={item.id} className="settings-list-item flex items-center justify-between p-3">
               <div className="flex items-center gap-3">
-                <Globe className="w-4 h-4 text-blue-400" />
+                <Globe className="w-4 h-4 text-cyan-300" />
                 <span className="text-white font-medium">{item.name}</span>
                 {item.hasCampaignFields && (
                   <Badge variant="outline" className="border-purple-500 text-purple-400 text-xs">Campaign Fields</Badge>
@@ -805,7 +805,7 @@ function PlatformsSection() {
       )}
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+        <DialogContent className="border-border bg-[hsl(var(--popover))] text-foreground">
           <DialogHeader>
             <DialogTitle>Add Platform</DialogTitle>
           </DialogHeader>
@@ -816,7 +816,7 @@ function PlatformsSection() {
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="e.g. Facebook, TikTok, Referral..."
-                className="bg-slate-800 border-slate-700 text-white"
+                className="crm-control"
                 onKeyDown={(e) => e.key === "Enter" && newName.trim() && createMutation.mutate({ name: newName.trim(), hasCampaignFields: newHasCampaign })}
               />
             </div>
@@ -833,7 +833,7 @@ function PlatformsSection() {
             <Button
               onClick={() => createMutation.mutate({ name: newName.trim(), hasCampaignFields: newHasCampaign })}
               disabled={!newName.trim() || createMutation.isPending}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {createMutation.isPending ? "Adding..." : "Add Platform"}
             </Button>
@@ -842,7 +842,7 @@ function PlatformsSection() {
       </Dialog>
 
       <Dialog open={!!editItem} onOpenChange={(o) => { if (!o) setEditItem(null); }}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+        <DialogContent className="border-border bg-[hsl(var(--popover))] text-foreground">
           <DialogHeader>
             <DialogTitle>Edit Platform</DialogTitle>
           </DialogHeader>
@@ -852,7 +852,7 @@ function PlatformsSection() {
               <Input
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
-                className="bg-slate-800 border-slate-700 text-white"
+                className="crm-control"
               />
             </div>
             <div className="flex items-center justify-between">
@@ -868,7 +868,7 @@ function PlatformsSection() {
             <Button
               onClick={() => editItem && updateMutation.mutate({ id: editItem.id, name: editName.trim(), hasCampaignFields: editHasCampaign })}
               disabled={!editName.trim() || updateMutation.isPending}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {updateMutation.isPending ? "Saving..." : "Save Changes"}
             </Button>
@@ -877,7 +877,7 @@ function PlatformsSection() {
       </Dialog>
 
       <AlertDialog open={!!deleteItem} onOpenChange={(o) => { if (!o) setDeleteItem(null); }}>
-        <AlertDialogContent className="bg-slate-900 border-slate-800 text-white">
+        <AlertDialogContent className="border-border bg-[hsl(var(--popover))] text-foreground">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Platform</AlertDialogTitle>
             <AlertDialogDescription className="text-slate-400">
