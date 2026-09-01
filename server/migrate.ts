@@ -221,6 +221,7 @@ export async function runMigrations() {
         marketing_permission TEXT NOT NULL DEFAULT 'not_asked',
         public_review_link TEXT,
         screenshot_url TEXT,
+        review_progress TEXT NOT NULL DEFAULT 'requested',
         created_by_id INTEGER NOT NULL REFERENCES users(id),
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW(),
@@ -407,7 +408,8 @@ export async function runMigrations() {
         ADD COLUMN IF NOT EXISTS facebook_review_received BOOLEAN NOT NULL DEFAULT false,
         ADD COLUMN IF NOT EXISTS video_review_received BOOLEAN NOT NULL DEFAULT false,
         ADD COLUMN IF NOT EXISTS public_review_link TEXT,
-        ADD COLUMN IF NOT EXISTS screenshot_url TEXT;
+        ADD COLUMN IF NOT EXISTS screenshot_url TEXT,
+        ADD COLUMN IF NOT EXISTS review_progress TEXT NOT NULL DEFAULT 'requested';
       ALTER TABLE client_suggestions
         ADD COLUMN IF NOT EXISTS related_designer_id INTEGER REFERENCES users(id),
         ADD COLUMN IF NOT EXISTS suggestion_text TEXT,

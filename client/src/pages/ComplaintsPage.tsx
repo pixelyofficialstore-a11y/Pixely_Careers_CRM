@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
 import { format } from "date-fns";
@@ -49,7 +49,7 @@ function ComplaintDrawer({ id, open, onOpenChange }: { id: number | null; open: 
     <SheetHeader><SheetTitle className="flex items-center gap-3">{complaint?.complaintNumber || "Complaint details"} {complaint && <ComplaintStatusBadge status={complaint.status} />}</SheetTitle></SheetHeader>
     {isLoading ? <div className="py-24 text-center"><Loader2 className="mx-auto animate-spin text-blue-400" /></div> : isError || !complaint ? <div className="py-20 text-center text-slate-400"><AlertTriangle className="mx-auto mb-3 text-rose-400" />Could not load this complaint.</div> : <div className="space-y-5 mt-6">
       <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"><p className="text-xs uppercase tracking-wider text-slate-500">Complaint details</p><dl className="grid grid-cols-2 gap-4 mt-4"><div><dt className="text-xs text-slate-500">Category</dt><dd className="mt-1 text-sm">{titleCase(complaint.category)}</dd></div><div><dt className="text-xs text-slate-500">Complaint against</dt><dd className="mt-1 text-sm">{complaint.complaintAgainst?.name || "—"}</dd></div></dl><p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-300">{complaint.description}</p></section>
-      {complaint.order && <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"><p className="text-xs uppercase tracking-wider text-slate-500">Related order</p><p className="mt-2 font-medium">#{complaint.order.orderNumber || complaint.orderId} · {complaint.order.clientName}</p><div className="mt-3 space-y-2 text-sm text-slate-400">{complaint.order.services?.length > 0 && <p><span className="text-slate-500">Services:</span> {complaint.order.services.map(s => `${s.serviceType} ×${s.quantity || 1}`).join(", ")}</p>}<div className="grid grid-cols-2 gap-2">{[["Total", complaint.order.totalPrice], ["Advance", complaint.order.advanceAmount], ["Remaining", complaint.order.remainingAmount], ["Discount", complaint.order.discountAmount]].map(([label, value]) => money(value as number | null) && <p key={label as string}><span className="text-slate-500">{label as string}:</span> {money(value as number)}</p>)}</div></div></section>}
+      {complaint.order && <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"><p className="text-xs uppercase tracking-wider text-slate-500">Related order</p><a href={`/orders?order=${encodeURIComponent(complaint.order.orderNumber || String(complaint.orderId))}`} className="mt-2 block font-medium text-blue-300 hover:underline">#{complaint.order.orderNumber || complaint.orderId} · {complaint.order.clientName}</a><div className="mt-3 space-y-2 text-sm text-slate-400">{complaint.order.services?.length > 0 && <p><span className="text-slate-500">Services:</span> {complaint.order.services.map(s => `${s.serviceType} ×${s.quantity || 1}`).join(", ")}</p>}<div className="grid grid-cols-2 gap-2">{[["Total", complaint.order.totalPrice], ["Advance", complaint.order.advanceAmount], ["Remaining", complaint.order.remainingAmount], ["Discount", complaint.order.discountAmount]].map(([label, value]) => money(value as number | null) && <p key={label as string}><span className="text-slate-500">{label as string}:</span> {money(value as number)}</p>)}</div></div></section>}
       {isAdmin && complaint.filedBy && <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-sm"><p className="text-xs uppercase tracking-wider text-slate-500">Filed by</p><p className="mt-2">{complaint.filedBy.name} <span className="text-slate-500">({complaint.filedBy.role})</span></p></section>}
       {complaint.screenshotUrl && <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"><p className="text-xs uppercase tracking-wider text-slate-500 mb-3">Evidence</p><a href={complaint.screenshotUrl} target="_blank" rel="noreferrer" className="block"><img src={complaint.screenshotUrl} alt="Complaint evidence" className="max-h-56 w-full rounded-lg bg-slate-950 object-contain" onError={e => { e.currentTarget.style.display = "none"; }} /><span className="mt-2 inline-block text-sm text-blue-400 underline">Open evidence in a new tab</span></a></section>}
       {(complaint.resolution || complaint.resolutionOutcome) && <section className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4"><p className="text-xs uppercase tracking-wider text-emerald-300">Resolution</p><p className="mt-2 text-sm text-slate-300">{complaint.resolution || "—"}</p>{complaint.resolutionOutcome && <p className="mt-2 text-xs text-emerald-300">{titleCase(complaint.resolutionOutcome)}</p>}</section>}
@@ -67,9 +67,10 @@ function ComplaintDrawer({ id, open, onOpenChange }: { id: number | null; open: 
 
 export default function ComplaintsPage() {
   const { user } = useAuth(); const { toast } = useToast(); const [, setLocation] = useLocation(); const [, routeParams] = useRoute("/complaints/:id");
+  const deepComplaintNumber = new URLSearchParams(window.location.search).get("complaint");
   const [search, setSearch] = useState(""); const [status, setStatus] = useState("all"); const [outcome, setOutcome] = useState(""); const [category, setCategory] = useState("all"); const [designerId, setDesignerId] = useState("all"); const [createOpen, setCreateOpen] = useState(false); const [selectedId, setSelectedId] = useState<number | null>(routeParams?.id ? Number(routeParams.id) : null);
   const now = new Date(); const [month, setMonth] = useState(String(now.getMonth() + 1)); const [year, setYear] = useState(String(now.getFullYear()));
-  const query = new URLSearchParams({ month, year, ...(search ? { search } : {}), ...(status !== "all" ? { status } : {}), ...(category !== "all" ? { category } : {}), ...(designerId !== "all" ? { designerId } : {}) }).toString();
+  const query = new URLSearchParams({ month, year, ...(search || deepComplaintNumber ? { search: search || deepComplaintNumber } : {}), ...(status !== "all" ? { status } : {}), ...(category !== "all" ? { category } : {}), ...(designerId !== "all" ? { designerId } : {}) }).toString();
   const { data: complaints = [], isLoading, isError, refetch } = useQuery<ComplaintResponse[]>({ queryKey: [`/api/complaints?${query}`] });
   const { data: statsResponse } = useQuery<{ complaints: ComplaintStats }>({ queryKey: [`/api/stats?month=${month}&year=${year}${designerId !== "all" ? `&designerId=${designerId}` : ""}`] });
   const { data: categories = [] } = useQuery<ComplaintCategoryConfig[]>({ queryKey: ["/api/complaint-categories"], staleTime: 300000 });
@@ -107,6 +108,13 @@ export default function ComplaintsPage() {
     () => outcome === "refund" ? complaints.filter(complaint => complaint.resolutionOutcome === "refund") : complaints,
     [complaints, outcome],
   );
+  const [deepLinkMessage, setDeepLinkMessage] = useState<string | null>(null);
+  useEffect(() => {
+    if (!deepComplaintNumber || isLoading) return;
+    const complaint = complaints.find(item => item.complaintNumber === deepComplaintNumber);
+    if (complaint) { setSelectedId(complaint.id); setDeepLinkMessage(null); }
+    else setDeepLinkMessage(`Complaint ${deepComplaintNumber} was not found, or you do not have permission to view it.`);
+  }, [complaints, deepComplaintNumber, isLoading]);
   const openComplaint = (id: number) => { setSelectedId(id); setLocation(`/complaints/${id}`); };
   const designerOptions = teamMembers.filter(member => member.role === "designer");
   const hasActiveFilters = Boolean(search) || status !== "all" || category !== "all" || designerId !== "all" || outcome === "refund";
@@ -213,7 +221,7 @@ export default function ComplaintsPage() {
     <TableRow key={complaint.id} className="border-slate-800 hover:bg-slate-900/50" data-testid={`row-complaint-${complaint.id}`}>
       <TableCell className="whitespace-nowrap font-mono text-xs text-blue-400">{complaint.complaintNumber || "—"}</TableCell>
       <TableCell className="whitespace-nowrap text-xs text-slate-400">{complaint.createdAt ? format(new Date(complaint.createdAt), "MMM dd, yyyy") : "Not Specified"}</TableCell>
-      <TableCell className="whitespace-nowrap font-medium text-white">#{complaint.orderNumber || complaint.orderId}</TableCell>
+      <TableCell className="whitespace-nowrap font-medium"><a href={`/orders?order=${encodeURIComponent(complaint.orderNumber || String(complaint.orderId))}`} className="text-blue-300 hover:underline">#{complaint.orderNumber || complaint.orderId}</a></TableCell>
       <TableCell className="text-sm font-medium text-white">{complaint.clientName || "Not Specified"}</TableCell>
       <TableCell className="text-sm text-slate-300">{categoryOptions.find(item => item.key === complaint.category)?.label || titleCase(complaint.category)}</TableCell>
       <TableCell>
@@ -287,6 +295,7 @@ export default function ComplaintsPage() {
         </div>
       </div>
     </div>
+    {deepLinkMessage && <div className="flex items-center justify-between gap-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100"><span>{deepLinkMessage}</span><Button variant="ghost" size="sm" onClick={() => { setDeepLinkMessage(null); setLocation("/complaints"); }}>Clear link</Button></div>}
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5">{cards.map(card => { const Icon = card.icon; return <div key={card.key} className="glass-panel flex items-center gap-3 rounded-xl border border-slate-800 p-4" data-testid={card.testId}><div className={`rounded-lg p-2 ${card.iconClass}`}><Icon className="h-5 w-5" /></div><div><p className="text-xs text-slate-500">{card.label}</p><p className="font-bold text-white">{card.value}</p></div></div>; })}</div>
     {isLoading ? <div className="glass-panel p-16 text-center"><Loader2 className="mx-auto animate-spin text-blue-400" /></div> : isError ? <div className="glass-panel p-12 text-center"><AlertTriangle className="mx-auto mb-3 text-rose-400" /><p className="text-white">Could not load complaints</p><Button variant="outline" className="mt-4" onClick={() => refetch()}>Try Again</Button></div> : !filteredComplaints.length ? <div className="glass-panel p-12 text-center"><ClipboardCheck className="mx-auto mb-4 h-12 w-12 text-slate-600" /><p className="font-semibold text-white">No complaints found</p><p className="mt-2 text-sm text-slate-500">Try another month or filter.</p></div> : <div className="glass-panel overflow-hidden rounded-2xl border border-slate-800">
       <div className="flex flex-col items-start justify-between gap-4 border-b border-slate-800 p-6 sm:flex-row sm:items-center">

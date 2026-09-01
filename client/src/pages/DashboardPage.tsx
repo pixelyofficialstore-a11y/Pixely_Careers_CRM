@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { 
   ShoppingCart, 
@@ -55,7 +56,7 @@ interface FeedbackStats {
   suggestions: { all: number; new: number; underReview: number; accepted: number; implemented: number; rejected: number };
 }
 
-function ClientExperienceGrid({ stats, role }: { stats?: FeedbackStats; role?: string }) {
+function ClientExperienceGrid({ stats, role, onOpenFeedback }: { stats?: FeedbackStats; role?: string; onOpenFeedback: (tab: "reviews" | "suggestions") => void }) {
   const reviewTitle = role === "designer" ? "Reviews Received" : role === "support" ? "Reviews Recorded" : "Reviews This Month";
   const suggestionTitle = role === "designer" ? "Related Suggestions" : role === "support" ? "Suggestions Recorded" : "Suggestions This Month";
   return (
@@ -65,10 +66,10 @@ function ClientExperienceGrid({ stats, role }: { stats?: FeedbackStats; role?: s
         <h2 className="text-lg font-semibold text-white">Client Experience</h2>
       </div>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard title={reviewTitle} value={stats?.reviews.all ?? 0} icon={MessageSquareHeart} color="blue" testId="stat-feedback-reviews" />
-        <StatCard title="Average Client Rating" value={stats?.reviews.averageRating == null ? "—" : `${stats.reviews.averageRating.toFixed(1)}/5`} icon={Star} color="orange" testId="stat-feedback-rating" />
-        <StatCard title={suggestionTitle} value={stats?.suggestions.all ?? 0} icon={Lightbulb} color="purple" testId="stat-feedback-suggestions" />
-        <StatCard title="Suggestions Under Review" value={stats?.suggestions.underReview ?? 0} icon={ClipboardCheck} color="green" testId="stat-feedback-under-review" />
+        <StatCard title={reviewTitle} value={stats?.reviews.all ?? 0} icon={MessageSquareHeart} color="blue" testId="stat-feedback-reviews" onClick={() => onOpenFeedback("reviews")} />
+        <StatCard title="Average Client Rating" value={stats?.reviews.averageRating == null ? "—" : `${stats.reviews.averageRating.toFixed(1)}/5`} icon={Star} color="orange" testId="stat-feedback-rating" onClick={() => onOpenFeedback("reviews")} />
+        <StatCard title={suggestionTitle} value={stats?.suggestions.all ?? 0} icon={Lightbulb} color="purple" testId="stat-feedback-suggestions" onClick={() => onOpenFeedback("suggestions")} />
+        <StatCard title="Suggestions Under Review" value={stats?.suggestions.underReview ?? 0} icon={ClipboardCheck} color="green" testId="stat-feedback-under-review" onClick={() => onOpenFeedback("suggestions")} />
       </div>
     </div>
   );
@@ -80,7 +81,8 @@ function StatCard({
   icon: Icon, 
   trend, 
   color = "blue",
-  testId
+  testId,
+  onClick
 }: { 
   title: string; 
   value: string | number; 
@@ -88,6 +90,7 @@ function StatCard({
   trend?: string;
   color?: "blue" | "green" | "purple" | "orange" | "red";
   testId?: string;
+  onClick?: () => void;
 }) {
   const colors = {
     blue: "bg-blue-500/10 text-blue-500",
@@ -98,7 +101,7 @@ function StatCard({
   };
 
   return (
-    <div className="glass-panel p-6 rounded-2xl relative overflow-hidden group hover:border-slate-700 transition-colors" data-testid={testId}>
+    <button type="button" onClick={onClick} className={`glass-panel w-full p-6 rounded-2xl relative overflow-hidden group hover:border-slate-700 transition-colors text-left ${onClick ? "cursor-pointer" : ""}`} data-testid={testId}>
       <div className="flex justify-between items-start mb-4">
         <div className={cn("p-3 rounded-xl", colors[color])}>
           <Icon className="w-6 h-6" />
@@ -123,7 +126,7 @@ function StatCard({
         color === "orange" && "bg-orange-500",
         color === "red" && "bg-red-500",
       )} />
-    </div>
+    </button>
   );
 }
 
@@ -270,6 +273,8 @@ function ComplaintStatsGrid({
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const [, setLocation] = useLocation();
+  const openFeedback = (tab: "reviews" | "suggestions") => setLocation(`/feedback?tab=${tab}`);
   
   const { data: orders, isLoading } = useQuery<OrderWithServices[]>({
     queryKey: ["/api/orders"],
@@ -404,7 +409,7 @@ export default function DashboardPage() {
           />
         </div>
 
-        <ClientExperienceGrid stats={feedbackStats} role={user?.role} />
+        <ClientExperienceGrid stats={feedbackStats} role={user?.role} onOpenFeedback={openFeedback} />
         <ComplaintStatsGrid stats={dashboardStats?.complaints} totalTitle="Complaints About Me" />
 
         <div className="glass-panel p-6 rounded-2xl">
@@ -481,7 +486,7 @@ export default function DashboardPage() {
           />
         </div>
 
-        <ClientExperienceGrid stats={feedbackStats} role={user?.role} />
+        <ClientExperienceGrid stats={feedbackStats} role={user?.role} onOpenFeedback={openFeedback} />
         <ComplaintStatsGrid stats={dashboardStats?.complaints} totalTitle="Complaints Filed" />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -584,7 +589,7 @@ export default function DashboardPage() {
         />
       </div>
 
-      <ClientExperienceGrid stats={feedbackStats} role={user?.role} />
+      <ClientExperienceGrid stats={feedbackStats} role={user?.role} onOpenFeedback={openFeedback} />
       <ComplaintStatsGrid stats={dashboardStats?.complaints} totalTitle="All Complaints" />
 
       {/* Finance Section - Admin Only */}

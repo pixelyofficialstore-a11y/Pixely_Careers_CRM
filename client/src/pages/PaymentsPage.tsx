@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { PaymentsSkeleton } from "@/components/PageSkeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -70,6 +71,7 @@ interface User {
 export default function PaymentsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -422,9 +424,7 @@ export default function PaymentsPage() {
               <TableRow key={payment.id} className="border-slate-800">
                 <TableCell>
                   <div>
-                    <p className="text-white font-medium font-mono">
-                      {payment.order?.orderNumber || <span className="text-yellow-400">#{payment.id}</span>}
-                    </p>
+                    {payment.order?.orderNumber ? <button className="font-mono font-medium text-blue-400 hover:underline" onClick={() => setLocation(`/orders?order=${encodeURIComponent(payment.order!.orderNumber)}`)}>{payment.order.orderNumber}</button> : <p className="font-mono font-medium text-yellow-400">#{payment.id}</p>}
                     <p className="text-sm text-slate-300">{payment.order?.clientName}</p>
                   </div>
                 </TableCell>

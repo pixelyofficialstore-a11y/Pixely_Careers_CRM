@@ -43,6 +43,7 @@ export const orderStatuses = ["pending_payment", "new", "working", "ready", "del
 export const priorities = ["normal", "high", "urgent"] as const;
 export const paymentVerificationStatuses = ["pending_confirmation", "approved", "disapproved"] as const;
 export const paymentTypes = ["advance", "full", "remaining"] as const;
+export const reviewProgresses = ["requested", "received", "public_review_received", "closed"] as const;
 export const advancePaymentStatuses = ["pending", "approved", "disapproved"] as const;
 export const clientTypes = ["national", "international"] as const;
 export const activityTypes = [
@@ -189,6 +190,7 @@ export const clientReviews = pgTable("client_reviews", {
   marketingPermission: text("marketing_permission").notNull().default("not_asked"),
   publicReviewLink: text("public_review_link"),
   screenshotUrl: text("screenshot_url"),
+  reviewProgress: text("review_progress", { enum: reviewProgresses }).notNull().default("requested"),
   createdById: integer("created_by_id").notNull().references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -409,6 +411,15 @@ export type InsertPlatformCatalogItem = z.infer<typeof insertPlatformsCatalogSch
 export type ComplaintCategoryConfig = typeof complaintCategoryConfigs.$inferSelect;
 export type InsertComplaintCategoryConfig = z.infer<typeof insertComplaintCategoryConfigSchema>;
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+
+export type ClientCaseReport = {
+  order: OrderWithServices;
+  payments: Omit<PaymentVerificationWithUsers, "screenshotData">[];
+  complaints: ComplaintResponse[];
+  review: ClientReview | null;
+  suggestions: ClientSuggestion[];
+  activity: ActivityLogWithActor[];
+};
 
 export type ComplaintUserSummary = Pick<User, "id" | "name" | "role" | "title" | "avatar">;
 export type ComplaintResponse = {

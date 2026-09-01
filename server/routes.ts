@@ -7,7 +7,7 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-import { type User, userRoles, type InsertActivityLog } from "@shared/schema";
+import { type User, userRoles, type InsertActivityLog, type ClientReview } from "@shared/schema";
 import { db, pool } from "./db";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
@@ -532,7 +532,11 @@ export async function registerRoutes(
         }, services || []);
         await storage.createActivityLog({ orderId: order.id, actorId: user.id, activityType: "order_created", newValue: "new" });
         if (intendedDesignerId) {
-          await storage.createActivityLog({ orderId: order.id, actorId: user.id, activityType: "assignment", newValue: String(intendedDesignerId) });
+          const assignedDesigner = await storage.getUser(intendedDesignerId);
+          await storage.createActivityLog({
+            orderId: order.id, actorId: user.id, activityType: "assignment", newValue: String(intendedDesignerId),
+            details: { previousDesigner: null, newDesigner: userSummary(assignedDesigner) },
+          });
         }
 
         // Notify all OTHER admins (not the one who placed it)
@@ -638,6 +642,20 @@ export async function registerRoutes(
     if (user.role === "designer" && order.assignedToId !== user.id) return null;
     return order;
   };
+  const reviewProgressRank = { requested: 0, received: 1, public_review_received: 2, closed: 3 } as const;
+  const deriveReviewProgress = (review: Pick<ClientReview, "rating" | "feedbackText" | "whatsappFeedbackReceived" | "facebookReviewReceived" | "videoReviewReceived" | "publicReviewLink" | "reviewProgress">) => {
+    if (review.facebookReviewReceived || review.videoReviewReceived || !!review.publicReviewLink) return "public_review_received";
+    if (review.rating !== null || review.feedbackText.trim() || review.whatsappFeedbackReceived) return "received";
+    return "requested";
+  };
+  const forwardReviewProgress = (review: ClientReview, updates: Record<string, unknown>) => {
+    const candidate = { ...review, ...updates } as ClientReview;
+    const derived = deriveReviewProgress(candidate);
+    return reviewProgressRank[derived] > reviewProgressRank[review.reviewProgress] ? derived : review.reviewProgress;
+  };
+  const userSummary = (person: User | null | undefined) => person ? ({
+    id: person.id, name: person.name, role: person.role, title: person.title, avatar: person.avatar,
+  }) : null;
   const feedbackProjection = async (items: any[], kind: "review" | "suggestion") => {
     const [allUsers, allOrders] = await Promise.all([storage.getUsers(), Promise.all(items.map(item => storage.getOrder(item.orderId)))]);
     const userById = new Map(allUsers.map(person => [person.id, person]));
@@ -674,6 +692,37 @@ export async function registerRoutes(
     // Complaint activity must never reveal a filer to the designer it concerns.
     res.json(logs.map(log => user.role === "designer" && log.activityType.startsWith("complaint_")
       ? { ...log, actor: null } : log));
+  });
+
+  app.get(api.orders.clientCaseReport.path, requireAuth, async (req, res) => {
+    const orderId = Number(req.params.id);
+    if (!Number.isInteger(orderId) || orderId <= 0) return res.status(400).json({ message: "Invalid order id" });
+    const user = req.user as User;
+    const order = await canAccessOrder(user, orderId);
+    if (!order) return res.sendStatus(order === null ? 403 : 404);
+    const [payments, complaints, review, suggestions, activity] = await Promise.all([
+      storage.getPaymentVerificationsByOrder(orderId),
+      storage.getComplaints(user.role, user.id, { orderId }),
+      storage.getClientReviewByOrder(orderId),
+      storage.getClientSuggestions(user.role, user.id, orderId),
+      storage.getOrderActivity(orderId),
+    ]);
+    const safeOrder = {
+      ...order,
+      assignee: userSummary(order.assignee),
+      totalPrice: user.role === "designer" ? undefined : order.totalPrice,
+    };
+    res.json({
+      order: safeOrder,
+      payments: payments.map(({ screenshotData: _screenshotData, submittedBy, reviewedBy, ...payment }) => ({
+        ...payment, submittedBy: userSummary(submittedBy), reviewedBy: userSummary(reviewedBy),
+      })),
+      complaints,
+      review,
+      suggestions: user.role === "designer" ? suggestions.map(({ adminNotes: _adminNotes, ...suggestion }) => suggestion) : suggestions,
+      activity: activity.map(log => user.role === "designer" && log.activityType.startsWith("complaint_")
+        ? { ...log, actor: null } : { ...log, actor: userSummary(log.actor) }),
+    });
   });
 
   const feedbackUpload = multer({
@@ -713,8 +762,9 @@ export async function registerRoutes(
       if (!order) return res.sendStatus(order === null ? 403 : 404);
       if (input.screenshotUrl && !isCloudinaryUrl(input.screenshotUrl)) return res.status(400).json({ message: "Screenshot must be an HTTPS Cloudinary URL." });
       if (await storage.getClientReviewByOrder(input.orderId)) return res.status(409).json({ message: "This order already has a client review." });
-      const review = await storage.createClientReview({ ...input, reviewForDesignerId: order.assignedToId ?? null, createdById: user.id });
-      await storage.createActivityLog({ orderId: input.orderId, actorId: user.id, activityType: "review_created", newValue: review.reviewNumber, details: { reviewId: review.id } });
+      const initialProgress = deriveReviewProgress({ ...input, reviewProgress: "requested" });
+      const review = await storage.createClientReview({ ...input, reviewProgress: initialProgress, reviewForDesignerId: order.assignedToId ?? null, createdById: user.id });
+      await storage.createActivityLog({ orderId: input.orderId, actorId: user.id, activityType: "review_created", newValue: review.reviewNumber, details: { reviewId: review.id, reviewProgress: initialProgress } });
       res.status(201).json((await feedbackProjection([review], "review"))[0]);
     } catch (err) { if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message || "Invalid review." }); return res.status(500).json({ message: "Unable to create client review." }); }
   });
@@ -726,8 +776,18 @@ export async function registerRoutes(
       const user = req.user as User; const order = await canAccessOrder(user, existing.orderId);
       if (!order) return res.sendStatus(order === null ? 403 : 404);
       if (input.screenshotUrl && !isCloudinaryUrl(input.screenshotUrl)) return res.status(400).json({ message: "Screenshot must be an HTTPS Cloudinary URL." });
-      const review = await storage.updateClientReview(id, input);
-      await storage.createActivityLog({ orderId: existing.orderId, actorId: user.id, activityType: "review_updated", details: { reviewId: id } });
+      if (input.reviewProgress !== undefined && user.role !== "admin") return res.status(403).json({ message: "Only admins can correct review progress." });
+      const requestedProgress = input.reviewProgress;
+      const { reviewProgress: _reviewProgress, ...reviewChanges } = input;
+      const nextProgress = requestedProgress ?? forwardReviewProgress(existing, reviewChanges);
+      const review = await storage.updateClientReview(id, { ...reviewChanges, reviewProgress: nextProgress });
+      const changedFields = Object.keys(reviewChanges).filter(field => (reviewChanges as any)[field] !== (existing as any)[field]);
+      if (changedFields.length) {
+        await storage.createActivityLog({ orderId: existing.orderId, actorId: user.id, activityType: "review_updated", details: { reviewId: id, fields: changedFields } });
+      }
+      if (nextProgress !== existing.reviewProgress) {
+        await storage.createActivityLog({ orderId: existing.orderId, actorId: user.id, activityType: "review_updated", previousValue: existing.reviewProgress, newValue: nextProgress, details: { reviewId: id, event: requestedProgress ? "review_progress_corrected" : "review_progress_derived" } });
+      }
       for (const [field, label] of [["whatsappFeedbackReceived", "whatsapp"], ["facebookReviewReceived", "facebook"], ["videoReviewReceived", "video"]] as const) {
         if (input[field] === true && existing[field] === false) {
           await storage.createActivityLog({ orderId: existing.orderId, actorId: user.id, activityType: "review_updated", newValue: label, details: { reviewId: id, channelReceived: label } });
@@ -783,9 +843,19 @@ export async function registerRoutes(
       const user = req.user as User; const order = await canAccessOrder(user, existing.orderId);
       if (!order) return res.sendStatus(order === null ? 403 : 404);
       if ((input.status !== undefined || input.adminNotes !== undefined) && user.role !== "admin") return res.status(403).json({ message: "Only admins can review suggestions." });
-      if (input.status !== undefined && !({ new: ["under_review"], under_review: ["accepted", "rejected"], accepted: ["implemented"] } as Record<string, string[]>)[existing.status]?.includes(input.status)) return res.status(400).json({ message: "Invalid suggestion status transition." });
       const suggestion = await storage.updateClientSuggestion(id, { ...input, reviewedByUserId: user.id, reviewedAt: new Date() });
-      await storage.createActivityLog({ orderId: existing.orderId, actorId: user.id, activityType: input.status !== undefined && input.status !== existing.status ? "suggestion_status" : "suggestion_updated", previousValue: input.status !== undefined ? existing.status : null, newValue: input.status, details: { suggestionId: id } });
+      if (input.status !== undefined && input.status !== existing.status) {
+        await storage.createActivityLog({
+          orderId: existing.orderId, actorId: user.id, activityType: "suggestion_status",
+          previousValue: existing.status, newValue: input.status, details: { suggestionId: id },
+        });
+      }
+      if (input.adminNotes !== undefined && input.adminNotes !== existing.adminNotes) {
+        await storage.createActivityLog({
+          orderId: existing.orderId, actorId: user.id, activityType: "suggestion_updated",
+          details: { suggestionId: id, fields: ["adminNotes"] },
+        });
+      }
       res.json((await feedbackProjection([suggestion], "suggestion"))[0]);
     } catch (err) { if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid suggestion." }); return res.status(500).json({ message: "Unable to update client suggestion." }); }
   });
@@ -1207,10 +1277,18 @@ export async function registerRoutes(
 
     const updatedOrder = await storage.updateOrder(orderId, updates);
     if ("assignedToId" in updates && updates.assignedToId !== oldAssignedToId) {
+      const [previousDesigner, nextDesigner] = await Promise.all([
+        oldAssignedToId ? storage.getUser(oldAssignedToId) : Promise.resolve(undefined),
+        updates.assignedToId ? storage.getUser(updates.assignedToId) : Promise.resolve(undefined),
+      ]);
       await storage.createActivityLog({
         orderId, actorId: user.id, activityType: "assignment",
         previousValue: oldAssignedToId?.toString() ?? null,
         newValue: updates.assignedToId?.toString() ?? null,
+        details: {
+          previousDesigner: userSummary(previousDesigner),
+          newDesigner: userSummary(nextDesigner),
+        },
       });
     }
     if (updates.status && updates.status !== existingOrder.status) {
@@ -1734,6 +1812,11 @@ export async function registerRoutes(
       reviewedById: user.id,
       reviewedAt: new Date(),
       notes,
+    });
+    await storage.createActivityLog({
+      orderId: verification.orderId, actorId: user.id, activityType: "payment_change",
+      previousValue: verification.status, newValue: "disapproved",
+      details: { paymentVerificationId: verificationId, paymentType: verification.paymentType, amount: verification.amount },
     });
     
     const rejectedOrder = await storage.getOrder(verification.orderId);

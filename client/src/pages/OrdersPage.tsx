@@ -188,6 +188,8 @@ export default function OrdersPage() {
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [complaintDialogOpen, setComplaintDialogOpen] = useState(false);
   const [detailsTab, setDetailsTab] = useState<"overview" | "activity" | "experience">("overview");
+  const [deepLinkMessage, setDeepLinkMessage] = useState<string | null>(null);
+  const requestedOrderNumber = new URLSearchParams(window.location.search).get("order");
 
   // Debounce the search input (300ms) so typing stays smooth on large order lists.
   useEffect(() => {
@@ -200,6 +202,19 @@ export default function OrdersPage() {
     refetchInterval: 30 * 1000,
     staleTime: 15 * 1000,
   });
+
+  useEffect(() => {
+    if (!requestedOrderNumber || isLoading) return;
+    const order = orders?.find(item => item.orderNumber === requestedOrderNumber || String(item.id) === requestedOrderNumber);
+    if (order) {
+      setSelectedOrder(order);
+      setDetailsTab("overview");
+      setDetailsSheetOpen(true);
+      setDeepLinkMessage(null);
+    } else {
+      setDeepLinkMessage(`Order ${requestedOrderNumber} was not found, or you do not have permission to view it.`);
+    }
+  }, [orders, isLoading, requestedOrderNumber]);
 
   const { data: teamMembers } = useQuery<User[]>({
     queryKey: ["/api/users"],
@@ -269,6 +284,36 @@ export default function OrdersPage() {
     onError: () => {
       toast({ title: "Error", description: "Failed to update order", variant: "destructive" });
     },
+  });
+
+  const clientCaseReportMutation = useMutation({
+    mutationFn: async (orderId: number) => {
+      const response = await fetch(`/api/orders/${orderId}/client-case-report`, { credentials: "include" });
+      if (!response.ok) throw new Error("The client case report could not be generated.");
+      return response.json();
+    },
+    onSuccess: (report: Record<string, unknown>) => {
+      const doc = new jsPDF({ unit: "pt", format: "a4" });
+      const order = (report.order || report) as Record<string, unknown>;
+      const orderNumber = String(order.orderNumber || selectedOrder?.orderNumber || "order");
+      doc.setFont("helvetica", "bold"); doc.setFontSize(20); doc.text("Client Case Report", 40, 52);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(100, 116, 139);
+      doc.text(`Pixely Careers • Generated ${format(new Date(), "MMM dd, yyyy h:mm a")}`, 40, 70);
+      const value = (key: string) => String(order[key] ?? "—");
+      autoTable(doc, { startY: 94, head: [["Client", "Order", "Status", "Designer"]], body: [[value("clientName"), orderNumber, value("status"), String((order.assignee as Record<string, unknown> | undefined)?.name || order.designerName || "Unassigned")]], theme: "grid", headStyles: { fillColor: [37, 99, 235] } });
+      const entries = Object.entries(report).filter(([key, item]) => key !== "order" && item != null && (typeof item !== "object" || Array.isArray(item)));
+      let startY = (doc as any).lastAutoTable.finalY + 26;
+      entries.forEach(([section, item]) => {
+        const rows = Array.isArray(item) ? item.map(entry => [typeof entry === "object" ? Object.values(entry as Record<string, unknown>).map(value => typeof value === "object" ? JSON.stringify(value) : String(value ?? "—")).join(" • ") : String(entry)]) : [[String(item)]];
+        if (!rows.length) return;
+        doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.setTextColor(30, 41, 59); doc.text(titleCase(section), 40, startY);
+        autoTable(doc, { startY: startY + 8, head: [[titleCase(section)]], body: rows, theme: "grid", styles: { fontSize: 8, cellPadding: 5 }, headStyles: { fillColor: [51, 65, 85] } });
+        startY = (doc as any).lastAutoTable.finalY + 26;
+      });
+      doc.save(`client-case-report-${orderNumber}.pdf`);
+      toast({ title: "Client case report downloaded" });
+    },
+    onError: (error: Error) => toast({ title: "Could not generate report", description: error.message, variant: "destructive" }),
   });
 
   const deleteOrderMutation = useMutation({
@@ -911,6 +956,7 @@ export default function OrdersPage() {
 
   return (
     <div className="p-4 md:p-8 space-y-4 md:space-y-8">
+      {deepLinkMessage && <div className="flex items-center justify-between gap-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100"><span>{deepLinkMessage}</span><Button variant="ghost" size="sm" onClick={() => { setDeepLinkMessage(null); setLocation("/orders"); }}>Clear link</Button></div>}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold font-display text-white mb-2">Orders Management</h1>
@@ -1170,6 +1216,7 @@ export default function OrdersPage() {
                   {getStatusBadge(selectedOrder.status)}
                 </div>
                 <p className="text-slate-400 text-sm">Created {format(new Date(selectedOrder.createdAt!), "MMMM dd, yyyy 'at' h:mm a")}</p>
+                <Button size="sm" variant="outline" disabled={clientCaseReportMutation.isPending} onClick={() => clientCaseReportMutation.mutate(selectedOrder.id)}><Download className="mr-2 h-4 w-4" />{clientCaseReportMutation.isPending ? "Preparing report…" : "Client Case Report"}</Button>
               </div>
 
               <Tabs value={detailsTab} onValueChange={value => setDetailsTab(value as typeof detailsTab)}>
@@ -1443,13 +1490,13 @@ export default function OrdersPage() {
                   </section>
 
                   <section className="rounded-xl border border-slate-800 bg-slate-950 p-4">
-                    <div className="flex items-center justify-between gap-3"><div><h4 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Client Review</h4><p className="mt-1 text-xs text-slate-600">{selectedOrderReviews.length ? "Review collected" : "No review added"}</p></div><Button size="sm" variant="outline" onClick={() => setLocation(`/feedback?order=${selectedOrder.id}&action=review`)}><MessageSquareHeart className="mr-2 h-4 w-4" />{selectedOrderReviews.length ? "View / Update" : "Add Review"}</Button></div>
-                    {selectedOrderReviews[0] && <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900 p-3"><div className="flex items-center justify-between"><p className="font-mono text-xs text-blue-400">{selectedOrderReviews[0].reviewNumber}</p><span className="text-sm font-bold text-amber-400">{selectedOrderReviews[0].rating ? `${selectedOrderReviews[0].rating}/5` : "Not Rated"}</span></div><div className="mt-3 flex flex-wrap gap-2">{selectedOrderReviews[0].whatsappFeedbackReceived && <Badge variant="outline">WhatsApp</Badge>}{selectedOrderReviews[0].facebookReviewReceived && <Badge variant="outline">Facebook</Badge>}{selectedOrderReviews[0].videoReviewReceived && <Badge variant="outline">Video</Badge>}</div></div>}
+                    <div className="flex items-center justify-between gap-3"><div><h4 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Client Review</h4><p className="mt-1 text-xs text-slate-600">{selectedOrderReviews.length ? "Review collected" : "No review added"}</p></div><Button size="sm" variant="outline" onClick={() => setLocation(selectedOrderReviews[0] ? `/feedback?tab=reviews&review=${encodeURIComponent(selectedOrderReviews[0].reviewNumber)}` : `/feedback?order=${selectedOrder.id}&action=review`)}><MessageSquareHeart className="mr-2 h-4 w-4" />{selectedOrderReviews.length ? "View / Update" : "Add Review"}</Button></div>
+                    {selectedOrderReviews[0] && <button onClick={() => setLocation(`/feedback?tab=reviews&review=${encodeURIComponent(selectedOrderReviews[0].reviewNumber)}`)} className="mt-4 w-full rounded-lg border border-slate-800 bg-slate-900 p-3 text-left hover:border-slate-700"><div className="flex items-center justify-between"><p className="font-mono text-xs text-blue-400">{selectedOrderReviews[0].reviewNumber}</p><span className="text-sm font-bold text-amber-400">{selectedOrderReviews[0].rating ? `${selectedOrderReviews[0].rating}/5` : "Not Rated"}</span></div><div className="mt-3 flex flex-wrap gap-2">{selectedOrderReviews[0].whatsappFeedbackReceived && <Badge variant="outline">WhatsApp</Badge>}{selectedOrderReviews[0].facebookReviewReceived && <Badge variant="outline">Facebook</Badge>}{selectedOrderReviews[0].videoReviewReceived && <Badge variant="outline">Video</Badge>}</div></button>}
                   </section>
 
                   <section className="rounded-xl border border-slate-800 bg-slate-950 p-4">
                     <div className="flex items-center justify-between gap-3"><div><h4 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Suggestions</h4><p className="mt-1 text-xs text-slate-600">{selectedOrderSuggestions.length} recorded</p></div><Button size="sm" variant="outline" onClick={() => setLocation(`/feedback?order=${selectedOrder.id}&action=suggestion`)}><Lightbulb className="mr-2 h-4 w-4" />Add Suggestion</Button></div>
-                    <div className="mt-4 space-y-2">{selectedOrderSuggestions.length ? selectedOrderSuggestions.slice(0, 4).map(suggestion => <div key={suggestion.id} className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900 p-3"><div><p className="font-mono text-xs text-blue-400">{suggestion.suggestionNumber}</p><p className="mt-1 text-xs text-slate-500">{titleCase(suggestion.category)}</p></div><Badge className="bg-blue-500/10 text-blue-300">{titleCase(suggestion.status)}</Badge></div>) : <p className="py-4 text-sm text-slate-500">No suggestions recorded.</p>}</div>
+                    <div className="mt-4 space-y-2">{selectedOrderSuggestions.length ? selectedOrderSuggestions.slice(0, 4).map(suggestion => <button key={suggestion.id} onClick={() => setLocation(`/feedback?tab=suggestions&suggestion=${encodeURIComponent(suggestion.suggestionNumber)}`)} className="flex w-full items-center justify-between rounded-lg border border-slate-800 bg-slate-900 p-3 text-left hover:border-slate-700"><div><p className="font-mono text-xs text-blue-400">{suggestion.suggestionNumber}</p><p className="mt-1 text-xs text-slate-500">{titleCase(suggestion.category)}</p></div><Badge className="bg-blue-500/10 text-blue-300">{titleCase(suggestion.status)}</Badge></button>) : <p className="py-4 text-sm text-slate-500">No suggestions recorded.</p>}</div>
                   </section>
                 </div>
               )}
