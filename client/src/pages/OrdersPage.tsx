@@ -437,7 +437,7 @@ export default function OrdersPage() {
           margin: { left: margin, right: margin, bottom: 54 },
           styles: { font: "helvetica", fontSize: 8.5, cellPadding: 5, overflow: "linebreak", valign: "top", textColor: NAVY, lineColor: [226, 232, 240], lineWidth: 0.35 },
           headStyles: { fillColor: BLUE, textColor: [255, 255, 255], fontStyle: "bold" },
-          columnStyles: { 0: { cellWidth: 135, fontStyle: "bold", fillColor: LIGHT }, 1: { cellWidth: 376 } },
+          columnStyles: { 0: { cellWidth: 135, fontStyle: "bold", fillColor: LIGHT } },
           rowPageBreak: "avoid",
         });
         cursorY = (doc as any).lastAutoTable.finalY + 25;

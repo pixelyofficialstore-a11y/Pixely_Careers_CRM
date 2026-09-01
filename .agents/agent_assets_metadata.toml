@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "qfdPLcZ5VlQ9H9O3qNQAU"
+uri = "file://screenshots/Pixely_Careers_Client_Case_Report_PX-2609-002.pdf"
+type = "pdf"
+title = "Client Case Report PX-2609-002"
+description = "Two-page regression fixture generated from the live report layout and visually inspected for readable sections, wrapping, and pagination."
+logical_id = "47f530d9-9632-47ef-9671-c726e524d9de"
+content_hash = "sha256:3db213181fb7ddcd454401f9717b60160a2015d73f58fc655a7bcf02a13f9277"
+size = 27024
+mtime_ms = 1788281618826
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/repl:5ba1448b-5814-4687-8f1e-55f16eb21c90/47f530d9-9632-47ef-9671-c726e524d9de/f4633ce6-d733-424b-867c-785a9f110f57"
+storage_version_token = "1788281661896714"
+content_type = "application/pdf"

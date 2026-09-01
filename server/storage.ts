@@ -18,6 +18,7 @@ import { db } from "./db";
 import { eq, ne, desc, sql, and, isNotNull, inArray, asc } from "drizzle-orm";
 import { getStartOfBusinessDay, getStartOfBusinessMonth } from "@shared/business-time";
 import { getOrderAccounting } from "@shared/order-accounting";
+import { canAccessComplaintCase, type CaseRole } from "@shared/case-access";
 
 export type ComplaintListFilters = {
   search?: string;
@@ -592,18 +593,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getComplaints(role: string, userId: number, filters: ComplaintListFilters = {}): Promise<ComplaintResponse[]> {
-    let visible: Complaint[];
-    if (role === "admin") {
-      visible = await db.select().from(complaints).orderBy(desc(complaints.createdAt));
-    } else if (role === "support") {
-      visible = await db.select().from(complaints)
-        .where(eq(complaints.filedByUserId, userId))
-        .orderBy(desc(complaints.createdAt));
-    } else {
-      visible = await db.select().from(complaints)
-        .where(eq(complaints.complaintAgainstUserId, userId))
-        .orderBy(desc(complaints.createdAt));
-    }
+    let visible = (await db.select().from(complaints).orderBy(desc(complaints.createdAt)))
+      .filter(complaint => canAccessComplaintCase(
+        role as CaseRole,
+        userId,
+        complaint.filedByUserId,
+        complaint.complaintAgainstUserId,
+      ));
 
     if (filters.orderId) {
       visible = visible.filter(complaint => complaint.orderId === filters.orderId);

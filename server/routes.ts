@@ -21,6 +21,7 @@ import { isCloudinaryConfigured, uploadToCloudinary } from "./cloudinary";
 import webpush from "web-push";
 import { addSseClient, removeSseClient, emitNotification } from "./sse";
 import { getPaymentApprovalConflict } from "@shared/order-accounting";
+import { canAccessOrderCase, projectCaseActivity, type CaseRole } from "@shared/case-access";
 
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
   webpush.setVapidDetails(
@@ -649,7 +650,7 @@ export async function registerRoutes(
     const user = req.user as User;
     const order = await storage.getOrder(orderId);
     if (!order) return res.sendStatus(404);
-    if (user.role === "designer" && order.assignedToId !== user.id) {
+    if (!canAccessOrderCase(user.role as CaseRole, user.id, order.assignedToId)) {
       return res.sendStatus(403);
     }
     const complaints = await storage.getComplaints(user.role, user.id, { orderId });
@@ -659,7 +660,7 @@ export async function registerRoutes(
   const canAccessOrder = async (user: User, orderId: number) => {
     const order = await storage.getOrder(orderId);
     if (!order) return undefined;
-    if (user.role === "designer" && order.assignedToId !== user.id) return null;
+    if (!canAccessOrderCase(user.role as CaseRole, user.id, order.assignedToId)) return null;
     return order;
   };
   const userSummary = safeUserSummary;
@@ -711,12 +712,8 @@ export async function registerRoutes(
     if (!order) return res.sendStatus(order === null ? 403 : 404);
     const logs = await storage.getOrderActivity(orderId);
     // Complaint activity must never reveal a filer to the designer it concerns.
-    res.json(logs
-      .filter(log => user.role === "admin" || !(log.activityType === "suggestion_updated" && (
-        (log.details as any)?.event === "admin_note_added" || (log.details as any)?.fields?.includes?.("adminNotes")
-      )))
-      .map(log => user.role === "designer" && log.activityType.startsWith("complaint_")
-        ? { ...log, actor: null } : { ...log, actor: safeUserSummary(log.actor) }));
+    res.json(projectCaseActivity(logs, user.role as CaseRole)
+      .map(log => ({ ...log, actor: log.actor ? safeUserSummary(log.actor as User) : log.actor })));
   });
 
   app.get(api.orders.clientCaseReport.path, requireAuth, async (req, res) => {
@@ -755,12 +752,8 @@ export async function registerRoutes(
         ...suggestion,
         adminNotesLog: user.role === "admin" ? suggestion.adminNotesLog : undefined,
       })),
-      activity: activity
-        .filter(log => !(log.activityType === "suggestion_updated" && (
-          (log.details as any)?.event === "admin_note_added" || (log.details as any)?.fields?.includes?.("adminNotes")
-        )))
-        .map(log => user.role === "designer" && log.activityType.startsWith("complaint_")
-          ? { ...log, actor: null } : { ...log, actor: userSummary(log.actor) }),
+      activity: projectCaseActivity(activity, user.role as CaseRole)
+        .map(log => ({ ...log, actor: log.actor ? userSummary(log.actor as User) : log.actor })),
     });
   });
 
@@ -1206,12 +1199,10 @@ export async function registerRoutes(
     const history = await storage.getComplaintHistory(id);
     // Reporter and management identities are restricted to Admin. Other roles
     // receive the case events without actor metadata or internal note content.
-    res.json(user.role === "admin" ? history : history.map(entry => ({
-      ...entry,
-      actor: undefined,
-      previousValue: entry.action === "complaint_note" ? null : entry.previousValue,
-      newValue: entry.action === "complaint_note" ? null : entry.newValue,
-    })));
+    res.json(projectCaseActivity(
+      history.map(entry => ({ ...entry, activityType: entry.action })),
+      user.role as CaseRole,
+    ).map(({ activityType: _activityType, ...entry }) => entry));
   });
 
   app.patch(api.orders.update.path, requireAuth, async (req, res) => {
