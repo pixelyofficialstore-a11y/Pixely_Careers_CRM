@@ -77,25 +77,6 @@ export default function ComplaintsPage() {
   const { data: teamMembers = [] } = useQuery<{ id: number; name: string; role: string; isActive: boolean }[]>({ queryKey: ["/api/users"], enabled: user?.role === "admin" || user?.role === "support", staleTime: 300000 });
   const { data: orders = [] } = useQuery<OrderWithServices[]>({ queryKey: ["/api/orders"], enabled: user?.role === "admin" || user?.role === "support" });
   const stats = statsResponse?.complaints; const isAdmin = user?.role === "admin"; const canCreate = isAdmin || user?.role === "support";
-  const [statusChange, setStatusChange] = useState<{ complaint: ComplaintResponse; status: string; resolution: string; outcome: string } | null>(null);
-  const statusUpdate = useMutation({
-    mutationFn: async () => {
-      if (!statusChange) throw new Error("No status change selected.");
-      const isClosing = statusChange.status === "resolved" || statusChange.status === "order_canceled";
-      return (await apiRequest("PATCH", `/api/complaints/${statusChange.complaint.id}`, {
-        status: statusChange.status,
-        confirmDecision: true,
-        ...(isClosing ? { resolution: statusChange.resolution.trim(), resolutionOutcome: statusChange.outcome } : {}),
-      })).json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/complaints"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-      toast({ title: "Complaint status updated" });
-      setStatusChange(null);
-    },
-    onError: (error: Error) => toast({ title: "Status update failed", description: errorText(error), variant: "destructive" }),
-  });
   const categoryOptions = categories.length ? categories.filter(c => c.isActive) : complaintCategories.map(key => ({ key, label: complaintCategoryLabels[key] }));
   const cards = [
     { key: "all", label: "All Complaints", value: stats?.all ?? complaints.length, icon: FileWarning, iconClass: "bg-blue-500/10 text-blue-500", testId: "stat-complaints-all" },
@@ -212,11 +193,6 @@ export default function ComplaintsPage() {
       </TableRow>
     </TableHeader>
   );
-  const statusOptionsFor = (status: string) => status === "new"
-    ? ["new", "valid", "invalid"]
-    : status === "valid"
-      ? ["valid", "resolved", "order_canceled"]
-      : [status];
   const renderComplaintRow = (complaint: ComplaintResponse) => (
     <TableRow key={complaint.id} className="border-slate-800 hover:bg-slate-900/50" data-testid={`row-complaint-${complaint.id}`}>
       <TableCell className="whitespace-nowrap font-mono text-xs text-blue-400">{complaint.complaintNumber || "—"}</TableCell>
@@ -236,14 +212,7 @@ export default function ComplaintsPage() {
           <p className="text-xs text-slate-500">{complaint.filedBy?.role || ""}</p>
         </div>
       </TableCell>}
-      <TableCell>
-        {isAdmin ? <Select value={complaint.status} onValueChange={status => status !== complaint.status && setStatusChange({ complaint, status, resolution: "", outcome: "" })}>
-          <SelectTrigger className="h-auto w-36 rounded px-2 py-1 shadow-none hover:bg-white/5 focus:ring-0" data-testid={`select-complaint-status-${complaint.id}`}>
-            <SelectValue>{<ComplaintStatusBadge status={complaint.status} />}</SelectValue>
-          </SelectTrigger>
-          <SelectContent className="border-slate-800 bg-slate-900 text-white">{statusOptionsFor(complaint.status).map(value => <SelectItem key={value} value={value}>{titleCase(value)}</SelectItem>)}</SelectContent>
-        </Select> : <ComplaintStatusBadge status={complaint.status} />}
-      </TableCell>
+      <TableCell><ComplaintStatusBadge status={complaint.status} /></TableCell>
       <TableCell className="text-right">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -309,15 +278,5 @@ export default function ComplaintsPage() {
       <div className="table-scroll-wrapper"><Table className="min-w-[980px]">{complaintTableHead}<TableBody>{filteredComplaints.map(renderComplaintRow)}</TableBody></Table></div>
     </div>}
     <ComplaintDrawer id={selectedId} open={selectedId !== null} onOpenChange={open => { if (!open) { setSelectedId(null); setLocation("/complaints"); } }} /><ComplaintDialog order={null} orders={orders} open={createOpen} onOpenChange={setCreateOpen} />
-    <AlertDialog open={Boolean(statusChange)} onOpenChange={open => { if (!open && !statusUpdate.isPending) setStatusChange(null); }}>
-      <AlertDialogContent className="max-h-[90vh] overflow-y-auto border-slate-800 bg-slate-900 text-white">
-        <AlertDialogHeader><AlertDialogTitle>Confirm {titleCase(statusChange?.status || "")} decision</AlertDialogTitle><AlertDialogDescription className="text-slate-400">This is an irreversible workflow transition for {statusChange?.complaint.complaintNumber}.</AlertDialogDescription></AlertDialogHeader>
-        {statusChange && (statusChange.status === "resolved" || statusChange.status === "order_canceled") && <div className="space-y-4 py-2">
-          <div className="space-y-2"><Label htmlFor="table-status-resolution">Resolution text <span className="text-rose-400">*</span></Label><Textarea id="table-status-resolution" value={statusChange.resolution} onChange={event => setStatusChange(current => current ? { ...current, resolution: event.target.value } : current)} rows={3} className="border-slate-700 bg-slate-950" /></div>
-          <div className="space-y-2"><Label>Outcome <span className="text-rose-400">*</span></Label><Select value={statusChange.outcome} onValueChange={outcome => setStatusChange(current => current ? { ...current, outcome } : current)}><SelectTrigger className="border-slate-700 bg-slate-950"><SelectValue placeholder="Select an outcome" /></SelectTrigger><SelectContent className="border-slate-800 bg-slate-900 text-white"><SelectItem value="correction_revision">Correction / Revision</SelectItem><SelectItem value="refund">Refund</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent></Select></div>
-        </div>}
-        <AlertDialogFooter><AlertDialogCancel disabled={statusUpdate.isPending}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => statusUpdate.mutate()} disabled={statusUpdate.isPending || Boolean(statusChange && (statusChange.status === "resolved" || statusChange.status === "order_canceled") && (!statusChange.resolution.trim() || !statusChange.outcome))}>{statusUpdate.isPending ? "Saving..." : "Confirm decision"}</AlertDialogAction></AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
   </div>;
 }
