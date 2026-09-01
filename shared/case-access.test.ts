@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   canAccessComplaintCase,
   canAccessOrderCase,
+  projectSuggestionForRole,
   projectCaseActivity,
 } from "./case-access";
 
@@ -33,6 +34,48 @@ test("nested review, suggestion, complaint, and report entry points reject anoth
   assert.equal(canAccessOrderCase("designer", 3, 3), true);
   assert.equal(canAccessOrderCase("designer", 5, 3), false);
   assert.equal(canAccessOrderCase("designer", 3, null), false);
+});
+
+test("dashboard order access keeps designer metrics limited to assigned orders", () => {
+  const orders = [
+    { id: 101, assignedToId: 3 },
+    { id: 102, assignedToId: 5 },
+    { id: 103, assignedToId: null },
+  ];
+
+  assert.deepEqual(
+    orders.filter(order => canAccessOrderCase("designer", 3, order.assignedToId)).map(order => order.id),
+    [101],
+  );
+  assert.deepEqual(
+    orders.filter(order => canAccessOrderCase("support", 2, order.assignedToId)).map(order => order.id),
+    [101, 102, 103],
+  );
+  assert.deepEqual(
+    orders.filter(order => canAccessOrderCase("admin", 1, order.assignedToId)).map(order => order.id),
+    [101, 102, 103],
+  );
+});
+
+test("non-admin suggestion responses omit private note fields while Admin retains them", () => {
+  const suggestion = {
+    id: 12,
+    suggestionText: "Improve the handoff",
+    adminNotes: "Internal escalation details",
+    decisionNote: "Private review rationale",
+    adminNotesLog: [{ noteText: "Internal escalation details" }],
+  };
+
+  const support = projectSuggestionForRole(suggestion, "support");
+  const designer = projectSuggestionForRole(suggestion, "designer");
+  const admin = projectSuggestionForRole(suggestion, "admin");
+
+  assert.equal("adminNotes" in support, false);
+  assert.equal("decisionNote" in support, false);
+  assert.equal("adminNotesLog" in support, false);
+  assert.equal("adminNotes" in designer, false);
+  assert.equal("decisionNote" in designer, false);
+  assert.deepEqual(admin, suggestion);
 });
 
 test("support and designers never receive private suggestion note activity", () => {

@@ -18,7 +18,7 @@ import { db } from "./db";
 import { eq, ne, desc, sql, and, isNotNull, inArray, asc } from "drizzle-orm";
 import { getStartOfBusinessDay, getStartOfBusinessMonth } from "@shared/business-time";
 import { getOrderAccounting } from "@shared/order-accounting";
-import { canAccessComplaintCase, type CaseRole } from "@shared/case-access";
+import { canAccessComplaintCase, canAccessOrderCase, type CaseRole } from "@shared/case-access";
 
 export type ComplaintListFilters = {
   search?: string;
@@ -356,7 +356,10 @@ export class DatabaseStorage implements IStorage {
 
   async getStats(role: string, userId: number, complaintFilters: ComplaintListFilters = {}): Promise<any> {
     const allOrdersRaw = await db.select().from(orders);
-    const allOrders = allOrdersRaw.filter(o => o.advancePaymentStatus === 'approved');
+    const allOrders = allOrdersRaw.filter(o =>
+      o.advancePaymentStatus === 'approved' &&
+      canAccessOrderCase(role as CaseRole, userId, o.assignedToId)
+    );
     // Canceled orders retain original amounts for audit. Their accounting
     // projection decides whether an advance was refunded or retained.
     const collectedOrderIds = new Set(allOrders.filter(order => getOrderAccounting(order).netCollected > 0).map(order => order.id));

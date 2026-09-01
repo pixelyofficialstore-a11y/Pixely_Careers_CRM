@@ -16,6 +16,19 @@ export function canAccessOrderCase(
   return role !== "designer" || assignedToId === userId;
 }
 
+export function projectSuggestionForRole<T extends Record<string, unknown>>(
+  suggestion: T,
+  role: CaseRole,
+): T {
+  if (role === "admin") return { ...suggestion };
+  const {
+    adminNotes: _adminNotes,
+    decisionNote: _decisionNote,
+    adminNotesLog: _adminNotesLog,
+    ...safeSuggestion
+  } = suggestion;
+  return safeSuggestion as T;
+}
 export function canAccessComplaintCase(
   role: CaseRole,
   userId: number,

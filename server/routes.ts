@@ -21,7 +21,6 @@ import { isCloudinaryConfigured, uploadToCloudinary } from "./cloudinary";
 import webpush from "web-push";
 import { addSseClient, removeSseClient, emitNotification, emitRealtime } from "./sse";
 import { getPaymentApprovalConflict } from "@shared/order-accounting";
-import { canAccessOrderCase, projectCaseActivity, type CaseRole } from "@shared/case-access";
 
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
   webpush.setVapidDetails(
@@ -32,6 +31,7 @@ if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
 } else {
   console.warn("[push] VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY env vars are not set — background web push is disabled");
 }
+import { canAccessOrderCase, projectCaseActivity, projectSuggestionForRole, type CaseRole } from "@shared/case-access";
 
 const KNOWN_PUSH_HOSTS = [
   "fcm.googleapis.com",
@@ -423,7 +423,7 @@ export async function registerRoutes(
       const avatarUrl = `/api/avatars/${file.filename}`;
       const updatedUser = await storage.updateUser(user.id, { avatar: avatarUrl });
       
-      res.json(updatedUser);
+      res.json(safeUser(updatedUser));
     });
   });
 
@@ -677,10 +677,11 @@ export async function registerRoutes(
       if (kind === "review") {
         return { ...item, orderNumber: order?.orderNumber || null, clientName: order?.clientName || "", order: order ? { packageType: order.packageType, services: order.services, paymentStatus: order.paymentStatus, status: order.status } : undefined, reviewForDesigner: summary(item.reviewForDesignerId), createdBy: summary(item.createdById) };
       }
-      const { category: _legacyCategory, ...suggestion } = item;
+      const { category: _legacyCategory, ...suggestionFields } = item;
+      const suggestion = projectSuggestionForRole(suggestionFields, role as CaseRole);
       return {
         ...suggestion,
-        adminNotes: undefined,
+        ...(role === "admin" ? { adminNotes: undefined } : {}),
         adminNotesLog: role === "admin" ? await storage.getSuggestionNotes(item.id) : undefined,
         orderNumber: order?.orderNumber || null,
         clientName: order?.clientName || "",
