@@ -668,8 +668,22 @@ export async function registerRoutes(
     return Promise.all(items.map(async (item, index) => {
       const order = allOrders[index];
       const summary = (id: number | null | undefined) => id ? safeUserSummary(userById.get(id)) : null;
-      return kind === "review" ? { ...item, orderNumber: order?.orderNumber || null, clientName: order?.clientName || "", order: order ? { packageType: order.packageType, services: order.services, paymentStatus: order.paymentStatus, status: order.status } : undefined, reviewForDesigner: summary(item.reviewForDesignerId), createdBy: summary(item.createdById) } :
-        { ...item, adminNotes: undefined, adminNotesLog: role === "admin" ? await storage.getSuggestionNotes(item.id) : undefined, orderNumber: order?.orderNumber || null, clientName: order?.clientName || "", order: order ? { packageType: order.packageType, services: order.services, status: order.status } : undefined, relatedDesigner: summary(item.relatedDesignerId), createdBy: summary(item.createdById), implementedBy: summary(item.implementedByUserId), rejectedBy: summary(item.rejectedByUserId) };
+      if (kind === "review") {
+        return { ...item, orderNumber: order?.orderNumber || null, clientName: order?.clientName || "", order: order ? { packageType: order.packageType, services: order.services, paymentStatus: order.paymentStatus, status: order.status } : undefined, reviewForDesigner: summary(item.reviewForDesignerId), createdBy: summary(item.createdById) };
+      }
+      const { category: _legacyCategory, ...suggestion } = item;
+      return {
+        ...suggestion,
+        adminNotes: undefined,
+        adminNotesLog: role === "admin" ? await storage.getSuggestionNotes(item.id) : undefined,
+        orderNumber: order?.orderNumber || null,
+        clientName: order?.clientName || "",
+        order: order ? { packageType: order.packageType, services: order.services, status: order.status } : undefined,
+        relatedDesigner: summary(item.relatedDesignerId),
+        createdBy: summary(item.createdById),
+        implementedBy: summary(item.implementedByUserId),
+        rejectedBy: summary(item.rejectedByUserId),
+      };
     }));
   };
   const feedbackFilters = (req: Request) => ({
@@ -849,7 +863,7 @@ export async function registerRoutes(
       const input = api.feedback.suggestions.create.input.parse(req.body); const user = req.user as User; const order = await canAccessOrder(user, input.orderId);
       if (!order) return res.sendStatus(order === null ? 403 : 404);
       if (input.screenshotUrl && !isCloudinaryUrl(input.screenshotUrl)) return res.status(400).json({ message: "Screenshot must be an HTTPS Cloudinary URL." });
-      const suggestion = await storage.createClientSuggestion({ ...input, relatedDesignerId: order.assignedToId ?? null, createdById: user.id, reviewedByUserId: null, reviewedAt: null, adminNotes: null });
+      const suggestion = await storage.createClientSuggestion({ ...input, category: "other", relatedDesignerId: order.assignedToId ?? null, createdById: user.id, reviewedByUserId: null, reviewedAt: null, adminNotes: null });
       await storage.createActivityLog({ orderId: input.orderId, actorId: user.id, activityType: "suggestion_created", newValue: suggestion.suggestionNumber, details: { suggestionId: suggestion.id } });
       res.status(201).json((await feedbackProjection([suggestion], "suggestion", user.role))[0]);
     } catch (err) { if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid suggestion." }); return res.status(500).json({ message: "Unable to create client suggestion." }); }

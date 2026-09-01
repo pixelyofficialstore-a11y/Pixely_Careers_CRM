@@ -1,0 +1,852 @@
+PIXELY CAREERS CRM
+TASK: UNIFY ALL DETAIL VIEWS + IMPROVE HOME/DASHBOARD
+
+IMPORTANT:
+This CRM already has working Orders, Complaints, Reviews, Suggestions, Payments, Dashboard, Nested Drawers, Cloudinary, Supabase and role permissions.
+
+DO NOT rebuild the application.
+DO NOT create duplicate components.
+DO NOT rewrite unrelated business logic.
+DO NOT reset Supabase.
+DO NOT break existing nested drawer navigation.
+
+==================================================
+PART 1 — MAIN BUG: DETAIL VIEWS ARE NOT IDENTICAL
+==================================================
+
+CURRENT PROBLEM:
+
+The Complaint detail view opened from:
+
+Complaints Page
+
+does NOT look exactly the same as the Complaint detail view opened from:
+
+Orders → Order Details → Client Experience → Complaint.
+
+Same problem exists for:
+
+Reviews
+Suggestions
+
+THIS MUST BE FIXED COMPLETELY.
+
+==================================================
+STRICT COMPONENT RULE
+==================================================
+
+There must be ONLY ONE reusable component for each entity:
+
+ComplaintDetails
+
+ReviewDetails
+
+SuggestionDetails
+
+DO NOT keep separate components such as:
+
+ComplaintDetailsForOrder
+OrderComplaintDetails
+ComplaintMiniDetails
+ComplaintDetailsV2
+
+ReviewDetailsForOrder
+ReviewSummaryDrawer
+OrderReviewDetails
+
+SuggestionDetailsForOrder
+SuggestionMiniView
+
+Delete/deprecate duplicate rendering paths safely and reuse the canonical full detail components.
+
+==================================================
+CANONICAL COMPONENTS
+==================================================
+
+First inspect which existing detail UI is the MOST complete/professional.
+
+Use the detailed views currently shown on:
+
+Complaints Page
+Feedback → Reviews
+Feedback → Suggestions
+
+as the canonical UI.
+
+Then Orders must render THOSE EXACT SAME COMPONENTS.
+
+==================================================
+COMPLAINT EXAMPLE
+==================================================
+
+If CMP-2609-006 is opened from:
+
+Complaints Page
+
+and shows:
+
+Complaint Summary
+Complaint Details
+Evidence
+Related Order
+Management Decision
+Resolution
+Internal Admin Notes
+Case History
+
+then when the SAME complaint is opened from:
+
+Orders
+→ PX-XXXX-XXX
+→ Client Experience
+→ CMP-2609-006
+
+the EXACT SAME structure must appear.
+
+Same:
+
+- layout
+- cards
+- wording
+- colors
+- status badge
+- buttons
+- evidence
+- notes
+- history
+- permissions
+- spacing
+- typography
+
+Only ONE difference is allowed:
+
+When opened from Order context, show:
+
+← Back
+
+so the user can return to the Order drawer.
+
+==================================================
+REVIEW EXAMPLE
+==================================================
+
+Review opened from:
+
+Feedback → Reviews
+
+and Review opened from:
+
+Orders → Client Experience
+
+must render the EXACT SAME:
+
+Review Summary
+Client Feedback
+Feedback Sources
+Evidence
+Related Order
+Record Details
+
+There must be NO simplified Review view inside Orders.
+
+==================================================
+SUGGESTION EXAMPLE
+==================================================
+
+Suggestion opened from:
+
+Feedback → Suggestions
+
+and Suggestion opened from:
+
+Orders → Client Experience
+
+must show the EXACT SAME:
+
+Suggestion Summary
+Client Suggestion
+Evidence
+Related Order
+Management Decision
+Internal Admin Notes
+Suggestion History
+
+No simplified Order-only Suggestion UI.
+
+==================================================
+PART 2 — USE ONE SHARED DRAWER SHELL
+==================================================
+
+Keep one reusable:
+
+RecordDrawer / EntityDrawer / DetailDrawer
+
+concept.
+
+It should handle:
+
+Header
+Back
+Close
+Scroll
+Loading
+Errors
+
+Then render inside:
+
+<ComplaintDetails />
+<ReviewDetails />
+<SuggestionDetails />
+<OrderDetails />
+
+Do NOT create different drawer styling depending on which page opened the record.
+
+==================================================
+PART 3 — NAVIGATION CONTEXT ONLY
+==================================================
+
+The DATA/DETAIL COMPONENT stays identical.
+
+Only navigation changes.
+
+Example:
+
+Complaints Page
+→ Complaint
+X closes drawer.
+
+Orders Page
+→ Order
+→ Complaint
+Back returns to Order.
+X closes all drawers.
+
+Same for Review/Suggestion.
+
+==================================================
+PART 4 — DO NOT CHANGE BACKGROUND PAGE
+==================================================
+
+When Complaint opens from Order:
+
+Orders page must remain in background.
+
+When Review opens from Order:
+
+Orders remains.
+
+When Suggestion opens:
+
+Orders remains.
+
+Do not navigate to Complaints or Feedback page just to show details.
+
+==================================================
+PART 5 — PERMISSIONS MUST ALSO BE IDENTICAL
+==================================================
+
+Do not create different permission behavior when same entity is opened from Order.
+
+Example:
+
+Designer opening Complaint from Complaints page:
+cannot see reporter.
+
+Designer opening same Complaint from Order:
+must ALSO not see reporter.
+
+Admin Notes remain Admin-only everywhere.
+
+Management controls remain Admin-only everywhere.
+
+==================================================
+PART 6 — CLIENT EXPERIENCE CARDS
+==================================================
+
+Inside Order → Client Experience:
+
+Keep only compact summaries.
+
+COMPLAINT:
+
+CMP-2609-004
+Communication Issue
+Resolved
+
+REVIEW:
+
+REV-2609-003
+5/5
+WhatsApp / Facebook / Video
+
+SUGGESTION:
+
+SUG-2609-005
+Document Quality
+Rejected
+
+These are ONLY preview cards.
+
+Clicking them opens the canonical full detail component.
+
+Do not duplicate detail content inside Client Experience.
+
+==================================================
+PART 7 — CODE CLEANUP
+==================================================
+
+Audit codebase for duplicate entity detail rendering.
+
+Search for:
+
+ComplaintDetails
+ReviewDetails
+SuggestionDetails
+ComplaintDrawer
+ReviewDrawer
+SuggestionDrawer
+ClientExperience
+OrderDetails
+
+Identify duplicate structures.
+
+Use ONE source of UI truth.
+
+Do NOT aggressively refactor unrelated components.
+
+==================================================
+PART 8 — HOME PAGE / DASHBOARD IMPROVEMENT
+==================================================
+
+The Dashboard should now become a clean role-based operational homepage.
+
+It should answer:
+
+WHAT NEEDS MY ATTENTION TODAY?
+WHAT IS HAPPENING IN THE BUSINESS?
+WHAT ARE MY KEY METRICS?
+WHAT SHOULD I OPEN NEXT?
+
+Do not make it only a collection of random metric cards.
+
+==================================================
+PART 9 — DASHBOARD STRUCTURE
+==================================================
+
+Recommended structure:
+
+1. Welcome / Today Header
+2. Quick Attention
+3. Main Metrics
+4. Work Queue
+5. Client Experience
+6. Finance — Admin only
+7. Recent Activity
+
+Keep existing role permissions.
+
+==================================================
+PART 10 — HEADER
+==================================================
+
+Example:
+
+Good Evening, Soban
+
+Tuesday, September 1, 2026
+
+Small subtitle:
+
+Here is what is happening across Pixely Careers today.
+
+Do not make it oversized.
+
+==================================================
+PART 11 — QUICK ATTENTION SECTION
+==================================================
+
+This should be at the top.
+
+Cards should represent ACTIONABLE items.
+
+Examples for Admin:
+
+Complaints Awaiting Decision
+
+Pending Payments
+
+Orders Approaching Deadline
+
+Canceled / Refunded Orders
+
+New Suggestions
+
+Example:
+
+Complaints Awaiting Decision
+3
+View Complaints
+
+Each card clickable.
+
+==================================================
+ADMIN QUICK ATTENTION
+==================================================
+
+Suggested:
+
+New Complaints
+
+Pending Payment Approvals
+
+Orders Due Today
+
+Overdue Orders
+
+Suggestions Awaiting Decision
+
+Do not show zero-value cards if you can hide them cleanly, unless consistency requires them.
+
+==================================================
+DESIGNER QUICK ATTENTION
+==================================================
+
+Designer should see:
+
+New Orders Assigned
+
+Orders Due Today
+
+Pending Revisions
+
+Complaints Against Me
+
+Reviews Received
+
+Do NOT show agency-wide finance.
+
+==================================================
+SUPPORT / SALES QUICK ATTENTION
+==================================================
+
+Support should see:
+
+Orders Created / Handled
+
+Clients Waiting
+
+Complaints I Filed
+
+Reviews Recorded
+
+Suggestions Recorded
+
+Pending Follow-ups later when After-Sales is built.
+
+==================================================
+PART 12 — MAIN METRIC CARDS
+==================================================
+
+Admin:
+
+Active Orders
+Delivered Orders
+Monthly Revenue
+Collected
+Remaining
+Average Client Rating
+Confirmed Complaints
+Refund Cases
+
+Designer:
+
+Assigned Orders
+Delivered
+Pending
+Reviews
+Average Rating
+Complaints Against Me
+Suggestions Related to My Orders
+
+Support:
+
+Orders Handled
+Reviews Recorded
+Suggestions Recorded
+Complaints Filed
+
+==================================================
+PART 13 — CLIENT EXPERIENCE DASHBOARD
+==================================================
+
+Add a clean section:
+
+CLIENT EXPERIENCE
+
+Admin metrics:
+
+Average Rating
+Reviews This Month
+Facebook Reviews
+Video Testimonials
+Confirmed Complaints
+Resolved Complaints
+Suggestions Implemented
+
+Make IDs/metrics clickable.
+
+==================================================
+PART 14 — WORK QUEUE
+==================================================
+
+Add a clean work queue.
+
+Example Admin:
+
+Requires Attention
+
+PX-2609-015
+Payment Pending
+Designer: Muhammad Anas
+
+CMP-2609-020
+New Complaint
+Against: Safwan Masood
+
+SUG-2609-030
+New Suggestion
+Client: Ali Shamshad
+
+Use compact rows.
+
+Do not turn Dashboard into another full table page.
+
+==================================================
+PART 15 — RECENT ACTIVITY
+==================================================
+
+Show latest important activity:
+
+Order created
+Payment approved
+Complaint confirmed
+Review recorded
+Suggestion implemented
+Order delivered
+Order canceled
+
+Use same human-readable Activity formatter as Order Activity.
+
+Example:
+
+Review REV-2609-003 recorded
+Soban Masood · 6:34 PM
+
+==================================================
+PART 16 — DASHBOARD CARD CUSTOMIZATION
+==================================================
+
+Preserve/add user customization.
+
+Allow:
+
+Customize Dashboard
+
+User can:
+
+- reorder cards
+- reorder sections
+- hide optional cards
+- restore default layout
+
+Save per user in Supabase.
+
+==================================================
+PART 17 — DRAG UX
+==================================================
+
+Only show drag handles in Customize mode.
+
+Normal Dashboard should remain clean.
+
+Do not accidentally trigger card navigation while dragging.
+
+==================================================
+PART 18 — DEFAULT ADMIN DASHBOARD ORDER
+==================================================
+
+Recommended default:
+
+1. Quick Attention
+2. Business Metrics
+3. Orders Overview
+4. Client Experience
+5. Finance
+6. Recent Activity
+
+==================================================
+PART 19 — DEFAULT DESIGNER DASHBOARD ORDER
+==================================================
+
+1. Quick Attention
+2. Assigned Orders
+3. Client Experience
+4. Personal Performance
+5. Recent Activity
+
+==================================================
+PART 20 — DEFAULT SUPPORT DASHBOARD ORDER
+==================================================
+
+1. Quick Attention
+2. Client Orders
+3. Reviews / Suggestions / Complaints
+4. Recent Activity
+
+==================================================
+PART 21 — CLICKABLE CARDS
+==================================================
+
+Examples:
+
+Confirmed Complaints
+→ /complaints?status=confirmed
+
+New Suggestions
+→ /feedback?tab=suggestions&status=new
+
+Reviews
+→ /feedback?tab=reviews
+
+Pending Payments
+→ /payments?status=pending
+
+Assigned Orders
+→ Orders filtered for logged-in Designer
+
+==================================================
+PART 22 — DASHBOARD UI CONSISTENCY
+==================================================
+
+Use current CRM design:
+
+dark background
+same blue accent
+same cards
+same fonts
+same status badges
+same spacing
+
+Do not redesign the entire theme.
+
+Improve hierarchy only.
+
+==================================================
+PART 23 — REMOVE CLUTTER
+==================================================
+
+Avoid:
+
+too many equally-sized cards
+
+giant empty sections
+
+duplicated metrics
+
+agency-wide metrics for Designer
+
+“All Designers” filters on Designer dashboard
+
+technical backend wording
+
+==================================================
+PART 24 — RESPONSIVE DASHBOARD
+==================================================
+
+Desktop:
+clean multi-column layout.
+
+Tablet:
+responsive grid.
+
+Mobile:
+single-column logical order.
+
+User customization should preserve logical order, not fixed pixel positions.
+
+==================================================
+PART 25 — FULL SECURITY AUDIT DURING THIS CHANGE
+==================================================
+
+Because detail components are being shared, test carefully that shared components do not accidentally expose Admin data.
+
+Test:
+
+Admin
+Designer
+Support
+
+==================================================
+COMPLAINT SECURITY TEST
+==================================================
+
+Designer opens Complaint through:
+
+Complaints page.
+
+Then same Complaint through:
+
+Order Client Experience.
+
+Expected:
+
+Identical UI structure.
+
+But:
+
+NO Reported By
+NO Admin Notes
+NO management controls
+
+Admin sees those in both contexts.
+
+==================================================
+REVIEW SECURITY TEST
+==================================================
+
+Designer can view/update Reviews for authorized clients only.
+
+Shared component must not bypass Order permission.
+
+==================================================
+SUGGESTION SECURITY TEST
+==================================================
+
+Designer sees Suggestion details but:
+
+NO Admin Notes
+NO Implement/Reject controls
+
+Admin sees full details in both contexts.
+
+==================================================
+PART 26 — DEEP LINKING
+==================================================
+
+Preserve existing deep-link capability.
+
+Direct links may still open correct entity.
+
+Nested Order view should not switch background page.
+
+==================================================
+PART 27 — PERFORMANCE
+==================================================
+
+Do not load all full Complaint/Review/Suggestion details when Order Client Experience tab loads.
+
+Load compact summary first.
+
+Fetch full record only after user clicks.
+
+This keeps Order drawer fast.
+
+==================================================
+PART 28 — TEST SAME UI EXACTLY
+==================================================
+
+MANDATORY MANUAL TEST:
+
+Open:
+
+CMP-2609-004
+
+from Complaints page.
+
+Take screenshot.
+
+Then open same:
+
+CMP-2609-004
+
+from:
+
+Orders → related Order → Client Experience.
+
+Compare.
+
+EXPECTED:
+
+The detail content/layout must be visually identical.
+
+Only Back button/navigation context may differ.
+
+Repeat same test for:
+
+Review
+Suggestion
+
+==================================================
+PART 29 — TEST DASHBOARD ROLES
+==================================================
+
+Admin:
+sees Admin metrics and finance.
+
+Designer:
+does not see confidential global finance.
+
+Support:
+sees operational metrics only.
+
+==================================================
+PART 30 — REGRESSION TEST
+==================================================
+
+Test:
+
+Orders
+Order Details
+Client Experience
+Activity
+Complaints
+Reviews
+Suggestions
+Payments
+Dashboard
+Notifications
+Client Case Report
+Cloudinary
+Supabase
+Role permissions
+Nested drawer navigation
+Production build
+Console
+Server logs
+
+==================================================
+FINAL PRINCIPLE
+==================================================
+
+THERE MUST NEVER BE TWO DIFFERENT VERSIONS OF THE SAME RECORD DETAIL UI.
+
+Complaint CMP-XXXX is the same Complaint whether opened from:
+
+Complaints Page
+Orders Page
+Activity
+Notification
+
+Review REV-XXXX is the same Review everywhere.
+
+Suggestion SUG-XXXX is the same Suggestion everywhere.
+
+Only the navigation context changes.
+
+Use ONE reusable full detail component per entity.
+
+For Dashboard:
+
+Make it an operational command center, not a random grid of numbers.
+
+The final CRM should feel consistent, connected, role-aware, and easy to operate.

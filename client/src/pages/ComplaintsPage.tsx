@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
 import { format } from "date-fns";
-import { AlertTriangle, CalendarDays, CheckCircle2, ClipboardCheck, Download, FileWarning, Filter, Loader2, Search, X, XCircle, DollarSign } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, ClipboardCheck, Download, FileWarning, Filter, Loader2, Search, X, XCircle, DollarSign } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { complaintCategories, complaintStatuses, type ComplaintHistoryEntry, type ComplaintCategoryConfig, type ComplaintResponse, type ComplaintStats, type OrderWithServices } from "@shared/schema";
@@ -47,7 +47,7 @@ const complaintHistoryLabel = (entry: ComplaintHistoryEntry) => {
   return titleCase(entry.action);
 };
 
-function ComplaintDrawer({ id, open, onOpenChange }: { id: number | null; open: boolean; onOpenChange: (open: boolean) => void }) {
+export function ComplaintDetails({ id, open, onOpenChange, onBack }: { id: number | null; open: boolean; onOpenChange: (open: boolean) => void; onBack?: () => void }) {
   const { user } = useAuth(); const { toast } = useToast(); const isAdmin = user?.role === "admin";
   const [notes, setNotes] = useState(""); const [resolution, setResolution] = useState(""); const [resolutionEvidence, setResolutionEvidence] = useState(""); const [dismissalReason, setDismissalReason] = useState(""); const [refundConfirmed, setRefundConfirmed] = useState(false); const [pending, setPending] = useState<string | null>(null); const [imagePreview, setImagePreview] = useState<string | null>(null);
   const { data: complaint, isLoading, isError } = useQuery<ComplaintResponse>({ queryKey: [`/api/complaints/${id}`], enabled: Boolean(id && open) });
@@ -82,7 +82,7 @@ function ComplaintDrawer({ id, open, onOpenChange }: { id: number | null; open: 
   };
   return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent className="w-full overflow-y-auto border-slate-800 bg-slate-950 text-white sm:max-w-xl">
     <SheetHeader className="border-b border-slate-800 pb-5 pr-8 text-left">
-      <SheetTitle className="flex items-center gap-3"><span className="font-mono text-xl text-blue-300">{complaint?.complaintNumber || "Complaint details"}</span>{complaint && <ComplaintStatusBadge status={complaint.status} />}</SheetTitle>
+      <SheetTitle className="flex items-center gap-3"><div className="flex items-center gap-2">{onBack && <Button variant="ghost" size="icon" className="-ml-2 h-8 w-8" onClick={onBack} aria-label="Back to order"><ArrowLeft className="h-4 w-4" /></Button>}<span className="font-mono text-xl text-blue-300">{complaint?.complaintNumber || "Complaint details"}</span></div>{complaint && <ComplaintStatusBadge status={complaint.status} />}</SheetTitle>
       {complaint && <p className="mt-1 text-sm text-slate-500">{complaintStatusHelp[complaint.status]}</p>}
     </SheetHeader>
     {isLoading ? <div className="py-24 text-center"><Loader2 className="mx-auto animate-spin text-blue-400" /></div> : isError || !complaint ? <div className="py-20 text-center text-slate-400"><AlertTriangle className="mx-auto mb-3 text-rose-400" />Could not load this complaint.</div> : <div className="mt-6 space-y-5">
@@ -339,6 +339,6 @@ export default function ComplaintsPage() {
       </div>
       <div className="table-scroll-wrapper"><Table className="min-w-[980px]">{complaintTableHead}<TableBody>{filteredComplaints.map(renderComplaintRow)}</TableBody></Table></div>
     </div>}
-    <ComplaintDrawer id={selectedId} open={selectedId !== null} onOpenChange={open => { if (!open) { setSelectedId(null); setLocation("/complaints"); } }} /><ComplaintDialog order={null} orders={orders} open={createOpen} onOpenChange={setCreateOpen} />
+    <ComplaintDetails id={selectedId} open={selectedId !== null} onOpenChange={open => { if (!open) { setSelectedId(null); setLocation("/complaints"); } }} /><ComplaintDialog order={null} orders={orders} open={createOpen} onOpenChange={setCreateOpen} />
   </div>;
 }

@@ -88,7 +88,8 @@ import { useToast } from "@/hooks/use-toast";
 import type { OrderWithServices, User, SupportDesignerAssignment, ServiceCatalogItem, PackageConfig, PlatformCatalogItem, PaymentVerification, ComplaintResponse, ComplaintHistoryEntry, ActivityLogWithActor, ClientReview, ClientSuggestion } from "@shared/schema";
 import { ComplaintDialog } from "@/components/ComplaintDialog";
 import { ComplaintStatusBadge } from "@/components/StatusBadge";
-import { ReviewForm, type Review } from "@/pages/FeedbackPage";
+import { ComplaintDetails } from "@/pages/ComplaintsPage";
+import { ReviewForm, ReviewDetails, SuggestionDetails, type Review } from "@/pages/FeedbackPage";
 
 const FALLBACK_SERVICE_TYPES = [
   "ATS CV",
@@ -267,23 +268,11 @@ export default function OrdersPage() {
   const [advanceDisposition, setAdvanceDisposition] = useState<"refunded" | "retained" | "">("");
   const [complaintDialogOpen, setComplaintDialogOpen] = useState(false);
   const [detailsTab, setDetailsTab] = useState<OrderDrawerTab>("overview");
-  const [complaintNotes, setComplaintNotes] = useState("");
-  const [complaintResolution, setComplaintResolution] = useState("");
-  const [complaintOutcome, setComplaintOutcome] = useState("");
-  const [complaintDismissalReason, setComplaintDismissalReason] = useState("");
-  const [complaintRefundConfirmed, setComplaintRefundConfirmed] = useState(false);
-  const [complaintResolutionEvidence, setComplaintResolutionEvidence] = useState("");
-  const [suggestionNotes, setSuggestionNotes] = useState("");
-  const [suggestionDecision, setSuggestionDecision] = useState<"implemented" | "rejected" | null>(null);
-  const [suggestionDecisionNote, setSuggestionDecisionNote] = useState("");
-  const [suggestionImplementationEvidence, setSuggestionImplementationEvidence] = useState("");
-  const [suggestionImagePreview, setSuggestionImagePreview] = useState<string | null>(null);
   const [nestedReviewEditOpen, setNestedReviewEditOpen] = useState(false);
   const [deepLinkMessage, setDeepLinkMessage] = useState<string | null>(null);
   const requestedOrderNumber = new URLSearchParams(window.location.search).get("order");
   const activeDrawer = drawerStack[drawerStack.length - 1];
   const detailsSheetOpen = drawerStack.length > 0;
-  const nestedComplaintId = activeDrawer?.kind === "complaint" ? activeDrawer.id : null;
 
   // Debounce the search input (300ms) so typing stays smooth on large order lists.
   useEffect(() => {
@@ -357,62 +346,6 @@ export default function OrdersPage() {
     enabled: Boolean(detailsSheetOpen && selectedOrder?.id),
   });
 
-  // Complaints have a dedicated, authorization-aware detail endpoint. Do not
-  // infer protected fields from the order-level response.
-  const nestedComplaint = useQuery<ComplaintResponse>({
-    queryKey: [`/api/complaints/${nestedComplaintId}`],
-    enabled: Boolean(nestedComplaintId),
-  });
-  const { data: nestedComplaintHistory = [] } = useQuery<ComplaintHistoryEntry[]>({
-    queryKey: [`/api/complaints/${nestedComplaintId}/history`],
-    enabled: Boolean(nestedComplaintId),
-  });
-  const updateNestedComplaint = useMutation({
-    mutationFn: async (payload: Record<string, unknown>) => (await apiRequest("PATCH", `/api/complaints/${nestedComplaintId}`, payload)).json() as Promise<ComplaintResponse>,
-    onSuccess: (complaint) => {
-      queryClient.setQueryData([`/api/complaints/${nestedComplaintId}`], complaint);
-      queryClient.invalidateQueries({ queryKey: ["/api/complaints"] });
-      queryClient.invalidateQueries({ queryKey: [`/api/orders/${selectedOrder?.id}/complaints`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/orders/${selectedOrder?.id}/activity`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-      queryClient.invalidateQueries({ queryKey: [`/api/complaints/${nestedComplaintId}/history`] });
-      setComplaintNotes(""); toast({ title: "Complaint updated" });
-    },
-    onError: () => toast({ title: "Could not update complaint", variant: "destructive" }),
-  });
-  const uploadComplaintResolutionEvidence = async (file: File) => {
-    const body = new FormData();
-    body.append("screenshot", file);
-    body.append("folder", "complaints");
-    try {
-      const response = await fetch("/api/feedback/upload", { method: "POST", body, credentials: "include" });
-      if (!response.ok) throw new Error("Upload failed");
-      setComplaintResolutionEvidence((await response.json()).screenshotUrl);
-      toast({ title: "Resolution evidence uploaded" });
-    } catch { toast({ title: "Upload failed", description: "Resolution evidence could not be uploaded.", variant: "destructive" }); }
-  };
-  const updateNestedSuggestion = useMutation({
-    mutationFn: async ({ id, payload }: { id: number; payload: Record<string, unknown> }) => (await apiRequest("PATCH", `/api/feedback/suggestions/${id}`, payload)).json() as Promise<OrderSuggestion>,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/orders/${selectedOrder?.id}/client-suggestions`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/orders/${selectedOrder?.id}/activity`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/feedback"] });
-      setSuggestionNotes(""); setSuggestionDecision(null); setSuggestionDecisionNote(""); setSuggestionImplementationEvidence(""); toast({ title: "Suggestion updated" });
-    },
-    onError: () => toast({ title: "Could not update suggestion", variant: "destructive" }),
-  });
-  const uploadSuggestionImplementationEvidence = async (file: File) => {
-    const body = new FormData();
-    body.append("screenshot", file);
-    body.append("folder", "suggestions");
-    try {
-      const response = await fetch("/api/feedback/upload", { method: "POST", body, credentials: "include" });
-      if (!response.ok) throw new Error("Upload failed");
-      setSuggestionImplementationEvidence((await response.json()).screenshotUrl);
-      toast({ title: "Implementation evidence uploaded" });
-    } catch { toast({ title: "Upload failed", description: "Implementation evidence could not be uploaded.", variant: "destructive" }); }
-  };
 
   const activeServiceTypes = servicesCatalog.filter(s => s.isActive).map(s => s.name);
   const serviceTypes = activeServiceTypes.length > 0 ? activeServiceTypes : FALLBACK_SERVICE_TYPES;
@@ -643,7 +576,6 @@ export default function OrdersPage() {
 
       suggestions.forEach(suggestion => {
         section(`Suggestion ${String(suggestion.suggestionNumber || "")}`.trim(), rows([
-          ["Category", reportStatus(suggestion.category)],
           ["Status", suggestion.status === "new" ? "Awaiting Management Decision" : reportStatus(suggestion.status)],
           ["Client Suggestion", suggestion.suggestionText],
           ["Recorded By", reportPerson(suggestion.createdBy)],
@@ -1868,74 +1800,43 @@ export default function OrdersPage() {
 
                   <section className="rounded-xl border border-slate-800 bg-slate-950 p-4">
                     <div className="flex items-center justify-between gap-3"><div><h4 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Suggestions</h4><p className="mt-1 text-xs text-slate-600">{selectedOrderSuggestions.length} recorded</p></div><Button size="sm" variant="outline" onClick={() => setLocation(`/feedback?order=${selectedOrder.id}&action=suggestion`)}><Lightbulb className="mr-2 h-4 w-4" />Add Suggestion</Button></div>
-                    <div className="mt-4 space-y-2">{selectedOrderSuggestions.length ? selectedOrderSuggestions.slice(0, 4).map(suggestion => <button key={suggestion.id} onClick={() => openNestedDrawer({ kind: "suggestion", id: suggestion.id })} className="flex w-full items-center justify-between rounded-lg border border-slate-800 bg-slate-900 p-3 text-left hover:border-slate-700"><div><p className="font-mono text-xs text-blue-400">{suggestion.suggestionNumber}</p><p className="mt-1 text-xs text-slate-500">{titleCase(suggestion.category)}</p></div><Badge className="bg-blue-500/10 text-blue-300">{titleCase(suggestion.status)}</Badge></button>) : <p className="py-4 text-sm text-slate-500">No suggestions recorded.</p>}</div>
+                    <div className="mt-4 space-y-2">{selectedOrderSuggestions.length ? selectedOrderSuggestions.slice(0, 4).map(suggestion => <button key={suggestion.id} onClick={() => openNestedDrawer({ kind: "suggestion", id: suggestion.id })} className="flex w-full items-center justify-between rounded-lg border border-slate-800 bg-slate-900 p-3 text-left hover:border-slate-700"><div><p className="font-mono text-xs text-blue-400">{suggestion.suggestionNumber}</p><p className="mt-1 text-xs text-slate-500">Client suggestion</p></div><Badge className="bg-blue-500/10 text-blue-300">{titleCase(suggestion.status)}</Badge></button>) : <p className="py-4 text-sm text-slate-500">No suggestions recorded.</p>}</div>
                   </section>
                 </div>
               )}
             </div>
           )}
-          {activeDrawer?.kind === "complaint" && (
-            <div className="mt-6 space-y-5">
-              {nestedComplaint.isLoading ? <div className="py-24 text-center"><Loader2 className="mx-auto animate-spin text-blue-400" /><p className="mt-3 text-sm text-slate-500">Loading complaint…</p></div>
-                : nestedComplaint.isError || !nestedComplaint.data ? <div className="py-20 text-center text-slate-400"><AlertCircle className="mx-auto mb-3 text-rose-400" /><p>{nestedComplaint.isError ? "Could not load this complaint." : "This complaint was not found or is no longer available."}</p><Button variant="outline" className="mt-4" onClick={goBackInDrawer}><ArrowLeft className="mr-2 h-4 w-4" />Back to order</Button></div>
-                : <><section className="rounded-xl border border-slate-800 bg-slate-950 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-mono text-lg text-blue-400">{nestedComplaint.data.complaintNumber}</p><p className="mt-2 text-xs uppercase tracking-wider text-slate-500">{titleCase(nestedComplaint.data.category)}</p></div><ComplaintStatusBadge status={nestedComplaint.data.status} /></div><p className="mt-5 whitespace-pre-wrap text-sm leading-relaxed text-slate-300">{nestedComplaint.data.description}</p></section>
-                  <section className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm"><p className="text-xs uppercase tracking-wider text-slate-500">Complaint against</p><p className="mt-2 text-white">{nestedComplaint.data.complaintAgainst?.name || "—"}</p></section>
-                  {nestedComplaint.data.order && <section className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm"><p className="text-xs uppercase tracking-wider text-slate-500">Related order</p><p className="mt-2 font-mono text-blue-300">{nestedComplaint.data.order.orderNumber || selectedOrder.orderNumber} · {nestedComplaint.data.order.clientName}</p><p className="mt-3 text-xs text-slate-500">Services</p><p className="mt-1 text-slate-300">{nestedComplaint.data.order.services.map(service => `${service.serviceType} ×${service.quantity || 1}`).join(", ") || "No services recorded."}</p>{canSeeAmounts && <div className="mt-4 grid grid-cols-2 gap-3 text-xs"><p><span className="text-slate-500">Total:</span> {formatRs(nestedComplaint.data.order.totalPrice)}</p><p><span className="text-slate-500">Advance:</span> {formatRs(nestedComplaint.data.order.advanceAmount)}</p><p><span className="text-slate-500">Remaining:</span> {formatRs(nestedComplaint.data.order.remainingAmount)}</p><p><span className="text-slate-500">Discount:</span> {formatRs(nestedComplaint.data.order.discountAmount)}</p></div>}</section>}
-                   <section className="rounded-xl border border-slate-800 bg-slate-950 p-4"><p className="mb-3 text-xs uppercase tracking-wider text-slate-500">Evidence</p>{nestedComplaint.data.screenshotUrl ? <a href={nestedComplaint.data.screenshotUrl} target="_blank" rel="noreferrer"><img src={nestedComplaint.data.screenshotUrl} alt="Complaint evidence" className="max-h-64 w-full rounded-lg object-contain" /></a> : <p className="text-sm text-slate-500">No complaint evidence attached.</p>}</section>
-                   {(nestedComplaint.data.resolution || nestedComplaint.data.resolutionOutcome) && <section className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4"><p className="text-xs uppercase tracking-wider text-emerald-300">Resolution</p><p className="mt-2 whitespace-pre-wrap text-sm text-slate-300">{nestedComplaint.data.resolution || "—"}</p>{nestedComplaint.data.resolutionScreenshotUrl && <a href={nestedComplaint.data.resolutionScreenshotUrl} target="_blank" rel="noreferrer"><img src={nestedComplaint.data.resolutionScreenshotUrl} alt="Resolution evidence" className="mt-3 max-h-64 w-full rounded-lg object-contain" /></a>}</section>}
-                   {isAdmin && <section className="space-y-4 rounded-xl border border-slate-800 bg-slate-950 p-4">
-                     <div><p className="text-xs uppercase tracking-wider text-slate-500">Management Decision</p><p className="mt-1 text-sm">{nestedComplaint.data.filedBy?.name || "Not specified"} <span className="text-slate-500">· Reported by</span></p></div>
-                     {nestedComplaint.data.status === "new" && <><Textarea value={complaintDismissalReason} onChange={event => setComplaintDismissalReason(event.target.value)} placeholder="Reason for dismissal (required only when dismissing)" className="bg-slate-900" /><div className="grid grid-cols-2 gap-2"><Button disabled={updateNestedComplaint.isPending} onClick={() => updateNestedComplaint.mutate({ status: "confirmed", confirmDecision: true })}>Confirm Complaint</Button><Button variant="outline" disabled={updateNestedComplaint.isPending || !complaintDismissalReason.trim()} onClick={() => updateNestedComplaint.mutate({ status: "dismissed", confirmDecision: true, dismissalReason: complaintDismissalReason.trim() })}>Dismiss Complaint</Button></div></>}
-                     {nestedComplaint.data.status === "confirmed" && <><Textarea value={complaintResolution} onChange={event => setComplaintResolution(event.target.value)} placeholder="Resolution details — what action was taken?" className="bg-slate-900" /><Label className="cursor-pointer text-sm">Upload resolution evidence <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void uploadComplaintResolutionEvidence(file); }} /></Label>{complaintResolutionEvidence && <img src={complaintResolutionEvidence} alt="Selected resolution evidence" className="max-h-40 w-full rounded-lg object-contain" />}<label className="text-sm text-slate-300"><input type="checkbox" checked={complaintRefundConfirmed} onChange={event => setComplaintRefundConfirmed(event.target.checked)} className="mr-2" />I confirm that the client refund has been completed.</label><div className="grid grid-cols-2 gap-2"><Button disabled={!complaintResolution.trim() || updateNestedComplaint.isPending} onClick={() => updateNestedComplaint.mutate({ status: "resolved", confirmDecision: true, resolution: complaintResolution.trim(), resolutionScreenshotUrl: complaintResolutionEvidence || null })}>Mark Resolved</Button><Button variant="outline" disabled={!complaintResolution.trim() || !complaintRefundConfirmed || updateNestedComplaint.isPending} onClick={() => updateNestedComplaint.mutate({ status: "refunded", confirmDecision: true, refundConfirmed: true, resolution: complaintResolution.trim(), resolutionScreenshotUrl: complaintResolutionEvidence || null })}>Mark Refunded &amp; Cancel Order</Button></div></>}
-                     <div className="border-t border-slate-800 pt-4"><Label>Internal Admin Notes</Label><p className="mt-1 text-xs text-slate-500">Private notes for management. Not visible to Designers or Support.</p><div className="mt-3 space-y-2">{nestedComplaint.data.adminNotesLog?.map(note => <div key={note.id} className="rounded-lg border border-slate-800 bg-slate-900 p-3"><p className="whitespace-pre-wrap text-sm text-slate-200">{note.noteText}</p><p className="mt-2 text-xs text-slate-500">{note.createdBy?.name || "Migrated Admin Note"} · {note.createdAt ? format(new Date(note.createdAt), "MMM dd, yyyy h:mm a") : "—"}</p></div>)}</div><Textarea value={complaintNotes} onChange={event => setComplaintNotes(event.target.value)} placeholder="Write a new internal note..." className="mt-3 bg-slate-900" /><Button className="mt-2" variant="outline" disabled={!complaintNotes.trim() || updateNestedComplaint.isPending} onClick={() => updateNestedComplaint.mutate({ adminNote: complaintNotes.trim() })}>Add Note</Button></div>
-                   </section>}
-                   <section className="rounded-xl border border-slate-800 bg-slate-950 p-4"><p className="text-xs uppercase tracking-wider text-slate-500">Case History</p><div className="mt-3 space-y-3">{nestedComplaintHistory.length ? nestedComplaintHistory.map(item => <div key={item.id} className="border-l border-slate-700 pl-3"><p className="text-sm">{titleCase(item.action)}</p><p className="text-xs text-slate-500">{item.actor?.name ? `${item.actor.name} · ` : ""}{item.createdAt ? format(new Date(item.createdAt), "MMM dd, yyyy h:mm a") : "—"}</p></div>) : <p className="text-sm text-slate-500">No history entries yet.</p>}</div></section>
-                  </>}
-            </div>
-          )}
-          {activeDrawer?.kind === "review" && (() => {
-            const review = selectedOrderReviews.find(item => item.id === activeDrawer.id);
-            return reviewsLoading ? <div className="py-24 text-center"><Loader2 className="mx-auto animate-spin text-blue-400" /></div> : !review ? <div className="py-20 text-center text-slate-400"><AlertCircle className="mx-auto mb-3 text-rose-400" />{reviewsError ? "Could not load this review." : "This review was not found or is no longer available."}<Button variant="outline" className="mt-4" onClick={goBackInDrawer}><ArrowLeft className="mr-2 h-4 w-4" />Back to order</Button></div> : <div className="mt-6 space-y-5">
-              <section className="rounded-xl border border-slate-700 bg-slate-950 p-5"><div className="flex items-start justify-between gap-3"><div><p className="font-mono text-lg text-blue-400">{review.reviewNumber}</p><p className="mt-1 text-xs uppercase tracking-wider text-slate-500">Client Review</p></div><Button variant="outline" size="sm" onClick={() => setNestedReviewEditOpen(true)}><Pencil className="mr-2 h-4 w-4" />Update</Button></div><div className="mt-5 grid grid-cols-2 gap-4"><div><p className="text-xs text-slate-500">Client</p><p className="mt-1 text-lg font-semibold text-white">{selectedOrder.clientName}</p></div><div><p className="text-xs text-slate-500">Rating</p><p className="mt-1 text-xl font-bold text-amber-400">{review.rating ? `${review.rating}/5` : "Not Rated"}</p></div><div><p className="text-xs text-slate-500">Designer</p><p className="mt-1 text-sm text-slate-300">{review.reviewForDesigner?.name || "Unassigned"}</p></div><div><p className="text-xs text-slate-500">Date Recorded</p><p className="mt-1 text-sm text-slate-300">{review.createdAt ? format(new Date(review.createdAt), "MMM dd, yyyy · h:mm a") : "—"}</p></div></div></section>
-              <section className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-5"><p className="text-xs uppercase tracking-wider text-blue-300">Client Feedback</p><p className="mt-4 whitespace-pre-wrap break-words text-base leading-7 text-slate-100">{review.feedbackText || "No written feedback recorded."}</p></section>
-              <section className="rounded-xl border border-slate-800 bg-slate-950 p-4"><p className="text-xs uppercase tracking-wider text-slate-500">Feedback Sources</p><div className="mt-3 space-y-2">{[["WhatsApp Feedback", review.whatsappFeedbackReceived], ["Facebook Review", review.facebookReviewReceived], ["Video Testimonial", review.videoReviewReceived]].map(([label, received]) => <div key={String(label)} className="flex justify-between rounded-lg border border-slate-800 p-3 text-sm"><span>{String(label)}</span><span className={received ? "text-emerald-300" : "text-slate-500"}>{received ? "Received" : "Not Received"}</span></div>)}</div>{review.facebookReviewReceived && review.publicReviewLink && <a href={review.publicReviewLink} target="_blank" rel="noreferrer" className="mt-3 block text-sm text-blue-300 underline">Open Facebook Review</a>}</section>
-              <section className="rounded-xl border border-slate-800 bg-slate-950 p-4"><p className="text-xs uppercase tracking-wider text-slate-500">Review Evidence</p>{review.screenshotUrl ? <img src={review.screenshotUrl} alt="Review evidence" className="mt-3 max-h-64 w-full rounded-lg object-contain" /> : <p className="mt-3 text-sm text-slate-500">No review evidence attached.</p>}</section>
-              <section className="grid grid-cols-2 gap-4 rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm"><div><p className="text-xs text-slate-500">Recorded By</p><p className="mt-1">{review.createdBy?.name || "—"}</p></div><div><p className="text-xs text-slate-500">Marketing Permission</p><p className="mt-1">{review.marketingPermission === "yes" ? "Permission Granted" : review.marketingPermission === "no" ? "Permission Not Granted" : "Not Asked"}</p></div></section>
-            </div>;
-          })()}
-          {activeDrawer?.kind === "suggestion" && (() => {
-            const suggestion = selectedOrderSuggestions.find(item => item.id === activeDrawer.id);
-            const history = selectedOrderActivity.filter(entry => Number((entry.details || {}).suggestionId) === suggestion?.id);
-            const statusHelper = suggestion?.status === "implemented" ? "Suggestion approved and implemented." : suggestion?.status === "rejected" ? "Suggestion reviewed and not implemented." : "Awaiting management decision.";
-            return suggestionsLoading ? <div className="py-24 text-center"><Loader2 className="mx-auto animate-spin text-blue-400" /></div> : !suggestion ? <div className="py-20 text-center text-slate-400">This suggestion was not found.<Button variant="outline" className="mt-4" onClick={goBackInDrawer}>Back to order</Button></div> : <div className="mt-6 space-y-5">
-              <section className="border-b border-slate-800 pb-5"><div className="flex items-center justify-between gap-3"><div><p className="font-mono text-xl text-blue-300">{suggestion.suggestionNumber}</p><p className="mt-1 text-sm text-slate-400">{statusHelper}</p></div><Badge className={suggestion.status === "implemented" ? "bg-emerald-500/15 text-emerald-300" : suggestion.status === "rejected" ? "bg-rose-500/15 text-rose-300" : "bg-blue-500/15 text-blue-300"}>{titleCase(suggestion.status)}</Badge></div></section>
-              <section className="rounded-xl border border-slate-700 bg-slate-950 p-5"><p className="text-xs uppercase tracking-wider text-slate-500">Suggestion Summary</p><dl className="mt-4 grid grid-cols-2 gap-4 text-sm"><div><dt className="text-xs text-slate-500">Category</dt><dd className="mt-1">{titleCase(suggestion.category)}</dd></div><div><dt className="text-xs text-slate-500">Related Designer</dt><dd className="mt-1">{suggestion.relatedDesigner?.name || "Unassigned"}</dd></div><div><dt className="text-xs text-slate-500">Date Recorded</dt><dd className="mt-1">{suggestion.createdAt ? format(new Date(suggestion.createdAt), "MMM dd, yyyy · h:mm a") : "—"}</dd></div><div><dt className="text-xs text-slate-500">Recorded By</dt><dd className="mt-1">{suggestion.createdBy?.name || "—"}</dd></div></dl></section>
-              <section className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-5"><p className="text-xs uppercase tracking-wider text-blue-300">Client Suggestion</p><p className="mt-4 whitespace-pre-wrap break-words text-[17px] leading-8 text-slate-100">{suggestion.suggestionText}</p></section>
-              <section className="border-b border-slate-800 pb-5"><p className="text-xs uppercase tracking-wider text-slate-500">Suggestion Evidence</p>{suggestion.screenshotUrl ? <button onClick={() => setSuggestionImagePreview(suggestion.screenshotUrl!)} className="mt-3 block w-full"><img src={suggestion.screenshotUrl} alt="Suggestion evidence" className="max-h-56 w-full rounded-lg object-contain" /></button> : <p className="mt-3 text-sm text-slate-500">No evidence was attached to this suggestion.</p>}</section>
-              <section className="rounded-xl border border-slate-800 bg-slate-950 p-5"><p className="text-xs uppercase tracking-wider text-slate-500">Related Order</p><button className="mt-3 font-mono text-sm text-blue-300 hover:underline" onClick={goBackInDrawer}>{selectedOrder.orderNumber}</button><dl className="mt-4 grid grid-cols-2 gap-4 text-sm"><div><dt className="text-xs text-slate-500">Client</dt><dd className="mt-1">{selectedOrder.clientName}</dd></div><div><dt className="text-xs text-slate-500">Designer</dt><dd className="mt-1">{suggestion.relatedDesigner?.name || "Unassigned"}</dd></div><div className="col-span-2"><dt className="text-xs text-slate-500">Package / Services</dt><dd className="mt-1">{selectedOrder.services?.length ? selectedOrder.services.map(service => `${service.serviceType} ×${service.quantity || 1}`).join(", ") : titleCase(selectedOrder.packageType || "custom")}</dd></div><div><dt className="text-xs text-slate-500">Order Status</dt><dd className="mt-1">{titleCase(selectedOrder.status)}</dd></div></dl></section>
-              <section className="rounded-xl border border-slate-800 bg-slate-950 p-5"><p className="text-xs uppercase tracking-wider text-slate-500">Management Decision</p>{suggestion.status === "new" ? <><p className="mt-2 text-sm text-slate-400">Decide whether this suggestion should be implemented or rejected.</p>{isAdmin && <div className="mt-4 grid grid-cols-2 gap-2"><Button onClick={() => setSuggestionDecision("implemented")}>Implement Suggestion</Button><Button variant="outline" onClick={() => setSuggestionDecision("rejected")}>Reject Suggestion</Button></div>}</> : suggestion.status === "implemented" ? <div className="mt-4 space-y-4"><Badge className="bg-emerald-500/15 text-emerald-300">Implemented</Badge><div><p className="text-xs text-slate-500">Implementation Summary</p><p className="mt-2 whitespace-pre-wrap text-sm text-slate-200">{suggestion.implementationDetails || suggestion.decisionNote || "—"}</p></div><div className="grid grid-cols-2 gap-4 text-sm"><div><p className="text-xs text-slate-500">Implemented By</p><p className="mt-1">{suggestion.implementedBy?.name || "—"}</p></div><div><p className="text-xs text-slate-500">Implemented On</p><p className="mt-1">{suggestion.implementedAt ? format(new Date(suggestion.implementedAt), "MMM dd, yyyy · h:mm a") : "—"}</p></div></div>{suggestion.implementationScreenshotUrl && <button className="text-sm text-blue-300 hover:underline" onClick={() => setSuggestionImagePreview(suggestion.implementationScreenshotUrl!)}>View Implementation Evidence</button>}</div> : <div className="mt-4 space-y-4"><Badge className="bg-rose-500/15 text-rose-300">Rejected</Badge><div><p className="text-xs text-slate-500">Reason for Rejection</p><p className="mt-2 whitespace-pre-wrap text-sm text-slate-200">{suggestion.rejectionReason || suggestion.decisionNote || "—"}</p></div><div className="grid grid-cols-2 gap-4 text-sm"><div><p className="text-xs text-slate-500">Rejected By</p><p className="mt-1">{suggestion.rejectedBy?.name || "—"}</p></div><div><p className="text-xs text-slate-500">Rejected On</p><p className="mt-1">{suggestion.rejectedAt ? format(new Date(suggestion.rejectedAt), "MMM dd, yyyy · h:mm a") : "—"}</p></div></div></div>}</section>
-              {isAdmin && <section className="rounded-xl border border-slate-800 bg-slate-950 p-5"><p className="text-xs uppercase tracking-wider text-slate-500">Internal Admin Notes</p><p className="mt-1 text-xs text-slate-500">Private management notes. These notes are not visible to Designers or Support.</p><div className="mt-4 space-y-3">{suggestion.adminNotesLog?.length ? suggestion.adminNotesLog.map(note => <div key={note.id} className="rounded-lg border border-slate-800 bg-slate-900 p-3"><p className="whitespace-pre-wrap text-sm text-slate-200">{note.noteText}</p><p className="mt-2 text-xs text-slate-500">{note.createdBy?.name || "Admin"} · {note.createdAt ? format(new Date(note.createdAt), "MMM dd, yyyy · h:mm a") : "—"}</p></div>) : <p className="text-sm text-slate-500">No internal notes recorded.</p>}</div><div className="mt-4 border-t border-slate-800 pt-4"><Label>Add New Note</Label><Textarea value={suggestionNotes} onChange={event => setSuggestionNotes(event.target.value)} placeholder="Write an internal note..." className="mt-2 bg-slate-900" /><Button className="mt-2" variant="outline" disabled={!suggestionNotes.trim() || updateNestedSuggestion.isPending} onClick={() => updateNestedSuggestion.mutate({ id: suggestion.id, payload: { adminNote: suggestionNotes.trim() } })}>Add Note</Button></div></section>}
-              <section className="rounded-xl border border-slate-800 bg-slate-950 p-5"><p className="text-xs uppercase tracking-wider text-slate-500">Suggestion History</p><div className="mt-4 space-y-4">{history.length ? history.map(entry => <div key={entry.id} className="flex gap-3"><span className="mt-1.5 h-3 w-3 shrink-0 rounded-full border-2 border-blue-400" /><div><p className="text-sm text-slate-200">{entry.activityType === "suggestion_created" ? "Suggestion recorded" : entry.activityType === "suggestion_status" && entry.newValue === "implemented" ? "Suggestion implemented" : entry.activityType === "suggestion_status" && entry.newValue === "rejected" ? "Suggestion rejected" : "Admin note added"}</p><p className="mt-1 text-xs text-slate-500">{entry.actor?.name || "System"} · {entry.createdAt ? format(new Date(entry.createdAt), "MMM dd, yyyy · h:mm a") : "—"}</p>{entry.activityType === "suggestion_status" && entry.newValue === "rejected" && (entry.details as any)?.rejectionReason && <p className="mt-2 text-sm text-slate-400">Reason: “{String((entry.details as any).rejectionReason)}”</p>}{entry.activityType === "suggestion_status" && entry.newValue === "implemented" && (entry.details as any)?.implementationDetails && <p className="mt-2 text-sm text-slate-400">Implementation: “{String((entry.details as any).implementationDetails)}”</p>}</div></div>) : <p className="text-sm text-slate-500">No history recorded.</p>}</div></section>
-            </div>;
-          })()}
         </SheetContent>
-      </Sheet>
-      <Dialog open={suggestionDecision !== null} onOpenChange={open => { if (!open) { setSuggestionDecision(null); setSuggestionDecisionNote(""); setSuggestionImplementationEvidence(""); } }}>
-        <DialogContent className="border-slate-800 bg-slate-900 text-white">
-          <DialogHeader><DialogTitle>{suggestionDecision === "rejected" ? "Reject Suggestion" : "Implement Suggestion"}</DialogTitle></DialogHeader>
-          <p className="text-sm text-slate-400">{suggestionDecision === "rejected" ? "Please explain why this suggestion will not be implemented." : "Confirm that this suggestion has been adopted and implemented."}</p>
-          <div className="space-y-2"><Label>{suggestionDecision === "rejected" ? "Reason for Rejection" : "Implementation Details"}</Label><Textarea value={suggestionDecisionNote} onChange={event => setSuggestionDecisionNote(event.target.value)} rows={4} /></div>
-          {suggestionDecision === "implemented" && <div className="space-y-2"><Label>Implementation Evidence <span className="text-slate-500">(optional)</span></Label><label className="block cursor-pointer rounded-lg border border-dashed border-slate-700 p-3 text-sm text-slate-400">{suggestionImplementationEvidence ? "Replace screenshot" : "Choose PNG, JPG, JPEG, or WEBP"}<input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void uploadSuggestionImplementationEvidence(file); event.currentTarget.value = ""; }} /></label>{suggestionImplementationEvidence && <img src={suggestionImplementationEvidence} alt="Implementation evidence" className="max-h-40 w-full rounded-lg object-contain" />}</div>}
-          <div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setSuggestionDecision(null)}>Cancel</Button><Button disabled={!suggestionDecisionNote.trim() || updateNestedSuggestion.isPending} onClick={() => {
-            const suggestion = selectedOrderSuggestions.find(item => item.id === (activeDrawer?.kind === "suggestion" ? activeDrawer.id : -1));
-            if (!suggestion || !suggestionDecision) return;
-            updateNestedSuggestion.mutate({ id: suggestion.id, payload: { status: suggestionDecision, confirmDecision: true, ...(suggestionDecision === "implemented" ? { implementationDetails: suggestionDecisionNote.trim(), implementationScreenshotUrl: suggestionImplementationEvidence || null } : { rejectionReason: suggestionDecisionNote.trim() }) } });
-          }}>{suggestionDecision === "rejected" ? "Reject Suggestion" : "Mark Implemented"}</Button></div>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={Boolean(suggestionImagePreview)} onOpenChange={open => !open && setSuggestionImagePreview(null)}>
-        <DialogContent className="max-w-4xl border-slate-800 bg-slate-950"><DialogTitle className="sr-only">Suggestion evidence preview</DialogTitle>{suggestionImagePreview && <img src={suggestionImagePreview} alt="Suggestion evidence preview" className="max-h-[80vh] w-full object-contain" />}</DialogContent>
-      </Dialog>
+       </Sheet>
+       <ComplaintDetails
+         id={activeDrawer?.kind === "complaint" ? activeDrawer.id : null}
+         open={activeDrawer?.kind === "complaint"}
+         onOpenChange={open => { if (!open) goBackInDrawer(); }}
+         onBack={goBackInDrawer}
+       />
+       <ReviewDetails
+         review={activeDrawer?.kind === "review"
+           ? (selectedOrderReviews.find(item => item.id === activeDrawer.id) as unknown as Review) || null
+           : null}
+         open={activeDrawer?.kind === "review"}
+         onOpenChange={open => { if (!open) goBackInDrawer(); }}
+         onBack={goBackInDrawer}
+         onEdit={() => setNestedReviewEditOpen(true)}
+         onOpenOrder={() => {}}
+       />
+       <SuggestionDetails
+         suggestion={activeDrawer?.kind === "suggestion"
+           ? (selectedOrderSuggestions.find(item => item.id === activeDrawer.id) as any) || null
+           : null}
+         open={activeDrawer?.kind === "suggestion"}
+         onOpenChange={open => { if (!open) goBackInDrawer(); }}
+         onBack={goBackInDrawer}
+         onOpenOrder={() => {}}
+         onUpdated={updated => queryClient.setQueryData(
+           [`/api/orders/${selectedOrder?.id}/client-suggestions`],
+           (current: OrderSuggestion[] | undefined) => current?.map(item => item.id === updated.id ? { ...item, ...updated } : item),
+         )}
+       />
       <ReviewForm
         review={(selectedOrderReviews.find(item => item.id === (activeDrawer?.kind === "review" ? activeDrawer.id : -1)) as unknown as Review) || null}
         orders={orders || []}

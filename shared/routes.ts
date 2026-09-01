@@ -8,7 +8,6 @@ import {
   complaintCategories,
   complaintStatuses,
   complaintResolutionOutcomes,
-  suggestionCategories,
   suggestionStatuses,
   type ComplaintResponse,
   type ComplaintHistoryEntry,
@@ -242,7 +241,7 @@ export const api = {
     },
     suggestions: {
       list: { method: "GET" as const, path: "/api/feedback/suggestions", responses: { 200: z.array(z.any()) } },
-      create: { method: "POST" as const, path: "/api/feedback/suggestions", input: z.object({ orderId: z.number().int().positive(), category: z.enum(suggestionCategories), suggestionText: z.string().trim().min(1).max(5000), screenshotUrl: z.string().url().nullable() }), responses: { 201: z.any() } },
+       create: { method: "POST" as const, path: "/api/feedback/suggestions", input: z.object({ orderId: z.number().int().positive(), suggestionText: z.string().trim().min(1).max(5000), screenshotUrl: z.string().url().nullable() }), responses: { 201: z.any() } },
       update: { method: "PATCH" as const, path: "/api/feedback/suggestions/:id", input: z.object({
         status: z.enum(suggestionStatuses).optional(),
         adminNote: z.string().trim().min(1).max(5000).optional(),

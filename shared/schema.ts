@@ -65,7 +65,6 @@ export const activityTypes = [
   "suggestion_status",
 ] as const;
 export const suggestionStatuses = ["new", "implemented", "rejected"] as const;
-export const suggestionCategories = ["communication", "document_quality", "delivery", "revision_experience", "production_process", "sales_experience", "pricing", "crm_technical", "service_offering", "after_sales", "other"] as const;
 export const complaintCategories = [
   "communication_issue",
   "slow_response",
@@ -207,7 +206,8 @@ export const clientSuggestions = pgTable("client_suggestions", {
   id: serial("id").primaryKey(),
   suggestionNumber: text("suggestion_number").notNull().unique(),
   orderId: integer("order_id").notNull().references(() => orders.id),
-  category: text("category", { enum: suggestionCategories }).notNull(),
+  // Retained for historical rows; new suggestions no longer expose or require categories.
+  category: text("category").notNull().default("other"),
   relatedDesignerId: integer("related_designer_id").references(() => users.id),
   suggestionText: text("suggestion_text").notNull(),
   status: text("status", { enum: suggestionStatuses }).notNull().default("new"),
