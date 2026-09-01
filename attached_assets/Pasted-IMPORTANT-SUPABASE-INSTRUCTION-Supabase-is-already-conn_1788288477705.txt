@@ -1,0 +1,235 @@
+IMPORTANT SUPABASE INSTRUCTION
+
+Supabase is already connected and working in this CRM.
+
+DO NOT:
+- disconnect Supabase
+- replace Supabase
+- recreate the database
+- reset the database
+- delete existing tables
+- delete existing columns
+- rename existing tables unnecessarily
+- rename existing columns unnecessarily
+- change existing Supabase credentials
+- change the Supabase URL
+- change the Supabase anon/service keys
+- modify working RLS policies unless absolutely required
+- modify existing relationships unless required for the requested feature
+- migrate or rewrite existing data unnecessarily
+- remove any current records
+
+Your job is ONLY to inspect the existing Supabase schema and determine whether the requested CRM changes require any additional database fields.
+
+FIRST:
+Inspect the current schema carefully.
+
+Check existing tables, columns, foreign keys, indexes, RLS policies and relationships related to:
+
+- users/team
+- orders
+- complaints
+- reviews
+- suggestions
+- payments
+- notifications
+- activity/history
+- dashboard/user preferences
+
+If the required field/table ALREADY EXISTS:
+USE IT.
+
+Do NOT create a duplicate.
+
+If the existing schema already supports the requested feature:
+LEAVE THE DATABASE UNCHANGED.
+
+==================================================
+ONLY ADD WHAT IS ACTUALLY NEEDED
+==================================================
+
+If a required field is missing, you may add ONLY the minimum additive schema change required.
+
+Examples of fields that MAY be needed depending on the existing schema:
+
+Complaints:
+- complaint_target_type
+- complaint_against_client_id / appropriate existing client reference
+- dismissal_reason
+- resolution_text
+- resolution_screenshot_url
+- canceled/refunded relationship fields if not already available
+
+Orders:
+- cancellation_reason
+- canceled_by_user_id
+- canceled_at
+- advance_refunded
+- refund_amount
+- refund_recorded_at
+- refund_recorded_by_user_id
+
+Notifications:
+- entity_type
+- entity_id
+- event_type
+- read_at / is_read
+- deduplication reference if not already supported
+
+Dashboard preferences:
+- dashboard_layout / preferences JSON
+only if a user-preferences structure does not already exist.
+
+Admin notes:
+If the CRM currently stores only one overwriteable note and multiple historical notes are required, inspect whether a notes/history table already exists.
+
+If yes:
+reuse it.
+
+If not:
+add a small dedicated child table only if genuinely necessary.
+
+==================================================
+ADDITIVE MIGRATIONS ONLY
+==================================================
+
+Any database changes must be ADDITIVE and SAFE.
+
+Use:
+
+ALTER TABLE ... ADD COLUMN IF NOT EXISTS
+
+or equivalent safe migration patterns where appropriate.
+
+Do not use destructive operations such as:
+
+DROP TABLE
+DROP COLUMN
+TRUNCATE
+DELETE all records
+database reset
+
+unless explicitly authorized by me later.
+
+==================================================
+EXISTING DATA MUST BE PRESERVED
+==================================================
+
+Existing:
+
+Orders
+Payments
+Complaints
+Reviews
+Suggestions
+Users
+Notifications
+Activity
+Financial records
+
+must remain untouched except where a new feature legitimately updates a record through normal application use.
+
+Do not rewrite historical data just to match new UI terminology.
+
+If compatibility mapping is needed, handle it in application logic wherever possible.
+
+==================================================
+SUPABASE SHOULD REMAIN THE SOURCE OF TRUTH
+==================================================
+
+Do not replace database-backed data with:
+
+localStorage
+mock data
+hardcoded arrays
+temporary frontend state
+
+for persistent CRM features.
+
+==================================================
+RLS / SECURITY
+==================================================
+
+Inspect existing RLS first.
+
+Do not disable RLS.
+
+Do not replace all current policies.
+
+If the new Complaint/Notification functionality requires an additional policy, add ONLY the narrow policy required.
+
+Preserve existing protections.
+
+==================================================
+INDEXES
+==================================================
+
+Do not add indexes randomly.
+
+Only add indexes if a new query/realtime lookup genuinely needs them and an equivalent index does not already exist.
+
+==================================================
+REALTIME
+==================================================
+
+If Notifications/Complaints/Payments already use Supabase Realtime:
+
+reuse the existing setup.
+
+Do not create a second realtime architecture.
+
+If a required table is not enabled for the needed realtime events, make only the minimum required configuration change.
+
+==================================================
+BEFORE MAKING ANY SCHEMA CHANGE
+==================================================
+
+For every proposed database change:
+
+1. Check whether the field/table already exists.
+2. Check whether an existing field can serve the same purpose.
+3. Check existing relationships.
+4. Check existing RLS.
+5. Check whether the feature can be implemented without schema changes.
+6. Only then add the minimum required field/table.
+
+==================================================
+AFTER COMPLETION
+==================================================
+
+Provide a database change summary:
+
+EXISTING SCHEMA REUSED
+- list tables/fields reused
+
+NEW COLUMNS ADDED
+- table
+- column
+- type
+- purpose
+
+NEW TABLES ADDED
+- only if any were absolutely necessary
+
+RLS CHANGES
+- exact policies added/modified
+
+INDEXES
+- exact indexes added
+
+UNCHANGED
+Confirm:
+- Supabase connection unchanged
+- Supabase URL unchanged
+- credentials unchanged
+- existing tables preserved
+- existing columns preserved
+- existing records preserved
+- no database reset performed
+- no destructive migration performed
+
+IMPORTANT FINAL RULE:
+
+DO NOT TOUCH WORKING SUPABASE STRUCTURE JUST BECAUSE YOU WOULD DESIGN IT DIFFERENTLY.
+
+Inspect the existing database, reuse what already exists, and add only the smallest missing pieces needed for the requested CRM features.

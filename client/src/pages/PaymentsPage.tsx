@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
@@ -94,6 +94,7 @@ export default function PaymentsPage() {
   const [selectedOrderId, setSelectedOrderId] = useState("");
   const [remainingAmount, setRemainingAmount] = useState("");
   const [remainingScreenshot, setRemainingScreenshot] = useState<File | null>(null);
+  const linkedPaymentId = Number(new URLSearchParams(window.location.search).get("payment")) || null;
   
   // Generate year options (current year and 2 previous years)
   const yearOptions = Array.from({ length: 3 }, (_, i) => (currentDate.getFullYear() - i).toString());
@@ -112,13 +113,17 @@ export default function PaymentsPage() {
 
   const { data: verifications, isLoading } = useQuery<PaymentVerification[]>({
     queryKey: ["/api/payment-verifications"],
-    refetchInterval: 10000, // Refresh every 10 seconds to ensure fresh data
-    staleTime: 0, // Always consider data stale to ensure strict server-side filtering
   });
 
   const { data: orders } = useQuery<any[]>({
     queryKey: ["/api/orders"],
   });
+
+  useEffect(() => {
+    if (!linkedPaymentId || !verifications) return;
+    const linkedPayment = verifications.find(payment => payment.id === linkedPaymentId);
+    if (linkedPayment) setSelectedPayment(linkedPayment);
+  }, [linkedPaymentId, verifications]);
 
   const approveMutation = useMutation({
     mutationFn: async ({ id, notes }: { id: number; notes: string }) => {

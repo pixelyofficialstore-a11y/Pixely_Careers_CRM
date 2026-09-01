@@ -183,6 +183,7 @@ export const api = {
       path: "/api/complaints",
       input: z.object({
         orderId: z.number().int().positive(),
+        complaintTargetType: z.enum(["designer", "client"]).optional(),
         complaintAgainstUserId: z.number().int().positive().optional(),
         category: z.string().trim().min(1, "Category is required").max(100),
         description: z.string().trim().min(1, "Description is required").max(5000),
@@ -193,6 +194,11 @@ export const api = {
         400: errorSchemas.validation,
         403: errorSchemas.forbidden,
       },
+    },
+    actionableCount: {
+      method: "GET" as const,
+      path: "/api/complaints/actionable-count",
+      responses: { 200: z.object({ count: z.number().int().nonnegative() }) },
     },
     update: {
       method: "PATCH" as const,
@@ -273,6 +279,11 @@ export const api = {
               advance: z.number(),
               remaining: z.number(),
               total: z.number(),
+            }).optional(),
+            monthlyCashFlow: z.object({
+              inflow: z.number(),
+              refunds: z.number(),
+              net: z.number(),
             }).optional(),
           }).optional(),
           complaints: z.custom<ComplaintStats>(),

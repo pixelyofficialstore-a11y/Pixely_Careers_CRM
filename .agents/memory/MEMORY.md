@@ -12,3 +12,5 @@
 - [Designer analytics signals](designer-analytics-signals.md) — report real workload and client-experience facts; never invent rankings or composite scores, and count only confirmed complaints negatively.
 - [Post-merge migrations](post-merge-migrations.md) — invoke exported migrations through a CLI wrapper; importing the migration module alone does not run it.
 - [Case activity privacy](case-activity-privacy.md) — all case entry points share role checks; non-admin timelines retain complaint events but redact private note authors and values.
+- [Dashboard cash flow semantics](dashboard-cash-flow-semantics.md) — gross payment events and recorded refunds stay separate from retained accounting balances.
+- [Dashboard JSX repair discipline](dashboard-jsx-repair-discipline.md) — use unique block context when changing wrapper tags; nearby div/section patterns make broad replacements unsafe.

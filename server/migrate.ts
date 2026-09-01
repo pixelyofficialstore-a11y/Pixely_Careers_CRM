@@ -421,7 +421,12 @@ export async function runMigrations() {
         ADD COLUMN IF NOT EXISTS title        TEXT NOT NULL DEFAULT '',
         ADD COLUMN IF NOT EXISTS priority     TEXT NOT NULL DEFAULT 'update',
         ADD COLUMN IF NOT EXISTS related_id   INTEGER,
-        ADD COLUMN IF NOT EXISTS related_type TEXT
+        ADD COLUMN IF NOT EXISTS related_type TEXT,
+        ADD COLUMN IF NOT EXISTS dedupe_key   TEXT
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS notifications_user_dedupe_unique
+        ON notifications(user_id, dedupe_key)
     `);
 
     await client.query(`
@@ -435,6 +440,7 @@ export async function runMigrations() {
 
     await client.query(`
       ALTER TABLE complaints
+        ADD COLUMN IF NOT EXISTS complaint_target_type TEXT NOT NULL DEFAULT 'designer',
         ADD COLUMN IF NOT EXISTS admin_notes TEXT,
         ADD COLUMN IF NOT EXISTS resolution TEXT,
         ADD COLUMN IF NOT EXISTS resolution_outcome TEXT,
@@ -446,6 +452,10 @@ export async function runMigrations() {
         ADD COLUMN IF NOT EXISTS resolved_by_user_id INTEGER REFERENCES users(id),
         ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP,
         ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()
+    `);
+    await client.query(`
+      ALTER TABLE complaints
+        ALTER COLUMN complaint_against_user_id DROP NOT NULL
     `);
     // Preserve any legacy single-note values as read-only historical notes.
     // A nullable author is intentional: the old column did not record one.

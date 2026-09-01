@@ -19,7 +19,7 @@ import { ObjectStorageService, registerObjectStorageRoutes, objectStorageService
 import sharp from "sharp";
 import { isCloudinaryConfigured, uploadToCloudinary } from "./cloudinary";
 import webpush from "web-push";
-import { addSseClient, removeSseClient, emitNotification } from "./sse";
+import { addSseClient, removeSseClient, emitNotification, emitRealtime } from "./sse";
 import { getPaymentApprovalConflict } from "@shared/order-accounting";
 import { canAccessOrderCase, projectCaseActivity, type CaseRole } from "@shared/case-access";
 
@@ -90,10 +90,14 @@ async function notifyUser(
     if (!recipient || !allowedRoles.includes(recipient.role)) return null;
   }
 
-  const notification = await storage.createNotification(userId, type, title, message, priority, relatedId, relatedType);
-  sendWebPushToUser(userId, title, message, priority).catch(() => {});
-  emitNotification(userId, { event: "notification", id: notification.id, count: 1 });
-  return notification;
+  const result = await storage.createNotification(userId, type, title, message, priority, relatedId, relatedType);
+  if (result.created) {
+    sendWebPushToUser(userId, title, message, priority).catch(() => {});
+    emitNotification(userId, { event: "notification", id: result.notification.id, count: 1 });
+  } else {
+    emitRealtime(userId, ["notifications"]);
+  }
+  return result.notification;
 }
 
 // Notify several unique recipients at once (skips falsy/duplicate ids and any excluded ids).
@@ -797,6 +801,18 @@ export async function registerRoutes(
       if (await storage.getClientReviewByOrder(input.orderId)) return res.status(409).json({ message: "This order already has a client review." });
        const review = await storage.createClientReview({ ...input, reviewForDesignerId: order.assignedToId ?? null, createdById: user.id });
        await storage.createActivityLog({ orderId: input.orderId, actorId: user.id, activityType: "review_created", newValue: review.reviewNumber, details: { reviewId: review.id, reviewNumber: review.reviewNumber } });
+        const reviewAdmins = await storage.getAdmins();
+        await notifyMany(
+          [...reviewAdmins.map(admin => admin.id), order.assignedToId],
+          "review",
+          "New Client Review",
+          `${review.reviewNumber} was recorded for ${orderRef(order)} (${order.clientName}).`,
+          "update",
+          review.id,
+          "review",
+          [user.id],
+          ["admin", "designer"],
+        );
       res.status(201).json((await feedbackProjection([review], "review", user.role))[0]);
     } catch (err) { if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message || "Invalid review." }); return res.status(500).json({ message: "Unable to create client review." }); }
   });
@@ -859,6 +875,18 @@ export async function registerRoutes(
       if (input.screenshotUrl && !isCloudinaryUrl(input.screenshotUrl)) return res.status(400).json({ message: "Screenshot must be an HTTPS Cloudinary URL." });
       const suggestion = await storage.createClientSuggestion({ ...input, category: "other", relatedDesignerId: order.assignedToId ?? null, createdById: user.id, reviewedByUserId: null, reviewedAt: null, adminNotes: null });
       await storage.createActivityLog({ orderId: input.orderId, actorId: user.id, activityType: "suggestion_created", newValue: suggestion.suggestionNumber, details: { suggestionId: suggestion.id } });
+       const suggestionAdmins = await storage.getAdmins();
+       await notifyMany(
+         [...suggestionAdmins.map(admin => admin.id), order.assignedToId],
+         "suggestion",
+         "New Client Suggestion",
+         `${suggestion.suggestionNumber} was submitted for ${orderRef(order)} (${order.clientName}).`,
+         "action_required",
+         suggestion.id,
+         "suggestion",
+         [user.id],
+         ["admin", "designer"],
+       );
       res.status(201).json((await feedbackProjection([suggestion], "suggestion", user.role))[0]);
     } catch (err) { if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid suggestion." }); return res.status(500).json({ message: "Unable to create client suggestion." }); }
   });
@@ -895,6 +923,19 @@ export async function registerRoutes(
             ...(input.status === "implemented" ? { implementationDetails: input.implementationDetails } : { rejectionReason: input.rejectionReason }),
           },
         });
+        const decisionLabel = input.status === "implemented" ? "implemented" : "rejected";
+        const decisionMessage = input.status === "implemented"
+          ? `${existing.suggestionNumber} for ${orderRef(order)} was implemented by ${user.name}.`
+          : `${existing.suggestionNumber} for ${orderRef(order)} was rejected by ${user.name}.`;
+        await notifyUser(
+          existing.createdById,
+          "suggestion",
+          `Suggestion ${decisionLabel === "implemented" ? "Implemented" : "Rejected"}`,
+          decisionMessage,
+          input.status === "implemented" ? "confirmation" : "update",
+          existing.id,
+          "suggestion",
+        );
       }
       if (adminNote) {
         await storage.addSuggestionNote(id, adminNote, user.id);
@@ -921,6 +962,12 @@ export async function registerRoutes(
     res.json(complaints);
   });
 
+  app.get(api.complaints.actionableCount.path, requireAuth, async (req, res) => {
+    const user = req.user as User;
+    const count = await storage.getActionableComplaintCount(user.role, user.id);
+    res.json({ count });
+  });
+
   app.get(api.complaints.get.path, requireAuth, async (req, res) => {
     const id = Number(req.params.id);
     const user = req.user as User;
@@ -941,7 +988,7 @@ export async function registerRoutes(
     },
   }).single("screenshot");
 
-  app.post("/api/complaints/upload", requireRole(["admin", "support"]), (req, res) => {
+  app.post("/api/complaints/upload", requireRole(["admin", "support", "designer"]), (req, res) => {
     complaintUpload(req, res, async (err) => {
       if (err) return res.status(400).json({ message: err.message });
       if (!req.file) return res.status(400).json({ message: "A screenshot is required." });
@@ -957,28 +1004,41 @@ export async function registerRoutes(
     });
   });
 
-  app.post(api.complaints.create.path, requireRole(["admin", "support"]), async (req, res) => {
+  app.post(api.complaints.create.path, requireRole(["admin", "support", "designer"]), async (req, res) => {
     try {
       const input = api.complaints.create.input.parse(req.body);
       const user = req.user as User;
       const order = await storage.getOrder(input.orderId);
       if (!order) return res.status(400).json({ message: "The selected order could not be found." });
 
-      const targetId = order.assignedToId;
-      if (!targetId) {
-        return res.status(400).json({
-          message: "This order has no assigned designer. Assign a designer before raising a complaint.",
-        });
-      }
-      if (input.complaintAgainstUserId && input.complaintAgainstUserId !== targetId) {
-        return res.status(400).json({
-          message: "A complaint can only target the designer currently assigned to this order.",
-        });
-      }
-
-      const targetDesigner = await storage.getUser(targetId);
-      if (!targetDesigner || targetDesigner.role !== "designer") {
-        return res.status(400).json({ message: "The complaint must target a valid assigned designer." });
+      const targetType = input.complaintTargetType || (user.role === "designer" ? "client" : "designer");
+      let targetId: number | null = null;
+      if (targetType === "client") {
+        if (user.role !== "designer" || order.assignedToId !== user.id) {
+          return res.status(403).json({ message: "Designers can only file client complaints for their own assigned orders." });
+        }
+        if (input.complaintAgainstUserId) {
+          return res.status(400).json({ message: "Client complaints cannot target an internal user." });
+        }
+      } else {
+        targetId = order.assignedToId;
+        if (!targetId) {
+          return res.status(400).json({
+            message: "This order has no assigned designer. Assign a designer before raising a complaint.",
+          });
+        }
+        if (input.complaintAgainstUserId && input.complaintAgainstUserId !== targetId) {
+          return res.status(400).json({
+            message: "A complaint can only target the designer currently assigned to this order.",
+          });
+        }
+        const targetDesigner = await storage.getUser(targetId);
+        if (!targetDesigner || targetDesigner.role !== "designer") {
+          return res.status(400).json({ message: "The complaint must target a valid assigned designer." });
+        }
+        if (user.role === "designer") {
+          return res.status(403).json({ message: "Designers must target the client on their assigned order." });
+        }
       }
 
       const categoryConfigs = await storage.getComplaintCategoryConfigs();
@@ -993,6 +1053,7 @@ export async function registerRoutes(
 
       const complaint = await storage.createComplaint({
         orderId: input.orderId,
+        complaintTargetType: targetType,
         complaintAgainstUserId: targetId,
         filedByUserId: user.id,
         category: input.category,
@@ -1006,18 +1067,32 @@ export async function registerRoutes(
         resolvedAt: null,
       }, user.id);
 
-      // This message is intentionally neutral: the designer is never told who
-      // filed the complaint, only that their assigned order needs attention.
-      await notifyUser(
-        targetId,
+      const admins = await storage.getAdmins();
+      await notifyMany(
+        admins.map(admin => admin.id),
         "complaint",
-        "Complaint Requires Review",
-        `A complaint related to ${orderRef(order)} has been filed about an assigned order. Please review it in Complaints.`,
+        "New Complaint Filed",
+        `${complaint.complaintNumber} related to ${orderRef(order)} requires review.`,
         "action_required",
         complaint.id,
         "complaint",
-        ["designer"],
+        [user.id],
+        ["admin"],
       );
+      if (targetId) {
+        // Deliberately neutral: the target must not learn who filed the complaint.
+        await notifyUser(
+          targetId,
+          "complaint",
+          "Complaint Requires Review",
+          `A complaint related to ${orderRef(order)} has been filed about an assigned order. Please review it in Complaints.`,
+          "action_required",
+          complaint.id,
+          "complaint",
+          ["designer"],
+        );
+      }
+      emitRealtime(user.id, ["complaints", "stats"]);
 
       const response = await storage.getComplaintForUser(complaint.id, user.role, user.id);
       res.status(201).json(response);
@@ -1166,16 +1241,22 @@ export async function registerRoutes(
       if (status !== undefined && status !== existing.status) {
 
         const targetOrder = await storage.getOrder(existing.orderId);
-        await notifyUser(
-          existing.complaintAgainstUserId,
-          "complaint",
-          `Complaint ${statusLabel(status)}`,
-          `Complaint ${existing.complaintNumber} related to ${targetOrder ? orderRef(targetOrder) : "an assigned order"} is now ${statusLabel(status)}.`,
-          status === "resolved" ? "confirmation" : "update",
-          existing.id,
-          "complaint",
-          ["designer"],
-        );
+        if (existing.complaintTargetType === "designer" && existing.complaintAgainstUserId) {
+          await notifyUser(
+            existing.complaintAgainstUserId,
+            "complaint",
+            `Complaint ${statusLabel(status)}`,
+            `Complaint ${existing.complaintNumber} related to ${targetOrder ? orderRef(targetOrder) : "an assigned order"} is now ${statusLabel(status)}.`,
+            status === "resolved" ? "confirmation" : "update",
+            existing.id,
+            "complaint",
+            ["designer"],
+          );
+        }
+        emitRealtime(existing.filedByUserId, ["complaints", "stats"]);
+        if (existing.complaintTargetType === "designer" && existing.complaintAgainstUserId) {
+          emitRealtime(existing.complaintAgainstUserId, ["complaints", "stats"]);
+        }
       }
 
       const response = await storage.getComplaintForUser(id, "admin", actor.id);
@@ -1524,7 +1605,8 @@ export async function registerRoutes(
   });
 
   app.patch(api.notifications.markRead.path, requireAuth, async (req, res) => {
-    const notif = await storage.markNotificationRead(Number(req.params.id));
+    const notif = await storage.markNotificationRead(Number(req.params.id), (req.user as User).id);
+    if (!notif) return res.sendStatus(404);
     res.json(notif);
   });
 
@@ -1583,9 +1665,7 @@ export async function registerRoutes(
   });
 
   app.get("/api/payment-verifications/pending-count", requireRole(["admin"]), async (req, res) => {
-    const verifications = await storage.getPaymentVerifications("admin", 0);
-    const pendingCount = verifications.filter(v => v.status === 'pending_confirmation').length;
-    res.json({ count: pendingCount });
+    res.json({ count: await storage.getPendingPaymentCount() });
   });
   
   app.get("/api/payment-verifications", requireAuth, async (req, res) => {
@@ -1742,6 +1822,7 @@ export async function registerRoutes(
           ["admin"]
         );
       }
+      emitRealtime(user.id, ["payments", "orders", "stats"]);
       
       res.status(201).json(verification);
     } catch (err: any) {
@@ -1939,6 +2020,7 @@ export async function registerRoutes(
       );
 
     }
+    emitRealtime(user.id, ["payments", "orders", "stats"]);
     
     const updatedVerification = await storage.getPaymentVerifications("admin", 0);
     res.json(updatedVerification.find(v => v.id === verificationId));
@@ -1995,6 +2077,7 @@ export async function registerRoutes(
         ["admin", "designer", "support"]
       );
     }
+    emitRealtime(user.id, ["payments", "orders", "stats"]);
     
     const updatedVerifications = await storage.getPaymentVerifications("admin", 0);
     res.json(updatedVerifications.find(v => v.id === verificationId));

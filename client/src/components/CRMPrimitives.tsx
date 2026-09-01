@@ -21,6 +21,18 @@ export function MetricCard({ label, value, note, icon: Icon = Activity, tone = "
   return onClick ? <button type="button" onClick={onClick} className={classes} data-testid={testId}>{content}</button> : <div className={classes} data-testid={testId}>{content}</div>;
 }
 
+export function CompactMetric({ label, value, tone = "cyan" }: {
+  label: string;
+  value: string | number;
+  tone?: "cyan" | "success" | "warning" | "danger";
+}) {
+  const valueClass = { cyan: "text-cyan-200", success: "text-emerald-300", warning: "text-amber-300", danger: "text-rose-300" }[tone];
+  return <div className="crm-compact-metric">
+    <span className="crm-compact-metric-label">{label}</span>
+    <span className={cn("crm-compact-metric-value", valueClass)}>{value}</span>
+  </div>;
+}
+
 export function SectionCard({ title, eyebrow, description, children, className }: { title?: string; eyebrow?: string; description?: string; children: React.ReactNode; className?: string }) {
   return <section className={cn("crm-section", className)}>{(title || eyebrow || description) && <div className="crm-section-header"><p className="crm-eyebrow">{eyebrow}</p>{title && <h2 className="text-sm font-semibold text-slate-200">{title}</h2>}{description && <p className="mt-1 text-xs text-slate-500">{description}</p>}</div>}{children}</section>;
 }

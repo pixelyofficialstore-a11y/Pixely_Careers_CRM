@@ -1435,9 +1435,9 @@ export default function OrdersPage() {
         </div>
       ) : (
       <Tabs value={activeOrdersTab} onValueChange={(val) => setActiveOrdersTab(val as "today" | "monthly")} className="w-full">
-        <TabsList className="bg-slate-900 border border-slate-800 p-1 mb-6">
-          <TabsTrigger value="today" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white" data-testid="tab-today-orders">Today's Orders</TabsTrigger>
-          <TabsTrigger value="monthly" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white" data-testid="tab-monthly-orders">Monthly Orders</TabsTrigger>
+        <TabsList className="mb-6 w-full justify-start border border-slate-800 bg-slate-900/70 p-1 sm:w-fit">
+          <TabsTrigger value="today" className="px-5" data-testid="tab-today-orders">Today's Orders</TabsTrigger>
+          <TabsTrigger value="monthly" className="px-5" data-testid="tab-monthly-orders">Monthly Orders</TabsTrigger>
         </TabsList>
 
         <TabsContent value="today">
@@ -1520,8 +1520,8 @@ export default function OrdersPage() {
       )}
 
       <Sheet open={detailsSheetOpen} onOpenChange={open => { if (!open) closeDrawer(); }}>
-        <SheetContent className="bg-slate-900 border-slate-800 w-full sm:max-w-xl overflow-y-auto">
-          <SheetHeader>
+        <SheetContent className="detail-drawer bg-slate-950 border-slate-800 w-full sm:max-w-xl overflow-y-auto">
+          <SheetHeader className="detail-drawer-header border-b border-slate-800 pb-5 pr-8 text-left">
             <SheetTitle className="text-white font-display flex items-center gap-2">
               {activeDrawer?.kind !== "order" && <Button variant="ghost" size="icon" className="h-8 w-8 -ml-2" onClick={goBackInDrawer} aria-label="Back to order details"><ArrowLeft className="h-4 w-4" /></Button>}
               <FileText className="w-5 h-5" />
@@ -1529,7 +1529,7 @@ export default function OrdersPage() {
             </SheetTitle>
           </SheetHeader>
           {selectedOrder && activeDrawer?.kind === "order" && (
-            <div className="mt-6 space-y-6">
+            <div className="detail-drawer-body mt-6 space-y-6">
               <div className="space-y-4">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <span className="text-2xl font-bold text-blue-400 font-mono">{selectedOrder.orderNumber}</span>
@@ -1539,18 +1539,18 @@ export default function OrdersPage() {
                 <Button size="sm" variant="outline" disabled={clientCaseReportMutation.isPending} onClick={() => clientCaseReportMutation.mutate(selectedOrder.id)}><Download className="mr-2 h-4 w-4" />{clientCaseReportMutation.isPending ? "Preparing report…" : "Client Case Report"}</Button>
               </div>
 
-              <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-4">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-blue-300">Order Summary</h4>
+              <div className="detail-section detail-section-emphasis">
+                <h4 className="detail-section-label">Order Summary</h4>
                 <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
                   <div><p className="text-xs text-slate-500">Order ID</p><p className="mt-1 font-mono text-sm text-white">{selectedOrder.orderNumber}</p></div>
                   <div><p className="text-xs text-slate-500">Status</p><p className="mt-1 text-sm text-white">{reportStatus(selectedOrder.status)}</p></div>
                   <div><p className="text-xs text-slate-500">Created</p><p className="mt-1 text-sm text-white">{format(selectedOrder.createdAt ? new Date(selectedOrder.createdAt) : new Date(), "MMM dd, yyyy · h:mm a")}</p></div>
-                  <div><p className="text-xs text-slate-500">Created By</p><p className="mt-1 text-sm text-white">{getCreatedByLabel(selectedOrder)}</p></div>
+                  <div><p className="text-xs text-slate-500">Created By</p><p className="mt-1 text-sm text-white">{getCreatedByLabel(selectedOrder).split(" (")[0]}</p><p className="mt-0.5 text-xs text-slate-500">{getCreatedByLabel(selectedOrder).match(/\(([^)]+)\)/)?.[1] || ""}</p></div>
                 </div>
               </div>
 
               <Tabs value={detailsTab} onValueChange={value => setOrderDrawerTab(value as OrderDrawerTab)}>
-                <TabsList className="grid h-auto w-full grid-cols-3 border border-slate-800 bg-slate-950 p-1">
+                <TabsList className="grid h-auto w-full grid-cols-3 border border-slate-800 bg-slate-900/70 p-1">
                   <TabsTrigger value="overview">Overview</TabsTrigger>
                   <TabsTrigger value="activity">Activity</TabsTrigger>
                   <TabsTrigger value="experience">Client Experience</TabsTrigger>

@@ -82,8 +82,8 @@ export function ComplaintDetails({ id, open, onOpenChange, onBack }: { id: numbe
     try { const response = await fetch("/api/feedback/upload", { method: "POST", body, credentials: "include" }); if (!response.ok) throw new Error(); setResolutionEvidence((await response.json()).screenshotUrl); }
     catch { toast({ title: "Upload failed", description: "Resolution evidence could not be uploaded.", variant: "destructive" }); }
   };
-  return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent className="w-full overflow-y-auto border-slate-800 bg-slate-950 text-white sm:max-w-xl">
-    <SheetHeader className="border-b border-slate-800 pb-5 pr-8 text-left">
+  return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent className="detail-drawer w-full overflow-y-auto border-slate-800 bg-slate-950 text-white sm:max-w-xl">
+    <SheetHeader className="detail-drawer-header border-b border-slate-800 pb-5 pr-8 text-left">
       <SheetTitle className="flex items-center gap-3"><div className="flex items-center gap-2">{onBack && <Button variant="ghost" size="icon" className="-ml-2 h-8 w-8" onClick={onBack} aria-label="Back to order"><ArrowLeft className="h-4 w-4" /></Button>}<span className="font-mono text-xl text-blue-300">{complaint?.complaintNumber || "Complaint details"}</span></div>{complaint && <ComplaintStatusBadge status={complaint.status} />}</SheetTitle>
       {complaint && <p className="mt-1 text-sm text-slate-500">{complaintStatusHelp[complaint.status]}</p>}
     </SheetHeader>
@@ -92,7 +92,7 @@ export function ComplaintDetails({ id, open, onOpenChange, onBack }: { id: numbe
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Complaint Summary</p>
         <dl className="mt-5 grid grid-cols-2 gap-x-5 gap-y-5">
           <div className="col-span-2"><dt className="text-xs text-slate-500">Category</dt><dd className="mt-2"><Badge variant="outline" className="border-blue-500/30 bg-blue-500/10 text-blue-200">{titleCase(complaint.category)}</Badge></dd></div>
-          <div><dt className="text-xs text-slate-500">Complaint Against</dt><dd className="mt-1 text-sm font-medium text-white">{complaint.complaintAgainst?.name || "—"}</dd></div>
+           <div><dt className="text-xs text-slate-500">Complaint Against</dt><dd className="mt-1 text-sm font-medium text-white">{complaint.complaintTargetName || complaint.complaintAgainst?.name || "—"} <span className="text-xs font-normal text-slate-500">· {complaint.complaintTargetType === "client" ? "Client" : "Designer"}</span></dd></div>
           <div><dt className="text-xs text-slate-500">Client</dt><dd className="mt-1 text-sm font-medium text-white">{complaint.clientName || "—"}</dd></div>
           <div><dt className="text-xs text-slate-500">Date Reported</dt><dd className="mt-1 text-sm text-slate-300">{caseDate(complaint.createdAt)}</dd></div>
           {isAdmin && complaint.filedBy && <div><dt className="text-xs text-slate-500">Reported By</dt><dd className="mt-1 text-sm text-slate-300">{complaint.filedBy.name} <span className="text-slate-500">· {titleCase(complaint.filedBy.role)}</span></dd></div>}

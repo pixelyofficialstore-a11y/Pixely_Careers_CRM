@@ -36,11 +36,15 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   const isAdmin = user?.role === "admin";
   const { data: pendingPaymentData } = useQuery<{ count: number }>({
     queryKey: ["/api/payment-verifications/pending-count"],
-    refetchInterval: 5000,
     enabled: isAdmin,
     retry: false,
   });
-  const pendingPaymentCount = pendingPaymentData?.count || 0;
+  const { data: actionableComplaintData } = useQuery<{ count: number }>({
+    queryKey: ["/api/complaints/actionable-count"],
+    retry: false,
+  });
+  const pendingPaymentCount = pendingPaymentData?.count ?? 0;
+  const actionableComplaintCount = actionableComplaintData?.count ?? 0;
 
   const avatarMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -109,7 +113,8 @@ export function Sidebar({ onNavigate }: SidebarProps) {
             {allowedLinks.map((link) => {
               const Icon = link.icon;
               const isActive = location === link.href;
-              const showBadge = link.href === "/payments" && isAdmin && pendingPaymentCount > 0;
+               const showBadge = (link.href === "/payments" && isAdmin && pendingPaymentData !== undefined && pendingPaymentCount > 0)
+                 || (link.href === "/complaints" && actionableComplaintData !== undefined && actionableComplaintCount > 0);
               
               return (
                 <Link 
@@ -129,9 +134,11 @@ export function Sidebar({ onNavigate }: SidebarProps) {
                     <Badge 
                       variant="destructive" 
                       className="h-5 min-w-[20px] px-1.5 text-xs font-bold"
-                      data-testid="badge-pending-payments"
+                       data-testid={link.href === "/payments" ? "badge-pending-payments" : "badge-actionable-complaints"}
                     >
-                      {pendingPaymentCount}
+                       {(link.href === "/payments" ? pendingPaymentCount : actionableComplaintCount) > 99
+                         ? "99+"
+                         : link.href === "/payments" ? pendingPaymentCount : actionableComplaintCount}
                     </Badge>
                   )}
                 </Link>

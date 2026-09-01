@@ -184,8 +184,30 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
       reconnecting = false;
       es = new EventSource("/api/notifications/stream", { withCredentials: true });
 
-      es.onmessage = () => {
-        // A notification arrived — immediately refresh the unread count and list
+      es.onopen = () => {
+        // Reconcile all server-owned counts after a reconnect so events missed
+        // while the browser was offline do not leave stale badges behind.
+        queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/complaints/actionable-count"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/payment-verifications/pending-count"] });
+      };
+
+      es.onmessage = (event) => {
+        let payload: { event?: string; scopes?: string[] } = {};
+        try { payload = JSON.parse(event.data); } catch (_) {}
+        const scopes = payload.scopes || [];
+        if (payload.event === "sync" && scopes.length) {
+          if (scopes.includes("complaints")) queryClient.invalidateQueries({ queryKey: ["/api/complaints/actionable-count"] });
+          if (scopes.includes("payments")) {
+            queryClient.invalidateQueries({ queryKey: ["/api/payment-verifications/pending-count"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/payment-verifications"] });
+          }
+          if (scopes.includes("orders")) queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+          if (scopes.includes("stats")) queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+        }
+        // Notification inserts and generic reconciliation both refresh the
+        // server-owned bell state.
         queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
         queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
       };
@@ -211,13 +233,11 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
 
   const { data: unreadData } = useQuery<{ count: number }>({
     queryKey: ["/api/notifications/unread-count"],
-    refetchInterval: 6000,
     retry: false,
   });
 
   const { data: notifsList = [] } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
-    refetchInterval: open ? 15000 : 60000,
     retry: false,
     enabled: open,
   });
@@ -242,9 +262,10 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
     },
   });
 
-  const unreadCount = unreadData?.count || 0;
+  const unreadCount = unreadData?.count ?? 0;
 
   useEffect(() => {
+    if (unreadData === undefined) return;
     if (firstLoad.current) {
       firstLoad.current = false;
       prevCount.current = unreadCount;
@@ -269,7 +290,7 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
         });
     }
     prevCount.current = unreadCount;
-  }, [unreadCount]);
+  }, [unreadCount, unreadData]);
 
   const handleOpen = () => {
     if (!open && buttonRef.current) {
@@ -289,9 +310,19 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
   const handleNotifClick = (notif: Notification) => {
     if (!notif.read) markOneMutation.mutate(notif.id);
     setOpen(false);
-    setLocation(notif.relatedType === "complaint" && notif.relatedId
-      ? `/complaints/${notif.relatedId}`
-      : "/orders");
+    if (notif.relatedType === "complaint" && notif.relatedId) {
+      setLocation(`/complaints/${notif.relatedId}`);
+    } else if (notif.relatedType === "payment_verification" && notif.relatedId) {
+      setLocation(`/payments?payment=${notif.relatedId}`);
+    } else if (notif.relatedType === "review" && notif.relatedId) {
+      setLocation(`/feedback?review=${notif.relatedId}`);
+    } else if (notif.relatedType === "suggestion" && notif.relatedId) {
+      setLocation(`/feedback?suggestion=${notif.relatedId}`);
+    } else if (notif.relatedType === "order" && notif.relatedId) {
+      setLocation(`/orders?order=${notif.relatedId}`);
+    } else {
+      setLocation("/orders");
+    }
   };
 
   const dropdownContent = open ? (

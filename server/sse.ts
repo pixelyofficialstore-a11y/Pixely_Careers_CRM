@@ -29,3 +29,7 @@ export function emitNotification(userId: number, data: Record<string, unknown>) 
     }
   }
 }
+
+export function emitRealtime(userId: number, scopes: string[]) {
+  emitNotification(userId, { event: "sync", scopes });
+}

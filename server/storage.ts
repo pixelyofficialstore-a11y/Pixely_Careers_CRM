@@ -58,8 +58,8 @@ export interface IStorage {
   generateOrderNumber(): Promise<string>;
 
   getNotifications(userId: number): Promise<Notification[]>;
-  markNotificationRead(id: number): Promise<Notification>;
-  createNotification(userId: number, type: string, title: string, message: string, priority: string, relatedId?: number, relatedType?: string): Promise<Notification>;
+  markNotificationRead(id: number, userId: number): Promise<Notification | undefined>;
+  createNotification(userId: number, type: string, title: string, message: string, priority: string, relatedId?: number, relatedType?: string): Promise<{ notification: Notification; created: boolean }>;
 
   getStats(role: string, userId: number, complaintFilters?: ComplaintListFilters): Promise<any>;
 
@@ -95,6 +95,8 @@ export interface IStorage {
 
   getAdmins(): Promise<User[]>;
   getUnreadNotificationCount(userId: number): Promise<number>;
+  getActionableComplaintCount(role: string, userId: number): Promise<number>;
+  getPendingPaymentCount(): Promise<number>;
   markAllNotificationsRead(userId: number): Promise<void>;
 
   savePushSubscription(userId: number, endpoint: string, p256dh: string, auth: string): Promise<PushSubscription>;
@@ -315,25 +317,41 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(notifications.createdAt));
   }
 
-  async markNotificationRead(id: number): Promise<Notification> {
+  async markNotificationRead(id: number, userId: number): Promise<Notification | undefined> {
     const [notification] = await db.update(notifications)
       .set({ read: true })
-      .where(eq(notifications.id, id))
+      .where(and(eq(notifications.id, id), eq(notifications.userId, userId)))
       .returning();
     return notification;
   }
 
-  async createNotification(userId: number, type: string, title: string, message: string, priority: string, relatedId?: number, relatedType?: string): Promise<Notification> {
-    const [notification] = await db.insert(notifications).values({
-      userId,
-      type,
-      title,
-      message,
-      priority,
-      relatedId,
-      relatedType,
-    }).returning();
-    return notification;
+  async createNotification(userId: number, type: string, title: string, message: string, priority: string, relatedId?: number, relatedType?: string): Promise<{ notification: Notification; created: boolean }> {
+    const dedupeKey = [type, title, message, relatedType || "", relatedId ?? ""].join("::");
+    const [existing] = await db.select().from(notifications)
+      .where(and(eq(notifications.userId, userId), eq(notifications.dedupeKey, dedupeKey)))
+      .limit(1);
+    if (existing) return { notification: existing, created: false };
+    try {
+      const [notification] = await db.insert(notifications).values({
+        userId,
+        type,
+        title,
+        message,
+        priority,
+        relatedId,
+        relatedType,
+        dedupeKey,
+      }).returning();
+      return { notification, created: true };
+    } catch (error: any) {
+      // A concurrent retry may win the unique (recipient, dedupe key) race.
+      if (error?.code !== "23505") throw error;
+      const [notification] = await db.select().from(notifications)
+        .where(and(eq(notifications.userId, userId), eq(notifications.dedupeKey, dedupeKey)))
+        .limit(1);
+      if (!notification) throw error;
+      return { notification, created: false };
+    }
   }
 
   async getStats(role: string, userId: number, complaintFilters: ComplaintListFilters = {}): Promise<any> {
@@ -364,6 +382,48 @@ export class DatabaseStorage implements IStorage {
     const totalRevenue = allOrders.reduce((acc, order) => acc + getOrderAccounting(order).netCollected, 0);
     const pendingPayments = allOrders.reduce((acc, order) => acc + getOrderAccounting(order).remainingReceivable, 0);
     const adminUserIds = new Set(allUsers.filter(user => user.role === "admin").map(user => user.id));
+    const allOrderIds = new Set(allOrders.map(order => order.id));
+    const approvedPaymentsThisMonth = allPaymentVerifications.filter(payment =>
+      payment.status === "approved" &&
+      allOrderIds.has(payment.orderId) &&
+      payment.reviewedAt &&
+      new Date(payment.reviewedAt) >= thisMonth
+    );
+    const paymentTotalsByOrderThisMonth = new Map<number, number>();
+    const initialPaymentOrderIdsThisMonth = new Set<number>();
+    for (const payment of approvedPaymentsThisMonth) {
+      paymentTotalsByOrderThisMonth.set(
+        payment.orderId,
+        (paymentTotalsByOrderThisMonth.get(payment.orderId) || 0) + (payment.amount || 0),
+      );
+      if (payment.paymentType === "advance" || payment.paymentType === "full") {
+        initialPaymentOrderIdsThisMonth.add(payment.orderId);
+      }
+    }
+    // Admin-created orders are auto-approved without a payment verification
+    // row. Count only the amount not already represented by payment events.
+    const directAdminCashInflowThisMonth = monthlyOrders
+      .filter(order =>
+        adminUserIds.has(order.createdById || -1) &&
+        order.createdAt &&
+        new Date(order.createdAt) >= thisMonth &&
+        !initialPaymentOrderIdsThisMonth.has(order.id)
+      )
+      .reduce((sum, order) => sum + Math.max(
+        0,
+        Number(order.advanceAmount || 0) - (paymentTotalsByOrderThisMonth.get(order.id) || 0),
+      ), 0);
+    const paymentCashInflowThisMonth = approvedPaymentsThisMonth
+      .reduce((sum, payment) => sum + (payment.amount || 0), 0);
+    const cashInflowThisMonth = paymentCashInflowThisMonth + directAdminCashInflowThisMonth;
+    const refundsThisMonth = allOrders
+      .filter(order =>
+        order.status === "canceled" &&
+        Number(order.refundAmount || 0) > 0 &&
+        order.refundRecordedAt &&
+        new Date(order.refundRecordedAt) >= thisMonth
+      )
+      .reduce((sum, order) => sum + Number(order.refundAmount || 0), 0);
     const approvedPaymentsToday = allPaymentVerifications.filter(payment =>
       payment.status === "approved" &&
        collectedOrderIds.has(payment.orderId) &&
@@ -400,6 +460,11 @@ export class DatabaseStorage implements IStorage {
           advance: advanceReceivedToday,
           remaining: remainingReceivedToday,
           total: advanceReceivedToday + remainingReceivedToday,
+        },
+        monthlyCashFlow: {
+          inflow: cashInflowThisMonth,
+          refunds: refundsThisMonth,
+          net: cashInflowThisMonth - refundsThisMonth,
         },
       },
     };
@@ -507,13 +572,16 @@ export class DatabaseStorage implements IStorage {
     role: string,
     services: OrderService[] = [],
   ): ComplaintResponse | undefined {
-    const against = this.complaintUserSummary(usersById.get(complaint.complaintAgainstUserId));
-    if (!order || !against) return undefined;
+    const against = complaint.complaintAgainstUserId
+      ? this.complaintUserSummary(usersById.get(complaint.complaintAgainstUserId))
+      : undefined;
+    if (!order || (complaint.complaintTargetType === "designer" && !against)) return undefined;
 
     const response: ComplaintResponse = {
       id: complaint.id,
       complaintNumber: complaint.complaintNumber,
       orderId: complaint.orderId,
+      complaintAgainstUserId: complaint.complaintAgainstUserId,
       orderNumber: order.orderNumber,
       clientName: order.clientName,
       order: {
@@ -531,7 +599,9 @@ export class DatabaseStorage implements IStorage {
           refundAmount: order.refundAmount,
         } : {}),
       },
-      complaintAgainst: against,
+      complaintTargetType: complaint.complaintTargetType || "designer",
+      complaintTargetName: complaint.complaintTargetType === "client" ? order.clientName : (against?.name || "Assigned designer"),
+      ...(against ? { complaintAgainst: against } : {}),
       category: complaint.category,
       description: complaint.description,
       status: complaint.status,
@@ -599,6 +669,7 @@ export class DatabaseStorage implements IStorage {
         userId,
         complaint.filedByUserId,
         complaint.complaintAgainstUserId,
+        complaint.complaintTargetType || "designer",
       ));
 
     if (filters.orderId) {
@@ -640,7 +711,8 @@ export class DatabaseStorage implements IStorage {
           response.clientName,
           response.category,
           response.description,
-          response.complaintAgainst.name,
+           response.complaintTargetName,
+           response.complaintAgainst?.name,
         ].some(value => value?.toLowerCase().includes(search));
       });
   }
@@ -826,6 +898,22 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
+  async getActionableComplaintCount(role: string, userId: number): Promise<number> {
+    const rows = await db.select({
+      filedByUserId: complaints.filedByUserId,
+      complaintAgainstUserId: complaints.complaintAgainstUserId,
+      complaintTargetType: complaints.complaintTargetType,
+      status: complaints.status,
+    }).from(complaints).where(eq(complaints.status, "new"));
+    return rows.filter(row => canAccessComplaintCase(
+      role as CaseRole,
+      userId,
+      row.filedByUserId,
+      row.complaintAgainstUserId,
+      row.complaintTargetType || "designer",
+    )).length;
+  }
+
   async getPaymentVerifications(role: string, userId: number): Promise<PaymentVerificationWithUsers[]> {
     let verificationList: PaymentVerification[];
     
@@ -982,6 +1070,13 @@ export class DatabaseStorage implements IStorage {
       .select({ count: sql<number>`count(*)::int` })
       .from(notifications)
       .where(and(eq(notifications.userId, userId), eq(notifications.read, false)));
+    return result[0]?.count || 0;
+  }
+
+  async getPendingPaymentCount(): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)::int` })
+      .from(paymentVerifications)
+      .where(eq(paymentVerifications.status, "pending_confirmation"));
     return result[0]?.count || 0;
   }
 

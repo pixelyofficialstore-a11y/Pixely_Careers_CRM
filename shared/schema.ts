@@ -80,6 +80,7 @@ export const complaintCategories = [
 ] as const;
 export const complaintStatuses = ["new", "confirmed", "dismissed", "resolved", "refunded"] as const;
 export const complaintResolutionOutcomes = ["correction_revision", "refund", "other"] as const;
+export const complaintTargetTypes = ["designer", "client"] as const;
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -153,8 +154,11 @@ export const notifications = pgTable("notifications", {
   read: boolean("read").default(false).notNull(),
   relatedId: integer("related_id"),
   relatedType: text("related_type"),
+  dedupeKey: text("dedupe_key"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  dedupeUnique: uniqueIndex("notifications_user_dedupe_unique").on(table.userId, table.dedupeKey),
+}));
 
 export const activityLogs = pgTable("activity_logs", {
   id: serial("id").primaryKey(),
@@ -240,7 +244,8 @@ export const complaints = pgTable("complaints", {
   id: serial("id").primaryKey(),
   complaintNumber: text("complaint_number").notNull().unique(),
   orderId: integer("order_id").notNull().references(() => orders.id),
-  complaintAgainstUserId: integer("complaint_against_user_id").notNull().references(() => users.id),
+  complaintTargetType: text("complaint_target_type", { enum: complaintTargetTypes }).notNull().default("designer"),
+  complaintAgainstUserId: integer("complaint_against_user_id").references(() => users.id),
   filedByUserId: integer("filed_by_user_id").notNull().references(() => users.id),
   // Values are managed by admins. Keep historical category keys valid even
   // after a category is disabled or removed from future dropdowns.
@@ -497,7 +502,10 @@ export type ComplaintResponse = {
     advanceRefunded?: boolean | null;
     refundAmount?: number | null;
   };
-  complaintAgainst: ComplaintUserSummary;
+  complaintTargetType: (typeof complaintTargetTypes)[number];
+  complaintTargetName: string;
+  complaintAgainstUserId?: number | null;
+  complaintAgainst?: ComplaintUserSummary;
   category: string;
   description: string;
   status: (typeof complaintStatuses)[number];

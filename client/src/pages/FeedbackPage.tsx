@@ -208,7 +208,7 @@ export function ReviewForm({ review, orders, open, onOpenChange, defaultOrderId 
       <div className="space-y-2"><Label htmlFor="public-review-link">Public Review Link <span className="text-slate-600">(optional)</span></Label><Input id="public-review-link" type="url" value={publicLink} onChange={event => setPublicLink(event.target.value)} placeholder="https://…" /></div>
       <div className="space-y-2"><Label>Marketing Permission</Label><Select value={marketingPermission} onValueChange={setMarketingPermission}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="yes">Yes</SelectItem><SelectItem value="no">No</SelectItem><SelectItem value="not_asked">Not Asked</SelectItem></SelectContent></Select></div>
       <ScreenshotField value={screenshotUrl} onChange={setScreenshotUrl} folder="reviews" />
-      <Button className="w-full bg-blue-600 hover:bg-blue-500" disabled={!orderId || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{review ? "Save Review" : "Add Review"}</Button>
+      <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90" disabled={!orderId || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{review ? "Save Review" : "Add Review"}</Button>
     </div>
   </DialogContent></Dialog>;
 }
@@ -235,7 +235,7 @@ function SuggestionForm({ orders, open, onOpenChange, defaultOrderId }: { orders
       <div className="space-y-2"><Label>Order</Label><Select value={orderId} onValueChange={setOrderId}><SelectTrigger><SelectValue placeholder="Select an order" /></SelectTrigger><SelectContent>{orders.map(order => <SelectItem key={order.id} value={String(order.id)}>{order.orderNumber || `Order #${order.id}`} · {order.clientName}</SelectItem>)}</SelectContent></Select>{selectedOrder && <p className="text-xs text-slate-500">Designer: {selectedOrder.assignee?.name || "Unassigned"} · Client: {selectedOrder.clientName}</p>}</div>
       <div className="space-y-2"><Label htmlFor="suggestion-text">Suggestion</Label><Textarea id="suggestion-text" required value={suggestionText} onChange={event => setSuggestionText(event.target.value)} rows={6} placeholder="What could improve the client experience?" /></div>
       <ScreenshotField value={screenshotUrl} onChange={setScreenshotUrl} folder="suggestions" />
-      <Button className="w-full bg-blue-600 hover:bg-blue-500" disabled={!orderId || !suggestionText.trim() || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Add Suggestion</Button>
+      <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90" disabled={!orderId || !suggestionText.trim() || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Add Suggestion</Button>
     </div>
   </DialogContent></Dialog>;
 }

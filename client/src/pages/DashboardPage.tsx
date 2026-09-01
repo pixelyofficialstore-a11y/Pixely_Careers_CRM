@@ -26,7 +26,9 @@ import type { OrderWithServices } from "@shared/schema";
 import { getMillisecondsUntilNextBusinessDay } from "@shared/business-time";
 import { getOrderAccounting } from "@shared/order-accounting";
 import { DashboardSkeleton } from "@/components/PageSkeleton";
-import { EmptyState, MetricCard as CRMMetricCard, PageHeader, SectionCard } from "@/components/CRMPrimitives";
+import { CompactMetric, EmptyState, MetricCard as CRMMetricCard, PageHeader, SectionCard } from "@/components/CRMPrimitives";
+
+const titleCase = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, letter => letter.toUpperCase());
 
 interface User {
   id: number;
@@ -42,6 +44,11 @@ interface DashboardStats {
       advance: number;
       remaining: number;
       total: number;
+    };
+    monthlyCashFlow?: {
+      inflow: number;
+      refunds: number;
+      net: number;
     };
   };
   complaints?: {
@@ -227,8 +234,51 @@ function DashboardSectionHeading({ icon: Icon, title, description, action }: { i
   </div>;
 }
 
+function DesignerPerformanceCard({ orders, teamMembers }: { orders: OrderWithServices[]; teamMembers?: User[] }) {
+  const designers = (teamMembers || []).filter(member => member.role === "designer" && member.isActive);
+
+  return (
+    <SectionCard title="Designer Performance" eyebrow="Team workload" description="Assigned order workload and delivery totals." className="lg:col-span-3">
+      <div className="p-4">
+        {designers.length ? (
+          <div className="divide-y divide-slate-800/70">
+            {designers.map(designer => {
+              const assignedOrders = orders.filter(order => order.assignedToId === designer.id);
+              const activeCount = assignedOrders.filter(order => order.status === "new" || order.status === "working").length;
+              const completedCount = assignedOrders.filter(order => order.status === "ready" || order.status === "delivered").length;
+              const completionRate = assignedOrders.length ? Math.round((completedCount / assignedOrders.length) * 100) : 0;
+
+              return (
+                <div key={designer.id} className="flex flex-col gap-3 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-cyan-400/20 bg-cyan-400/10 text-sm font-semibold text-cyan-200">
+                      {designer.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-200">{designer.name}</p>
+                      <p className="mt-0.5 text-xs text-slate-500">{assignedOrders.length} assigned {assignedOrders.length === 1 ? "order" : "orders"}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-5 pl-12 text-left sm:pl-0 sm:text-right">
+                    <div><p className="text-[10px] font-bold uppercase tracking-[.1em] text-slate-600">Active</p><p className="mt-1 text-sm font-semibold text-amber-300">{activeCount}</p></div>
+                    <div><p className="text-[10px] font-bold uppercase tracking-[.1em] text-slate-600">Completed</p><p className="mt-1 text-sm font-semibold text-emerald-300">{completedCount}</p></div>
+                    <div><p className="text-[10px] font-bold uppercase tracking-[.1em] text-slate-600">Completion</p><p className="mt-1 text-sm font-semibold text-cyan-200">{completionRate}%</p></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <EmptyState title="No active designers" description="Active designer workload will appear here." icon={Users} />
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
 function AdminDashboard({
   orders,
+  teamMembers,
   feedbackStats,
   complaintStats,
   openFeedback,
@@ -244,8 +294,10 @@ function AdminDashboard({
   monthlyRemaining,
   totalCollected,
   outstandingBalance,
+  monthlyCashFlow,
 }: {
   orders: OrderWithServices[];
+  teamMembers?: User[];
   feedbackStats?: FeedbackStats;
   complaintStats?: DashboardStats["complaints"];
   openFeedback: (tab: "reviews" | "suggestions") => void;
@@ -261,6 +313,7 @@ function AdminDashboard({
   monthlyRemaining: number;
   totalCollected: number;
   outstandingBalance: number;
+  monthlyCashFlow: { inflow: number; refunds: number; net: number };
 }) {
   const formatAmount = (amount: number) => `Rs${Math.round(amount / 100).toLocaleString()}`;
   const complaints = complaintStats ?? { all: 0, confirmed: 0, dismissed: 0, resolved: 0, refund: 0 };
@@ -297,30 +350,53 @@ function AdminDashboard({
       <SectionCard title="Order Operations" eyebrow="Operations" description="Monthly workload and delivery position.">
         <div className="p-4"><DashboardRow label="Monthly orders" value={monthlyOrders.length} /><DashboardRow label="Completed" value={readyThisMonth.length} tone="success" /><DashboardRow label="Active" value={activeOrders.length} /><DashboardRow label="Canceled" value={canceledOrders.length} tone="danger" /></div>
       </SectionCard>
-      <SectionCard title="Financial Overview" eyebrow="Finance" description="Current month accounting position.">
-        <div className="p-4"><DashboardRow label="Monthly revenue" value={formatAmount(monthlyRevenue)} /><DashboardRow label="Collected" value={formatAmount(monthlyCollected)} tone="success" /><DashboardRow label="Remaining" value={formatAmount(monthlyRemaining)} tone="warning" /><DashboardRow label="Refunded amount" value={formatAmount(orders.filter(order => order.status === "canceled" && order.refundAmount).reduce((sum, order) => sum + Number(order.refundAmount || 0), 0))} tone="danger" /><div className="mt-3 grid grid-cols-2 gap-3 border-t border-slate-800/70 pt-3"><div><p className="text-[10px] font-bold uppercase tracking-[.11em] text-slate-600">All-time collected</p><p className="mt-1 text-sm font-semibold text-slate-300" data-testid="stat-total-collected">{formatAmount(totalCollected)}</p></div><div><p className="text-[10px] font-bold uppercase tracking-[.11em] text-slate-600">Outstanding</p><p className="mt-1 text-sm font-semibold text-slate-300" data-testid="stat-outstanding">{formatAmount(outstandingBalance)}</p></div></div></div>
-      </SectionCard>
+       <SectionCard title="Financial Overview" eyebrow="Finance" description="Current month accounting position.">
+         <div className="p-4">
+           <DashboardRow label="Monthly revenue" value={formatAmount(monthlyRevenue)} />
+           <DashboardRow label="Collected" value={formatAmount(monthlyCollected)} tone="success" />
+           <DashboardRow label="Remaining" value={formatAmount(monthlyRemaining)} tone="warning" />
+           <DashboardRow label="Refunded amount" value={formatAmount(monthlyCashFlow.refunds)} tone="danger" />
+           <div className="mt-4 border-t border-slate-800/70 pt-4">
+             <div className="mb-3 flex items-center justify-between gap-3">
+               <div>
+                 <p className="text-[10px] font-bold uppercase tracking-[.13em] text-cyan-300">Cash Flow</p>
+                 <p className="mt-1 text-[11px] text-slate-500">Payments received and refunds issued this month.</p>
+               </div>
+             </div>
+             <div className="space-y-0">
+               <DashboardRow label="Cash inflow" value={formatAmount(monthlyCashFlow.inflow)} />
+               <DashboardRow label="Refunds" value={formatAmount(monthlyCashFlow.refunds)} tone="danger" />
+               <DashboardRow label="Net cash flow" value={formatAmount(monthlyCashFlow.net)} tone={monthlyCashFlow.net >= 0 ? "success" : "danger"} />
+             </div>
+           </div>
+            <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-800/70 pt-4">
+              <div><p className="text-[10px] font-bold uppercase tracking-[.11em] text-slate-600">All-time collected</p><p className="mt-1 text-sm font-semibold text-slate-300" data-testid="stat-total-collected">{formatAmount(totalCollected)}</p></div>
+              <div><p className="text-[10px] font-bold uppercase tracking-[.11em] text-slate-600">Outstanding</p><p className="mt-1 text-sm font-semibold text-slate-300" data-testid="stat-outstanding">{formatAmount(outstandingBalance)}</p></div>
+            </div>
+          </div>
+       </SectionCard>
     </section>
 
     <SectionCard title="Client Experience" eyebrow="Client experience" description="Feedback signals from the current reporting period.">
       <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
         {clientExperienceMetrics.map(metric => <CRMMetricCard key={metric.label} label={metric.label} value={metric.value} icon={metric.icon} tone={metric.tone} onClick={metric.onClick} />)}
       </div>
-      <div className="grid grid-cols-2 gap-x-6 border-t border-slate-800/70 px-4 py-2 sm:grid-cols-4">
-        <DashboardRow label="Facebook reviews" value={feedbackStats?.reviews.facebook ?? 0} />
-        <DashboardRow label="Video testimonials" value={feedbackStats?.reviews.video ?? 0} />
-        <DashboardRow label="Resolved complaints" value={complaints.resolved} tone="success" />
-        <DashboardRow label="Refund cases" value={complaints.refund} tone="danger" />
+       <div className="grid grid-cols-1 gap-3 border-t border-slate-800/70 p-4 sm:grid-cols-2 xl:grid-cols-4">
+         <CompactMetric label="Facebook reviews" value={feedbackStats?.reviews.facebook ?? 0} />
+         <CompactMetric label="Video testimonials" value={feedbackStats?.reviews.video ?? 0} />
+         <CompactMetric label="Resolved complaints" value={complaints.resolved} tone="success" />
+         <CompactMetric label="Refund cases" value={complaints.refund} tone="danger" />
       </div>
     </SectionCard>
 
     <section className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+      <DesignerPerformanceCard orders={orders} teamMembers={teamMembers} />
       <SectionCard title="Needs Attention" eyebrow="Action queue" description="Open items that may need a response." className="lg:col-span-2">
         <div className="p-4">
           {attention.length ? <div className="space-y-1">{attention.map(item => <button key={item.label} type="button" onClick={() => setLocation(item.href)} className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-3 text-left transition-colors hover:bg-cyan-400/[.04]"><div><p className="text-sm text-slate-300">{item.label}</p><p className={cn("mt-0.5 text-xs", item.tone === "warning" ? "text-amber-300" : "text-cyan-300")}>{item.action} <ArrowUpRight className="ml-1 inline h-3 w-3" /></p></div><span className={cn("font-mono text-lg", item.tone === "warning" ? "text-amber-300" : "text-slate-100")}>{item.value}</span></button>)}</div> : <EmptyState title="Nothing urgent requires attention." description="The operational queue is clear." icon={CheckCircle2} />}
         </div>
       </SectionCard>
-      <SectionCard title="Recent Activity" eyebrow="Activity" description="Latest order activity across the workspace." className="lg:col-span-3">
+      <SectionCard title="Recent Activity" eyebrow="Activity" description="Latest order activity across the workspace." className="lg:col-span-5">
         <div className="p-4">
           {recentOrders.length ? <div className="space-y-1">{recentOrders.map(order => <button key={order.id} type="button" onClick={() => setLocation(`/orders?order=${encodeURIComponent(order.orderNumber || String(order.id))}`)} className="flex w-full items-center gap-3 rounded-lg px-2 py-3 text-left transition-colors hover:bg-cyan-400/[.04]"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-cyan-400/10 text-cyan-300"><ShoppingCart className="h-3.5 w-3.5" /></span><span className="min-w-0 flex-1"><span className="block truncate text-sm text-slate-200">Order {order.orderNumber || `#${order.id}`} created</span><span className="mt-0.5 block truncate text-xs text-slate-500">{order.clientName}</span></span><span className="shrink-0 text-right text-xs text-slate-600">{format(new Date(order.createdAt!), "MMM dd, yyyy")}<span className="block">{format(new Date(order.createdAt!), "h:mm a")}</span></span></button>)}</div> : <EmptyState title="No recent activity" description="New order activity will appear here." icon={Activity} />}
         </div>
@@ -427,160 +503,81 @@ export default function DashboardPage() {
 
   // Designer Dashboard
   if (isDesigner) {
+    const designerOrders = orders || [];
+    const designerCompleted = designerOrders.filter(order => order.status === "ready" || order.status === "delivered");
+    const designerActive = designerOrders.filter(order => order.status === "new" || order.status === "working");
+    const designerNewComplaints = Math.max(0, (dashboardStats?.complaints?.all || 0) - (dashboardStats?.complaints?.confirmed || 0) - (dashboardStats?.complaints?.dismissed || 0) - (dashboardStats?.complaints?.resolved || 0) - (dashboardStats?.complaints?.refund || 0));
     return (
-      <div className="crm-page space-y-6">
+      <div className="crm-page space-y-5">
         <PageHeader eyebrow="Operations overview" title="My Dashboard" description={`Welcome back, ${user?.name}. Here are your assigned orders.`} />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatCard 
-            title="Today's Orders" 
-            value={todayOrders.length} 
-            icon={Calendar} 
-            color="blue"
-            testId="stat-today-orders"
-          />
-          <StatCard 
-            title="This Month's Orders" 
-            value={monthlyOrders.length} 
-            icon={ShoppingCart}
-            color="purple"
-            testId="stat-monthly-orders"
-          />
-          <StatCard 
-            title="Pending Orders" 
-            value={pendingOrders.length} 
-            icon={Clock}
-            color="orange"
-            testId="stat-pending-orders"
-          />
-          <StatCard 
-            title="Canceled Orders" 
-            value={canceledOrders.length} 
-            icon={XCircle}
-            color="red"
-            testId="stat-canceled-orders"
-          />
-        </div>
+        <section className="space-y-3">
+          <DashboardSectionHeading icon={Activity} title="Quick Overview" description="Your assigned production workload." />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <CRMMetricCard label="Today's orders" value={todayOrders.length} icon={Calendar} testId="stat-today-orders" />
+            <CRMMetricCard label="Active orders" value={designerActive.length} icon={Activity} tone="warning" testId="stat-active-orders" />
+            <CRMMetricCard label="Completed this month" value={designerCompleted.filter(order => new Date(order.createdAt!) >= monthStart).length} icon={CheckCircle2} tone="success" testId="stat-monthly-completed" />
+            <CRMMetricCard label="Open case records" value={designerNewComplaints} icon={FileWarning} tone="danger" onClick={() => setLocation("/complaints")} testId="stat-open-cases" />
+          </div>
+        </section>
 
         <ClientExperienceGrid stats={feedbackStats} role={user?.role} onOpenFeedback={openFeedback} />
-        <ComplaintStatsGrid stats={dashboardStats?.complaints} totalTitle="Complaints About Me" />
-
-        <div className="glass-panel p-6 rounded-2xl">
-          <h3 className="text-lg font-bold font-display text-white mb-4">Recent Assigned Orders</h3>
-          {orders && orders.length > 0 ? (
-            <div className="space-y-3">
-              {orders.slice(0, 5).map(order => (
-                <div key={order.id} className="flex items-center justify-between p-4 bg-slate-950/50 rounded-xl border border-slate-800">
-                  <div>
-                    <p className="font-mono text-sm text-blue-400">{order.orderNumber}</p>
-                    <p className="text-white font-medium">{order.clientName}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className={cn(
-                      "text-sm font-medium",
-                      order.status === 'new' && "text-yellow-400",
-                      order.status === 'working' && "text-blue-400",
-                      order.status === 'ready' && "text-green-400",
-                      order.status === 'delivered' && "text-slate-400",
-                      order.status === 'canceled' && "text-red-400",
-                    )}>
-                      {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                    </p>
-                    <p className="text-xs text-slate-500">{format(new Date(order.createdAt!), "MMM dd")}</p>
-                  </div>
-                </div>
-              ))}
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <SectionCard title="My Workload" eyebrow="Production" description="Status of orders assigned to you.">
+            <div className="p-4">
+              <DashboardRow label="New" value={designerOrders.filter(order => order.status === "new").length} tone="warning" />
+              <DashboardRow label="In progress" value={designerOrders.filter(order => order.status === "working").length} />
+              <DashboardRow label="Ready" value={designerOrders.filter(order => order.status === "ready").length} tone="success" />
+              <DashboardRow label="Delivered" value={designerOrders.filter(order => order.status === "delivered").length} tone="success" />
+              <DashboardRow label="Canceled" value={designerOrders.filter(order => order.status === "canceled").length} tone="danger" />
             </div>
-          ) : (
-            <p className="text-slate-500 text-center py-8">No orders assigned to you yet.</p>
-          )}
-        </div>
+          </SectionCard>
+          <SectionCard title="Needs Attention" eyebrow="Your queue" description="Items that need a response from you.">
+            <div className="p-4">
+              <DashboardRow label="New case records" value={designerNewComplaints} tone={designerNewComplaints ? "danger" : "success"} note="Complaints filed by you or about your assigned work" />
+              <DashboardRow label="Orders waiting to start" value={designerOrders.filter(order => order.status === "new").length} tone="warning" />
+              <DashboardRow label="Orders ready to deliver" value={designerOrders.filter(order => order.status === "ready").length} tone="success" />
+              <Button variant="outline" className="mt-4 w-full" onClick={() => setLocation("/orders")}>Open assigned orders <ArrowUpRight className="ml-2 h-4 w-4" /></Button>
+            </div>
+          </SectionCard>
+        </section>
+        <SectionCard title="Recent Assigned Orders" eyebrow="Production history" description="Your latest order assignments.">
+          <div className="p-4">
+            {designerOrders.length ? <div className="space-y-1">{designerOrders.slice(0, 6).map(order => <button key={order.id} type="button" onClick={() => setLocation(`/orders?order=${encodeURIComponent(order.orderNumber || String(order.id))}`)} className="flex w-full items-center justify-between gap-4 rounded-lg px-2 py-3 text-left transition-colors hover:bg-cyan-400/[.04]"><span className="min-w-0"><span className="block truncate font-mono text-xs text-cyan-300">{order.orderNumber || `#${order.id}`}</span><span className="mt-1 block truncate text-sm text-slate-200">{order.clientName}</span></span><span className="shrink-0 text-right text-xs text-slate-500">{titleCase(order.status)}<span className="block">{format(new Date(order.createdAt!), "MMM dd")}</span></span></button>)}</div> : <EmptyState title="No orders assigned yet" description="Assigned production work will appear here." icon={ShoppingCart} />}
+          </div>
+        </SectionCard>
       </div>
     );
   }
 
   // Support Dashboard
   if (isSupport) {
+    const supportOrders = orders || [];
+    const supportNewComplaints = Math.max(0, (dashboardStats?.complaints?.all || 0) - (dashboardStats?.complaints?.confirmed || 0) - (dashboardStats?.complaints?.dismissed || 0) - (dashboardStats?.complaints?.resolved || 0) - (dashboardStats?.complaints?.refund || 0));
     return (
-      <div className="crm-page space-y-6">
+      <div className="crm-page space-y-5">
         <PageHeader eyebrow="Operations overview" title="Support Dashboard" description={`Welcome back, ${user?.name}. Here's an overview of your orders.`} />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatCard 
-            title="Today's Orders" 
-            value={todayOrders.length} 
-            icon={Calendar} 
-            color="blue"
-            testId="stat-today-orders"
-          />
-          <StatCard 
-            title="This Month's Orders" 
-            value={monthlyOrders.length} 
-            icon={ShoppingCart}
-            color="purple"
-            testId="stat-monthly-orders"
-          />
-          <StatCard 
-            title="Pending Payment" 
-            value={orders?.filter(o => o.paymentStatus === 'pending').length || 0} 
-            icon={Clock}
-            color="orange"
-            testId="stat-pending-payment"
-          />
-          <StatCard 
-            title="Canceled Orders" 
-            value={canceledOrders.length} 
-            icon={XCircle}
-            color="red"
-            testId="stat-canceled-orders"
-          />
-        </div>
+        <section className="space-y-3">
+          <DashboardSectionHeading icon={Activity} title="Quick Overview" description="Operational records available to Support." />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <CRMMetricCard label="Today's orders" value={todayOrders.length} icon={Calendar} testId="stat-today-orders" />
+            <CRMMetricCard label="Orders this month" value={monthlyOrders.length} icon={ShoppingCart} testId="stat-monthly-orders" />
+            <CRMMetricCard label="Pending payment" value={supportOrders.filter(order => order.paymentStatus === "pending").length} icon={Clock} tone="warning" testId="stat-pending-payment" />
+            <CRMMetricCard label="Open case records" value={supportNewComplaints} icon={FileWarning} tone="danger" onClick={() => setLocation("/complaints")} testId="stat-open-cases" />
+          </div>
+        </section>
 
         <ClientExperienceGrid stats={feedbackStats} role={user?.role} onOpenFeedback={openFeedback} />
         <ComplaintStatsGrid stats={dashboardStats?.complaints} totalTitle="Complaints Filed" />
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="glass-panel p-6 rounded-2xl">
-            <h3 className="text-lg font-bold font-display text-white mb-4">Order Status Overview</h3>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-slate-950/50 rounded-lg border border-slate-800">
-                <span className="text-slate-400">New</span>
-                <span className="text-white font-bold">{orders?.filter(o => o.status === 'new').length || 0}</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-slate-950/50 rounded-lg border border-slate-800">
-                <span className="text-slate-400">Working</span>
-                <span className="text-white font-bold">{orders?.filter(o => o.status === 'working').length || 0}</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-slate-950/50 rounded-lg border border-slate-800">
-                <span className="text-slate-400">Ready</span>
-                <span className="text-white font-bold">{readyOrders.length}</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-slate-950/50 rounded-lg border border-slate-800">
-                <span className="text-slate-400">Delivered</span>
-                <span className="text-white font-bold">{deliveredOrders.length}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="glass-panel p-6 rounded-2xl">
-            <h3 className="text-lg font-bold font-display text-white mb-4">Payment Status</h3>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-slate-950/50 rounded-lg border border-slate-800">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                  <span className="text-slate-400">Paid</span>
-                </div>
-                <span className="text-green-400 font-bold">{orders?.filter(o => o.paymentStatus === 'paid').length || 0}</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-slate-950/50 rounded-lg border border-slate-800">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                  <span className="text-slate-400">Pending</span>
-                </div>
-                <span className="text-yellow-400 font-bold">{orders?.filter(o => o.paymentStatus === 'pending').length || 0}</span>
-              </div>
-            </div>
-          </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <SectionCard title="Order Operations" eyebrow="Support queue" description="Current order status across your operational view.">
+            <div className="p-4"><DashboardRow label="New" value={supportOrders.filter(order => order.status === "new").length} tone="warning" /><DashboardRow label="In progress" value={supportOrders.filter(order => order.status === "working").length} /><DashboardRow label="Ready" value={readyOrders.length} tone="success" /><DashboardRow label="Delivered" value={deliveredOrders.length} tone="success" /><DashboardRow label="Canceled" value={canceledOrders.length} tone="danger" /></div>
+          </SectionCard>
+          <SectionCard title="Payment Operations" eyebrow="Support queue" description="Payment status without exposing finance balances.">
+            <div className="p-4"><DashboardRow label="Paid orders" value={supportOrders.filter(order => order.paymentStatus === "paid").length} tone="success" /><DashboardRow label="Pending orders" value={supportOrders.filter(order => order.paymentStatus === "pending").length} tone="warning" /><DashboardRow label="Open case records" value={supportNewComplaints} tone={supportNewComplaints ? "danger" : "success"} /><Button variant="outline" className="mt-4 w-full" onClick={() => setLocation("/payments")}>Open payment records <ArrowUpRight className="ml-2 h-4 w-4" /></Button></div>
+          </SectionCard>
         </div>
       </div>
     );
@@ -589,6 +586,7 @@ export default function DashboardPage() {
   // Admin Dashboard (Full access)
   if (isAdmin) return <AdminDashboard
     orders={orders || []}
+    teamMembers={teamMembers}
     feedbackStats={feedbackStats}
     complaintStats={dashboardStats?.complaints}
     openFeedback={openFeedback}
@@ -604,6 +602,7 @@ export default function DashboardPage() {
     monthlyRemaining={monthlyRemaining}
     totalCollected={totalCollected}
     outstandingBalance={outstandingBalance}
+    monthlyCashFlow={dashboardStats?.finance?.monthlyCashFlow ?? { inflow: 0, refunds: 0, net: 0 }}
   />;
 
   return (

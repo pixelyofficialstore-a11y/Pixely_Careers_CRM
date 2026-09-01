@@ -20,11 +20,12 @@ export function canAccessComplaintCase(
   role: CaseRole,
   userId: number,
   filedByUserId: number,
-  complaintAgainstUserId: number,
+  complaintAgainstUserId: number | null | undefined,
+  complaintTargetType: "designer" | "client" = "designer",
 ): boolean {
   if (role === "admin") return true;
   if (role === "support") return filedByUserId === userId;
-  return complaintAgainstUserId === userId;
+  return filedByUserId === userId || (complaintTargetType === "designer" && complaintAgainstUserId === userId);
 }
 
 function isPrivateSuggestionActivity(activity: CaseActivity): boolean {

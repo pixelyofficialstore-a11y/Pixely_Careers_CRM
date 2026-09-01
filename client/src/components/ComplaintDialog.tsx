@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 
 export const complaintCategoryLabels: Record<(typeof complaintCategories)[number], string> = {
   communication_issue: "Communication Issue", slow_response: "Slow Response", delivery_delay: "Delivery Delay",
@@ -23,6 +24,8 @@ const errorText = (error: Error) => error.message.match(/"message":"([^"]+)"/)?.
 
 export function ComplaintDialog({ order, orders = [], open, onOpenChange }: Props) {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isDesigner = user?.role === "designer";
   const [selectedOrderId, setSelectedOrderId] = useState(order ? String(order.id) : "");
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
@@ -31,7 +34,10 @@ export function ComplaintDialog({ order, orders = [], open, onOpenChange }: Prop
   const inputRef = useRef<HTMLInputElement>(null);
   const { data: categoryConfigs = [] } = useQuery<ComplaintCategoryConfig[]>({ queryKey: ["/api/complaint-categories"], staleTime: 300000 });
   const availableCategories = categoryConfigs.length ? categoryConfigs.filter(item => item.isActive) : complaintCategories.map((key, i) => ({ id: -i - 1, key, label: complaintCategoryLabels[key], isActive: true, sortOrder: i, createdAt: null }));
-  const eligibleOrders = useMemo(() => orders.filter(item => item.assignedToId), [orders]);
+  const eligibleOrders = useMemo(
+    () => orders.filter(item => item.assignedToId && (!isDesigner || item.assignedToId === user?.id)),
+    [orders, isDesigner, user?.id],
+  );
   const selectedOrder = order && !orders.length ? order : eligibleOrders.find(item => String(item.id) === selectedOrderId) || null;
 
   useEffect(() => {
@@ -52,7 +58,14 @@ export function ComplaintDialog({ order, orders = [], open, onOpenChange }: Prop
         const payload = await upload.json(); screenshotUrl = payload.screenshotUrl || payload.url;
         if (!screenshotUrl) throw new Error("Evidence upload did not return a screenshot URL.");
       }
-      const response = await apiRequest("POST", "/api/complaints", { orderId: selectedOrder.id, complaintAgainstUserId: selectedOrder.assignedToId, category, description: description.trim(), ...(screenshotUrl ? { screenshotUrl } : {}) });
+       const response = await apiRequest("POST", "/api/complaints", {
+         orderId: selectedOrder.id,
+         complaintTargetType: isDesigner ? "client" : "designer",
+         ...(isDesigner ? {} : { complaintAgainstUserId: selectedOrder.assignedToId }),
+         category,
+         description: description.trim(),
+         ...(screenshotUrl ? { screenshotUrl } : {}),
+       });
       return response.json();
     },
     onSuccess: () => {
@@ -73,8 +86,8 @@ export function ComplaintDialog({ order, orders = [], open, onOpenChange }: Prop
     <DialogHeader><DialogTitle>New Complaint</DialogTitle><DialogDescription className="text-slate-400">Link a clear account of the issue to an assigned order.</DialogDescription></DialogHeader>
     <div className="space-y-5 py-2">
       {orders.length > 0 && <div className="space-y-2"><Label htmlFor="complaint-order">Order</Label><Select value={selectedOrderId} onValueChange={setSelectedOrderId}><SelectTrigger id="complaint-order" className="bg-slate-950 border-slate-700"><SelectValue placeholder="Select an eligible order" /></SelectTrigger><SelectContent>{eligibleOrders.map(item => <SelectItem key={item.id} value={String(item.id)}>#{item.orderNumber || item.id} · {item.clientName} · {item.assignee?.name || "Assigned designer"}</SelectItem>)}</SelectContent></Select></div>}
-      {!selectedOrder ? <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200 flex gap-3"><AlertTriangle className="w-5 h-5 shrink-0" />Select an eligible order with an assigned designer.</div> :
-        <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-300">Complaint against <span className="font-medium text-white">{selectedOrder.assignee?.name || "Assigned designer"}</span></div>}
+       {!selectedOrder ? <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200 flex gap-3"><AlertTriangle className="w-5 h-5 shrink-0" />Select an eligible order with an assigned designer.</div> :
+         <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-300">Complaint against <span className="font-medium text-white">{isDesigner ? selectedOrder.clientName : (selectedOrder.assignee?.name || "Assigned designer")}</span></div>}
       <div className="space-y-2"><Label htmlFor="complaint-category">Category</Label><Select value={category} onValueChange={setCategory}><SelectTrigger id="complaint-category" className="bg-slate-950 border-slate-700"><SelectValue placeholder="Select a category" /></SelectTrigger><SelectContent>{availableCategories.map(item => <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>)}</SelectContent></Select></div>
       <div className="space-y-2"><Label htmlFor="complaint-description">Description</Label><Textarea id="complaint-description" value={description} onChange={e => setDescription(e.target.value)} placeholder="Describe what happened and include the relevant facts." rows={5} maxLength={5000} className="bg-slate-950 border-slate-700 resize-none" /><p className="text-xs text-slate-500">{description.length}/5000</p></div>
       <div className="space-y-2"><Label htmlFor="complaint-evidence">Evidence <span className="text-slate-500">(optional)</span></Label><input ref={inputRef} id="complaint-evidence" type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={e => onFile(e.target.files?.[0])} />

@@ -242,6 +242,101 @@
   .crm-metric-card {
     min-height: 6.5rem;
   }
+  .crm-compact-metric {
+    display: flex;
+    min-height: 4.15rem;
+    flex-direction: column;
+    justify-content: center;
+    gap: .45rem;
+    border: 1px solid hsl(var(--border) / .7);
+    border-radius: .55rem;
+    background: hsl(var(--surface-2) / .5);
+    padding: .85rem 1rem;
+  }
+  .crm-compact-metric-label {
+    min-height: 1.75rem;
+    color: hsl(var(--text-muted));
+    font-size: .64rem;
+    font-weight: 700;
+    letter-spacing: .1em;
+    line-height: 1.35;
+    text-transform: uppercase;
+  }
+  .crm-compact-metric-value {
+    font-size: 1.25rem;
+    font-weight: 650;
+    line-height: 1;
+  }
+  .detail-drawer {
+    background: hsl(var(--surface-1)) !important;
+    border-color: hsl(var(--border)) !important;
+    color: hsl(var(--foreground));
+  }
+  .detail-drawer section[class] {
+    border-radius: .65rem;
+    box-shadow: none;
+  }
+  .detail-drawer section > p:first-child {
+    color: hsl(181 64% 68%);
+    font-size: .64rem;
+    font-weight: 700;
+    letter-spacing: .15em;
+    line-height: 1.35;
+    text-transform: uppercase;
+  }
+  .detail-drawer section dl dt,
+  .detail-drawer section > div > p:first-child {
+    color: hsl(var(--text-muted));
+    font-size: .68rem;
+    line-height: 1.35;
+  }
+  .detail-drawer section dl dd {
+    line-height: 1.4;
+  }
+  .detail-drawer section blockquote {
+    line-height: 1.7;
+  }
+  .detail-drawer-header {
+    border-color: hsl(var(--border) / .8) !important;
+    padding-right: 2rem;
+    text-align: left;
+  }
+  .detail-drawer > .detail-drawer-header {
+    position: sticky;
+    top: -1.25rem;
+    z-index: 10;
+    border-bottom: 1px solid hsl(var(--border) / .8);
+    background: hsl(var(--surface-1));
+    padding-bottom: 1.25rem;
+  }
+  .detail-drawer [class*="text-blue-300"],
+  .detail-drawer [class*="text-blue-400"] {
+    color: hsl(181 64% 68%) !important;
+  }
+  .detail-drawer [class*="border-blue-500/20"] {
+    border-color: hsl(var(--accent-primary) / .24) !important;
+  }
+  .detail-drawer [class*="bg-blue-500/5"] {
+    background: hsl(var(--accent) / .22) !important;
+  }
+  .detail-section-label {
+    color: hsl(181 64% 68%);
+    font-size: .64rem;
+    font-weight: 700;
+    letter-spacing: .15em;
+    line-height: 1.35;
+    text-transform: uppercase;
+  }
+  .detail-section {
+    border: 1px solid hsl(var(--border) / .85);
+    border-radius: .65rem;
+    background: hsl(var(--surface-2) / .8);
+    padding: 1rem;
+  }
+  .detail-section-emphasis {
+    border-color: hsl(var(--accent-primary) / .24);
+    background: hsl(var(--accent) / .22);
+  }
   @media (min-width: 1024px) {
     .crm-page { padding: 1.75rem 2rem; }
   }

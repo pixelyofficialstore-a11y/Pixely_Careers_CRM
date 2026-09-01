@@ -1,0 +1,1576 @@
+PIXELY CAREERS CRM
+PRIORITY TASK:
+FIX NOTIFICATIONS + REAL-TIME BADGES + COMPLAINT TARGETS + PAYMENT COUNTERS + DESIGNER/SUPPORT DASHBOARDS
+
+==================================================
+CRITICAL PRIORITY
+==================================================
+
+STOP further cosmetic work temporarily.
+
+First fix the operational systems listed below:
+
+1. Notifications
+2. Complaint notification flow
+3. Complaint sidebar badge counts
+4. Payment approval badge counts
+5. Real-time syncing
+6. Designer ability to file Complaint against Client
+7. Designer Dashboard
+8. Support/Sales Dashboard
+9. Role-based security
+10. Duplicate notification prevention
+
+The Admin Dashboard has already been improved significantly.
+
+Now Designer and Support dashboards must be brought to the same professional quality and design system.
+
+==================================================
+SAFETY RULE
+==================================================
+
+DO NOT:
+
+- reset Supabase
+- remove existing complaints
+- remove payment records
+- recreate notification tables unnecessarily
+- rewrite authentication
+- change approved finance rules
+- break Complaint anonymity
+- expose Admin Notes
+- break Orders
+- break Cloudinary
+- break existing dashboards
+- create duplicate notification systems
+
+Inspect existing implementation FIRST.
+
+Reuse existing:
+
+notifications
+complaints
+payments
+orders
+users
+Supabase realtime
+role permissions
+sidebar
+notification bell
+
+where possible.
+
+==================================================
+PART 1 — FIX NOTIFICATION SYSTEM PROPERLY
+==================================================
+
+The current notification system needs a complete reliability audit.
+
+Notifications must be:
+
+- role-aware
+- real-time
+- deduplicated
+- clickable
+- readable
+- correctly counted
+- immediately synchronized
+- connected to relevant record
+- persistent until read
+- secure
+
+The user should NEVER have to refresh the page to receive a new notification or updated badge count.
+
+==================================================
+PART 2 — COMPLAINT CREATED → ADMIN NOTIFICATION
+==================================================
+
+Whenever ANY authorized employee creates a Complaint:
+
+Admin must receive a notification.
+
+This includes Complaints created by:
+
+- Admin
+- Designer
+- Support / Sales
+
+Notification:
+
+Title:
+New Complaint
+
+Message example:
+
+"Complaint CMP-2609-010 was recorded for Order PX-2609-003."
+
+If Complaint is against a Designer:
+
+Admin may see:
+
+"New complaint CMP-2609-010 recorded against Muhammad Anas."
+
+If Complaint is against a Client:
+
+Admin may see:
+
+"New complaint CMP-2609-011 recorded against client Ali Shamshad."
+
+Admin notification must link directly to:
+
+the canonical Complaint Details drawer.
+
+==================================================
+PART 3 — COMPLAINT AGAINST DESIGNER NOTIFICATION
+==================================================
+
+When a Complaint is created AGAINST a Designer:
+
+The Designer must immediately receive a notification.
+
+Example:
+
+Title:
+New Complaint
+
+Message:
+
+"A complaint has been recorded against you for Order PX-2609-003."
+
+IMPORTANT PRIVACY:
+
+DO NOT include:
+
+- who filed it
+- reporter name
+- reporter role
+- reporter user ID
+
+Designer must not learn the reporter identity through:
+
+notification
+API
+metadata
+activity
+URL
+payload
+
+Clicking notification:
+
+opens the canonical Complaint Details drawer.
+
+==================================================
+PART 4 — DESIGNER COMPLAINT AGAINST CLIENT
+==================================================
+
+Add support for Designers to file Complaints AGAINST CLIENTS.
+
+Currently the Complaint system appears primarily centered on complaints against Designers.
+
+Extend it safely.
+
+Complaint should support target types such as:
+
+Employee / Designer
+
+Client
+
+Use existing schema where possible.
+
+If schema must be extended, use something conceptually like:
+
+complaint_target_type
+
+values:
+
+designer
+client
+
+and related IDs:
+
+complaint_against_user_id
+complaint_against_client/order
+
+Do not create an entirely separate Client Complaint module.
+
+==================================================
+DESIGNER → COMPLAINT AGAINST CLIENT
+==================================================
+
+Designer can create a Complaint against a client connected to THEIR assigned Order.
+
+Example reasons:
+
+Client repeatedly changes requirements
+
+Client is abusive/unprofessional
+
+Client refuses to provide required information
+
+Client requests work outside package scope
+
+Client continuously delays responses
+
+Client requests misleading/fake information
+
+Other operational issue
+
+==================================================
+CLIENT COMPLAINT FORM
+==================================================
+
+When Designer clicks:
+
+Raise Complaint
+
+allow target choice where appropriate:
+
+Complaint About:
+
+Client
+
+Team Member / Designer
+only if existing business permissions allow this
+
+For Client Complaint:
+
+Order must be selected.
+
+Client is automatically derived from the Order.
+
+Designer must NOT manually type another random client.
+
+Show:
+
+Order
+Client
+Category
+Description
+Evidence Screenshot
+
+==================================================
+CLIENT COMPLAINT SECURITY
+==================================================
+
+Designer may create Complaint against:
+
+ONLY clients/orders they are authorized to handle.
+
+Designer must NOT be able to manipulate:
+
+order_id
+
+to complain about unrelated clients.
+
+Server must verify assignment/access.
+
+==================================================
+PART 5 — COMPLAINT NOTIFICATION MATRIX
+==================================================
+
+Implement clearly:
+
+--------------------------------------------------
+Complaint created against Designer
+--------------------------------------------------
+
+Admin:
+YES
+
+Target Designer:
+YES
+
+Support:
+only if they created it / existing role requires it
+
+Other Designers:
+NO
+
+--------------------------------------------------
+Complaint created against Client
+--------------------------------------------------
+
+Admin:
+YES
+
+Designer who created it:
+can see their own Complaint
+
+Other Designers:
+NO
+
+Client:
+NO CRM notification because client is not a CRM user
+
+--------------------------------------------------
+Complaint status changes
+--------------------------------------------------
+
+If Admin:
+
+Confirms
+Dismisses
+Resolves
+Refunds
+
+notify relevant employees according to their visibility.
+
+Example Designer:
+
+"Complaint CMP-2609-010 has been resolved."
+
+Do not reveal Admin-only data.
+
+==================================================
+PART 6 — COMPLAINT SIDEBAR BADGE
+==================================================
+
+Add a RED notification/count badge beside:
+
+Complaints
+
+in the sidebar.
+
+Similar visual behavior to Payment approval count.
+
+==================================================
+ADMIN COMPLAINT BADGE
+==================================================
+
+Admin badge should display:
+
+number of NEW Complaints awaiting management decision.
+
+Example:
+
+Complaints   🔴 3
+
+Count:
+
+status = New
+
+and visible to Admin.
+
+Do NOT count:
+
+Confirmed
+Dismissed
+Resolved
+Refunded
+
+as new.
+
+==================================================
+DESIGNER COMPLAINT BADGE
+==================================================
+
+Designer badge should represent new/unread Complaint items relevant to them.
+
+Mainly:
+
+new Complaints against them
+
+and optionally important unread updates to Complaints they created.
+
+Do NOT show company-wide count.
+
+==================================================
+SUPPORT COMPLAINT BADGE
+==================================================
+
+Support:
+
+Only count relevant unread/new Complaints according to their visibility rules.
+
+Do not show all Admin Complaints.
+
+==================================================
+PART 7 — BADGE SHOULD UPDATE INSTANTLY
+==================================================
+
+Complaint badge must update:
+
+WITHOUT PAGE REFRESH.
+
+Example:
+
+Admin currently sees:
+
+Complaints 2
+
+Designer submits new Complaint.
+
+Within live CRM session:
+
+Admin sidebar changes:
+
+2 → 3
+
+without refreshing.
+
+==================================================
+PART 8 — USE REAL-TIME SYNC
+==================================================
+
+The app uses Supabase.
+
+Inspect whether Supabase Realtime is already configured.
+
+Use/reuse it properly for:
+
+notifications
+
+new Complaints
+
+Complaint status changes
+
+Payment requests
+
+Payment approvals
+
+badge counts
+
+Do NOT create aggressive polling every few seconds if Supabase realtime already supports the required events.
+
+==================================================
+REAL-TIME EVENTS
+==================================================
+
+Recommended subscriptions:
+
+notifications INSERT
+
+notifications UPDATE where relevant
+
+complaints INSERT
+
+complaints UPDATE
+
+payment requests INSERT/UPDATE
+
+Use current architecture and avoid redundant subscriptions.
+
+==================================================
+PART 9 — SMOOTH COUNTER SYNC
+==================================================
+
+When a relevant mutation happens:
+
+Update UI optimistically where safe
+
+AND
+
+confirm/reconcile with server/realtime data.
+
+Avoid noticeable:
+
+1–5 second stale counters
+
+page refresh requirements
+
+duplicate badge increments
+
+count jumping
+
+==================================================
+PART 10 — NOTIFICATION DEDUPLICATION
+==================================================
+
+One event should create ONE notification per intended recipient.
+
+Example:
+
+Designer raises Complaint.
+
+Admin should receive ONE notification.
+
+Do NOT generate:
+
+Complaint Created
+New Complaint
+Complaint Assigned
+
+three notifications for one action.
+
+==================================================
+NOTIFICATION DEDUPE KEY
+==================================================
+
+Where useful, use deterministic event/reference logic conceptually such as:
+
+recipient_user_id
+event_type
+entity_type
+entity_id
+
+to prevent accidental duplicate inserts.
+
+Do not blindly add a unique constraint without inspecting current notification behavior first.
+
+==================================================
+PART 11 — NOTIFICATION BELL
+==================================================
+
+Audit notification bell.
+
+Show red unread counter.
+
+Example:
+
+Bell 🔴 4
+
+Count:
+
+unread notifications only.
+
+Opening dropdown:
+
+does not necessarily mark everything read automatically.
+
+Clicking a notification:
+
+mark that notification read.
+
+Provide:
+
+Mark All as Read
+
+if existing UI supports it cleanly.
+
+==================================================
+PART 12 — NOTIFICATION ITEM DESIGN
+==================================================
+
+Each notification should show:
+
+Icon
+Title
+Short message
+Time
+Unread indicator
+
+Example:
+
+NEW COMPLAINT
+
+Complaint CMP-2609-010 requires management review.
+
+2 min ago
+
+Click:
+open Complaint.
+
+==================================================
+PART 13 — NOTIFICATION DEEP LINKS
+==================================================
+
+Notifications must open the exact record.
+
+Order:
+Order Details
+
+Complaint:
+Complaint Details
+
+Review:
+Review Details
+
+Suggestion:
+Suggestion Details
+
+Payment:
+appropriate payment/order context
+
+Use canonical shared drawer components.
+
+Do not send users to a generic page where they must search for the record.
+
+==================================================
+PART 14 — PAYMENT BADGE COUNT FIX
+==================================================
+
+The Payment sidebar counter must also be audited.
+
+Current payment approval counter should represent:
+
+ACTIONABLE pending payment approvals.
+
+Do NOT count:
+
+Approved
+Rejected
+Old completed requests
+Duplicate payment requests
+Canceled/refunded items that no longer need action
+
+==================================================
+ADMIN PAYMENT BADGE
+==================================================
+
+Admin should see:
+
+Payments 🔴 N
+
+where N = pending payment verification requests requiring Admin action.
+
+When Admin approves/rejects:
+
+badge instantly decreases.
+
+Example:
+
+3 pending
+
+approve one
+
+3 → 2 immediately.
+
+==================================================
+SUPPORT / DESIGNER PAYMENT COUNTERS
+==================================================
+
+Do not show Admin approval count to employees if it is not actionable for them.
+
+Their payment notifications/counters should follow their own authorized workflow.
+
+==================================================
+PART 15 — PAYMENT COUNT SINGLE SOURCE OF TRUTH
+==================================================
+
+Do not calculate Payment badge in three different components.
+
+Create/reuse one query/service for:
+
+pending actionable payment count.
+
+Sidebar
+Dashboard
+Payments page
+
+must agree.
+
+==================================================
+PART 16 — COMPLAINT COUNT SINGLE SOURCE OF TRUTH
+==================================================
+
+Same:
+
+create/reuse centralized role-aware count.
+
+Example:
+
+getComplaintBadgeCount(user)
+
+Admin:
+new complaints
+
+Designer:
+relevant unread/new complaints
+
+Support:
+relevant items
+
+Do not duplicate logic.
+
+==================================================
+PART 17 — NOTIFICATION READ VS BUSINESS STATUS
+==================================================
+
+IMPORTANT:
+
+Notification read state is NOT the same as Complaint status.
+
+Example:
+
+Complaint status = New
+
+Admin opens notification.
+
+Notification becomes Read.
+
+Complaint badge representing NEW management cases may STILL show the Complaint until Admin Confirm/Dismisses it.
+
+Therefore distinguish:
+
+Notification Bell count
+=
+unread notifications
+
+Complaint Sidebar count
+=
+actionable/new Complaint cases
+
+Do not mix these concepts.
+
+==================================================
+PART 18 — DESIGNER DASHBOARD COMPLETE IMPROVEMENT
+==================================================
+
+Inspect Designer Dashboard.
+
+Bring it to the SAME professional design quality as the current Admin Dashboard.
+
+Use the new Pixely CRM design system:
+
+deep navy
+cyan accent
+balanced layouts
+clear sections
+same cards
+same typography
+same spacing
+
+Do not copy Admin data.
+
+Designer Dashboard must show DESIGNER-relevant information.
+
+==================================================
+DESIGNER DASHBOARD STRUCTURE
+==================================================
+
+Recommended:
+
+1. Header
+2. My Work Today
+3. Order Overview
+4. Client Experience
+5. Needs Attention
+6. Recent Activity
+
+==================================================
+DESIGNER HEADER
+==================================================
+
+MY WORKSPACE
+
+Designer Dashboard
+
+Manage assigned client work and track your client experience.
+
+Right side:
+
+Date
+
+==================================================
+DESIGNER QUICK OVERVIEW
+==================================================
+
+4 cards:
+
+Assigned / Active Orders
+
+Orders Due / Pending
+
+Completed This Month
+
+New Complaints Against Me
+
+Use actual existing data.
+
+If due-date data is not stored reliably:
+
+use Pending Orders instead of fake "Due Today."
+
+Do not invent deadlines.
+
+==================================================
+DESIGNER ORDER OVERVIEW
+==================================================
+
+Show:
+
+Active Orders
+
+Ready / Delivered This Month
+
+Canceled Orders
+
+Pending Client Work
+
+where data supports it.
+
+==================================================
+DESIGNER CLIENT EXPERIENCE
+==================================================
+
+Show:
+
+Average Client Rating
+
+Reviews Received
+
+Confirmed Complaints Against Me
+
+Suggestions Related to My Orders
+
+Optional compact row:
+
+Facebook Reviews
+
+Video Testimonials
+
+Resolved Complaints
+
+Implemented Suggestions
+
+==================================================
+IMPORTANT DESIGNER COMPLAINT METRIC
+==================================================
+
+For performance/negative metric:
+
+use Confirmed Complaints.
+
+Dismissed complaints should not count negatively.
+
+==================================================
+DESIGNER NEEDS ATTENTION
+==================================================
+
+Compact actionable rows:
+
+New Orders Assigned
+
+Complaints Against Me
+
+Payment/Order actions relevant to Designer
+
+Orders waiting for work
+
+QC actions if existing QC module supports them
+
+Do not invent QC functionality that does not exist.
+
+==================================================
+DESIGNER RECENT ACTIVITY
+==================================================
+
+Show:
+
+Order assigned
+
+Order status updated
+
+Review received
+
+Complaint updated
+
+Suggestion recorded
+
+Payment approved
+
+Use only events the Designer is authorized to see.
+
+==================================================
+PART 19 — DESIGNER DASHBOARD SECURITY
+==================================================
+
+Designer must NOT see:
+
+agency-wide revenue
+
+global collected
+
+global remaining
+
+other Designers' performance
+
+other Designers' Complaints
+
+Admin Notes
+
+Complaint reporter against them
+
+Admin payment approval queue
+
+==================================================
+PART 20 — SUPPORT / SALES DASHBOARD IMPROVEMENT
+==================================================
+
+Inspect current Support/Sales Dashboard.
+
+Bring it to same theme/quality as Admin Dashboard.
+
+Support/Sales Dashboard should focus on:
+
+client/orders they handle
+
+Complaints they create
+
+Reviews recorded
+
+Suggestions recorded
+
+client activity
+
+==================================================
+SUPPORT DASHBOARD STRUCTURE
+==================================================
+
+1. Header
+2. My Client Operations
+3. Orders Overview
+4. Client Experience
+5. Needs Attention
+6. Recent Activity
+
+==================================================
+SUPPORT QUICK OVERVIEW
+==================================================
+
+Possible cards:
+
+Orders Created / Handled
+
+Active Orders
+
+Reviews Recorded
+
+Complaints Filed
+
+Use only metrics available and useful.
+
+==================================================
+SUPPORT CLIENT EXPERIENCE
+==================================================
+
+Show:
+
+Reviews Recorded
+
+Suggestions Recorded
+
+Complaints Filed
+
+Resolved Complaints from their cases if allowed
+
+Do not show private Admin decision data.
+
+==================================================
+SUPPORT NEEDS ATTENTION
+==================================================
+
+Examples:
+
+Complaints they filed that have updates
+
+Client Orders requiring action
+
+Reviews pending recording if such data genuinely exists
+
+Payment/client items relevant to Support
+
+Do NOT invent artificial workflows.
+
+==================================================
+PART 21 — SUPPORT SECURITY
+==================================================
+
+Support must NOT see:
+
+Admin Notes
+
+global Designer complaints
+
+management decision buttons
+
+agency-wide confidential finance unless already authorized
+
+other Support users' restricted Complaint records
+
+==================================================
+PART 22 — ROLE DASHBOARD VISUAL CONSISTENCY
+==================================================
+
+Admin Dashboard
+
+Designer Dashboard
+
+Support Dashboard
+
+should look like THREE versions of the same product.
+
+Same:
+
+PageHeader
+MetricCard
+Summary sections
+Needs Attention rows
+Recent Activity
+Spacing
+Typography
+Colors
+
+Only DATA/PERMISSIONS differ.
+
+==================================================
+PART 23 — SIDEBAR BADGE DESIGN
+==================================================
+
+Use consistent small red badge.
+
+Examples:
+
+Complaints    3
+
+Payments      2
+
+Bell          4
+
+Do not use giant red circles.
+
+Suggested:
+
+small rounded badge
+red background
+white text
+minimum width for 1–2 digits
+
+For >99:
+
+99+
+
+==================================================
+PART 24 — BADGE ANIMATION
+==================================================
+
+When count changes:
+
+Use subtle transition.
+
+Do not use aggressive bouncing/flashing.
+
+A small fade/scale transition is enough.
+
+==================================================
+PART 25 — INITIAL LOAD ACCURACY
+==================================================
+
+On login/page refresh:
+
+Fetch correct current counts immediately.
+
+Do not show:
+
+0
+
+then later jump to:
+
+7
+
+without loading treatment.
+
+Use:
+
+loading/skeleton or hide badge until initial count resolved.
+
+==================================================
+PART 26 — REALTIME RECONNECTION
+==================================================
+
+Handle temporary connection loss.
+
+When Supabase realtime reconnects:
+
+re-fetch/reconcile counts.
+
+Do not assume no events were missed.
+
+==================================================
+PART 27 — MULTIPLE TABS
+==================================================
+
+If Admin has CRM open in two browser tabs:
+
+a Complaint created elsewhere should eventually synchronize in both.
+
+Avoid local-only counters.
+
+Server data remains source of truth.
+
+==================================================
+PART 28 — COMPLAINT VISIBILITY QUERY
+==================================================
+
+Reconfirm permissions:
+
+ADMIN:
+
+all Complaints.
+
+SUPPORT:
+
+Complaints they personally created, plus any explicitly authorized cases.
+
+DESIGNER:
+
+Complaints they personally created
+
+AND
+
+Complaints against them.
+
+If Designer raises Complaint against Client:
+
+they can view that Complaint.
+
+==================================================
+PART 29 — DESIGNER COMPLAINT LIST LABELING
+==================================================
+
+On Designer Complaint page, make target clear.
+
+Example:
+
+Complaint About
+Client — Ali Shamshad
+
+or:
+
+Complaint About
+Designer — Muhammad Anas
+
+Do not use confusing:
+
+Complaint Against
+if target type is unclear.
+
+==================================================
+PART 30 — ADMIN COMPLAINT LIST
+==================================================
+
+Admin should clearly see target.
+
+Potential columns:
+
+Complaint ID
+
+Date
+
+Order
+
+Client
+
+Complaint About
+
+Category
+
+Reported By
+
+Status
+
+If target is Designer:
+
+Complaint About:
+Muhammad Anas · Designer
+
+If target is Client:
+
+Complaint About:
+Ali Shamshad · Client
+
+==================================================
+PART 31 — COMPLAINT DETAILS
+==================================================
+
+Canonical Complaint drawer should handle both target types.
+
+If target = Designer:
+
+Complaint About
+Muhammad Anas
+Designer
+
+If target = Client:
+
+Complaint About
+Ali Shamshad
+Client
+
+Do not create separate detail pages.
+
+==================================================
+PART 32 — ADMIN MANAGEMENT OF CLIENT COMPLAINT
+==================================================
+
+Admin should still be able to:
+
+Confirm
+Dismiss
+Resolve
+
+a Complaint against a Client.
+
+Refund handling/cancel order should only appear where the existing complaint/order business logic makes sense.
+
+Do not automatically punish Designer metrics for Client-target Complaints.
+
+==================================================
+PART 33 — ANALYTICS IMPACT
+==================================================
+
+Designer performance complaint metrics must ONLY count:
+
+Complaints ABOUT/AGAINST the Designer
+
+that were Confirmed / later Resolved/Refunded as genuine Designer cases.
+
+DO NOT count:
+
+Complaints created BY Designer against Client
+
+against Designer performance.
+
+This is critical.
+
+==================================================
+PART 34 — NOTIFICATION HISTORY
+==================================================
+
+Keep notifications as notification records.
+
+Do not mix them with Order Activity.
+
+Important business action may have:
+
+Order Activity
+
+AND
+
+Notification
+
+but each serves different purpose.
+
+==================================================
+PART 35 — NOTIFICATION COPY
+==================================================
+
+Use concise professional language.
+
+ADMIN:
+
+"New complaint CMP-2609-010 requires review."
+
+DESIGNER:
+
+"A complaint was recorded against you for Order PX-2609-003."
+
+DESIGNER OWN CLIENT COMPLAINT UPDATE:
+
+"Your complaint CMP-2609-011 has been resolved."
+
+PAYMENT:
+
+"Advance payment for PX-2609-003 requires approval."
+
+Avoid technical wording.
+
+==================================================
+PART 36 — NO NOTIFICATION SPAM
+==================================================
+
+Do NOT notify everyone for:
+
+every Review
+
+every Suggestion
+
+every note
+
+every view
+
+unless current business policy explicitly requires it.
+
+Focus operational notifications.
+
+==================================================
+PART 37 — CRITICAL REALTIME TEST
+==================================================
+
+TEST WITH TWO USERS / SESSIONS.
+
+Session A:
+Designer.
+
+Session B:
+Admin.
+
+Designer submits Complaint.
+
+EXPECTED WITHOUT REFRESH:
+
+Admin:
+
+Notification Bell +1
+
+Complaint sidebar badge +1
+
+New notification appears.
+
+Complaints page count updates if currently open.
+
+==================================================
+PART 38 — DESIGNER TARGET COMPLAINT TEST
+==================================================
+
+Admin/Support creates Complaint against Designer.
+
+EXPECTED:
+
+Designer receives:
+
+Notification Bell +1
+
+Complaint relevant badge +1
+
+Notification does NOT reveal reporter.
+
+Click:
+
+opens correct Complaint.
+
+==================================================
+PART 39 — PAYMENT REALTIME TEST
+==================================================
+
+Designer/Support submits payment approval request.
+
+Admin:
+
+Payment badge updates instantly.
+
+Approve request.
+
+Payment badge immediately decreases.
+
+No page refresh.
+
+No duplicate count.
+
+==================================================
+PART 40 — READ STATE TEST
+==================================================
+
+Admin:
+
+Bell unread = 3
+
+Open one notification.
+
+Expected:
+
+Bell unread = 2.
+
+But Complaint actionable badge remains unchanged if Complaint status still New.
+
+This distinction MUST work correctly.
+
+==================================================
+PART 41 — PAYMENT ACTION COUNT TEST
+==================================================
+
+Create:
+
+2 Pending
+3 Approved
+1 Rejected
+
+Payment badge:
+
+2
+
+NOT:
+
+6.
+
+==================================================
+PART 42 — COMPLAINT BADGE TEST
+==================================================
+
+Admin:
+
+2 New
+3 Confirmed
+4 Resolved
+1 Dismissed
+
+Complaint badge:
+
+2
+
+NOT:
+
+10.
+
+==================================================
+PART 43 — DESIGNER DASHBOARD TEST
+==================================================
+
+Login Designer.
+
+Expected:
+
+same premium Pixely theme as Admin.
+
+Relevant personal metrics only.
+
+No global finance.
+
+No Admin-only information.
+
+==================================================
+PART 44 — SUPPORT DASHBOARD TEST
+==================================================
+
+Login Support.
+
+Expected:
+
+same premium theme.
+
+Support/client-operation metrics.
+
+No management controls.
+
+No Admin Notes.
+
+==================================================
+PART 45 — SECURITY AUDIT
+==================================================
+
+Perform server-side access testing.
+
+Designer manually requests unrelated Complaint ID.
+
+Expected:
+Denied.
+
+Designer manually requests reporter identity.
+
+Expected:
+not returned.
+
+Support manually requests Admin Notes.
+
+Expected:
+not returned.
+
+Unauthorized user tries complaint decision endpoint.
+
+Expected:
+denied.
+
+Designer tries Complaint against Client from unrelated Order.
+
+Expected:
+denied.
+
+==================================================
+PART 46 — DATABASE MIGRATION SAFETY
+==================================================
+
+If Complaint target type requires schema changes:
+
+make migration additive.
+
+Preserve all existing Complaints.
+
+Existing complaints against Designers should be migrated/interpreted as:
+
+target_type = designer
+
+without losing data.
+
+Do not reset IDs.
+
+==================================================
+PART 47 — PERFORMANCE
+==================================================
+
+Avoid:
+
+one realtime subscription per row
+
+continuous polling
+
+N+1 badge queries
+
+Use centralized subscriptions and counts.
+
+==================================================
+PART 48 — CLEANUP
+==================================================
+
+Audit and remove:
+
+duplicate notification listeners
+
+duplicate badge state
+
+old obsolete notification code
+
+only AFTER confirming new system works.
+
+Do not remove unrelated notification logic.
+
+==================================================
+PART 49 — FINAL REPORT FROM REPLIT
+==================================================
+
+After implementation provide:
+
+1. Notification architecture changes
+2. Complaint notification rules
+3. Complaint badge logic
+4. Payment badge logic
+5. Realtime sync implementation
+6. Duplicate-prevention logic
+7. Complaint target changes
+8. Designer complaint-against-client functionality
+9. Designer Dashboard improvements
+10. Support Dashboard improvements
+11. Security checks
+12. Database migrations
+13. Files changed
+14. Realtime tests
+15. Permission tests
+16. Any limitations
+
+Explicitly confirm:
+
+- Admin receives notification for every new Complaint.
+- Designer receives notification when Complaint is filed against them.
+- Reporter identity remains hidden from Designer.
+- Complaint sidebar badge shows actionable New Complaints.
+- Payment badge shows only pending actionable approvals.
+- Both counts update without refresh.
+- No duplicate notifications are created.
+- Designer can file Complaint against their own client/order.
+- Designer-client Complaints do not count negatively against Designer Analytics.
+- Designer Dashboard was upgraded.
+- Support Dashboard was upgraded.
+- Admin Notes remain Admin-only.
+- Existing data was preserved.
+
+==================================================
+FINAL PRODUCT RULE
+==================================================
+
+NOTIFICATIONS should tell users what requires their attention.
+
+SIDEBAR BADGES should tell users how many actionable records exist.
+
+NOTIFICATION BELL should tell users how many unread messages they have.
+
+These are different concepts and must not be mixed.
+
+ADMIN:
+sees new complaints requiring decisions and payment approvals.
+
+DESIGNER:
+sees complaints against them and updates to cases they own.
+
+SUPPORT:
+sees relevant client/complaint activity only.
+
+Everything should update live, smoothly and securely without requiring page refresh.

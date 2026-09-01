@@ -14,6 +14,19 @@ test("standalone complaints enforce the same role ownership used by nested cases
   assert.equal(canAccessComplaintCase("designer", 5, 2, 3), false);
 });
 
+test("client-target complaints are visible to their filer but never to an unrelated designer", () => {
+  assert.equal(canAccessComplaintCase("designer", 7, 7, null, "client"), true);
+  assert.equal(canAccessComplaintCase("designer", 8, 7, null, "client"), false);
+  assert.equal(canAccessComplaintCase("support", 7, 7, null, "client"), true);
+  assert.equal(canAccessComplaintCase("admin", 8, 7, null, "client"), true);
+});
+
+test("designer-target complaints remain visible to the assigned designer", () => {
+  assert.equal(canAccessComplaintCase("designer", 8, 7, 8, "designer"), true);
+  assert.equal(canAccessComplaintCase("designer", 9, 7, 8, "designer"), false);
+  assert.equal(canAccessComplaintCase("designer", 8, 7, 8, "client"), false);
+});
+
 test("nested review, suggestion, complaint, and report entry points reject another designer's order", () => {
   assert.equal(canAccessOrderCase("admin", 1, 3), true);
   assert.equal(canAccessOrderCase("support", 2, 3), true);
