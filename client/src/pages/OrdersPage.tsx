@@ -15,6 +15,7 @@ import {
 import { 
   Dialog, 
   DialogContent, 
+  DialogDescription,
   DialogHeader, 
   DialogTitle, 
   DialogTrigger 
@@ -1843,35 +1844,44 @@ export default function OrdersPage() {
 
       {isAdmin && (
         <Dialog open={Boolean(orderToCancel)} onOpenChange={open => { if (!open) { setOrderToCancel(null); setCancellationReason(""); setAdvanceDisposition(""); } }}>
-          <DialogContent className="max-w-lg overflow-hidden border-slate-800 bg-slate-900 p-0 text-white">
-            <ScrollArea className="max-h-[calc(100vh-2rem)]">
-              <div className="space-y-5 p-4 sm:p-6">
-                <DialogHeader><DialogTitle className="flex items-center gap-2"><XCircle className="h-5 w-5 text-rose-400" />Cancel Order</DialogTitle></DialogHeader>
-                {orderToCancel && <>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm">
-                    <div><p className="text-xs text-slate-500">Order</p><p className="mt-1 font-mono">{orderToCancel.orderNumber}</p></div>
-                    <div><p className="text-xs text-slate-500">Client</p><p className="mt-1 truncate">{orderToCancel.clientName}</p></div>
-                    <div><p className="text-xs text-slate-500">Order total</p><p className="mt-1">{formatRs(orderToCancel.totalPrice)}</p></div>
-                    <div><p className="text-xs text-slate-500">Advance received</p><p className="mt-1">{formatRs(orderToCancel.advanceAmount)}</p></div>
-                    <div className="col-span-2 border-t border-slate-800 pt-3"><p className="text-xs text-slate-500">Balance that will be closed</p><p className="mt-1">{formatRs(orderToCancel.remainingAmount)}</p></div>
+          <DialogContent className="w-[calc(100%-2rem)] max-w-md max-h-[calc(100vh-2rem)] overflow-y-auto border-slate-800 bg-slate-900 p-0 text-white">
+            <div className="space-y-4 p-5 sm:p-6">
+              <DialogHeader className="space-y-1 text-left">
+                <DialogTitle className="flex items-center gap-2 text-lg"><XCircle className="h-5 w-5 text-rose-400" />Cancel order</DialogTitle>
+                {orderToCancel && <DialogDescription className="text-slate-400">{orderToCancel.orderNumber} · {orderToCancel.clientName}</DialogDescription>}
+              </DialogHeader>
+              {orderToCancel && <>
+                <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Cancellation impact</p>
+                  <div className="mt-3 grid grid-cols-3 gap-3 text-sm">
+                    <div><p className="text-xs text-slate-500">Order total</p><p className="mt-1 font-medium text-white">{formatRs(orderToCancel.totalPrice)}</p></div>
+                    <div><p className="text-xs text-slate-500">Advance</p><p className="mt-1 font-medium text-white">{formatRs(orderToCancel.advanceAmount)}</p></div>
+                    <div><p className="text-xs text-slate-500">Balance closed</p><p className="mt-1 font-medium text-rose-300">{formatRs(orderToCancel.remainingAmount)}</p></div>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Why is this order being canceled? <span className="text-rose-400">*</span></Label>
-                    <Textarea value={cancellationReason} onChange={event => setCancellationReason(event.target.value)} placeholder="Briefly explain the reason..." rows={3} className="resize-y border-slate-700 bg-slate-950" />
-                    <p className="text-xs text-slate-500">Enter at least 3 characters.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cancellation-reason">Cancellation reason <span className="text-rose-400">*</span></Label>
+                  <Textarea id="cancellation-reason" value={cancellationReason} onChange={event => setCancellationReason(event.target.value)} placeholder="Briefly explain why this order is being canceled." rows={2} className="resize-none border-slate-700 bg-slate-950" />
+                  <p className="text-xs text-slate-500">{cancellationReason.trim().length}/3 minimum characters</p>
+                </div>
+                <div className="space-y-2">
+                  <div><Label>Advance handling <span className="text-rose-400">*</span></Label><p className="mt-1 text-xs text-slate-500">Choose how the received advance should be recorded.</p></div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button type="button" variant="outline" aria-pressed={advanceDisposition === "refunded"} onClick={() => setAdvanceDisposition("refunded")} className={cn("h-auto min-h-12 justify-between border-slate-700 px-3 py-2 text-left", advanceDisposition === "refunded" && "border-cyan-400/60 bg-cyan-400/10 text-cyan-100")}>
+                      <span className="text-xs font-medium">Refund advance</span><span className="font-mono text-xs text-slate-400">{formatRs(orderToCancel.advanceAmount)}</span>
+                    </Button>
+                    <Button type="button" variant="outline" aria-pressed={advanceDisposition === "retained"} onClick={() => setAdvanceDisposition("retained")} className={cn("h-auto min-h-12 justify-between border-slate-700 px-3 py-2 text-left", advanceDisposition === "retained" && "border-cyan-400/60 bg-cyan-400/10 text-cyan-100")}>
+                      <span className="text-xs font-medium">Retain advance</span><span className="font-mono text-xs text-slate-400">{formatRs(orderToCancel.advanceAmount)}</span>
+                    </Button>
                   </div>
-                  <div className="space-y-3">
-                    <div><Label>What happened to the advance?</Label><p className="mt-1 text-xs text-slate-500">Choose one option to continue.</p></div>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <Button type="button" variant={advanceDisposition === "refunded" ? "default" : "outline"} aria-pressed={advanceDisposition === "refunded"} onClick={() => setAdvanceDisposition("refunded")} className="h-auto min-h-10 whitespace-normal py-2">Advance refunded</Button>
-                      <Button type="button" variant={advanceDisposition === "retained" ? "default" : "outline"} aria-pressed={advanceDisposition === "retained"} onClick={() => setAdvanceDisposition("retained")} className="h-auto min-h-10 whitespace-normal py-2">Advance retained</Button>
-                    </div>
-                  </div>
-                  {advanceDisposition && <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-slate-300"><p className="font-semibold text-amber-300">Ready to cancel</p><p className="mt-2">{advanceDisposition === "refunded" ? `${formatRs(orderToCancel.advanceAmount)} will be recorded as refunded and net collected will become Rs0.` : `${formatRs(orderToCancel.advanceAmount)} will remain collected and be marked retained.`} The remaining balance of {formatRs(orderToCancel.remainingAmount)} will be closed.</p></div>}
-                  <div className="flex flex-col-reverse gap-2 border-t border-slate-800 pt-4 sm:flex-row sm:justify-end"><Button variant="ghost" onClick={() => setOrderToCancel(null)}>Keep Order</Button><Button className="bg-rose-600 hover:bg-rose-500" disabled={cancelOrderMutation.isPending || cancellationReason.trim().length < 3 || !advanceDisposition} onClick={() => cancelOrderMutation.mutate({ id: orderToCancel.id, reason: cancellationReason.trim(), advanceRefunded: advanceDisposition === "refunded" })}>{cancelOrderMutation.isPending ? "Canceling…" : "Confirm Cancellation"}</Button></div>
-                </>}
-              </div>
-            </ScrollArea>
+                </div>
+                {advanceDisposition && <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs leading-5 text-slate-400"><span className="font-medium text-slate-200">{advanceDisposition === "refunded" ? "Refund recorded." : "Advance retained."}</span> {advanceDisposition === "refunded" ? "Net collected will become Rs0." : "The advance remains collected."} The balance will be closed.</div>}
+                <div className="flex flex-col-reverse gap-2 border-t border-slate-800 pt-4 sm:flex-row sm:justify-end">
+                  <Button variant="ghost" onClick={() => setOrderToCancel(null)}>Keep order</Button>
+                  <Button className="bg-rose-600 hover:bg-rose-500" disabled={cancelOrderMutation.isPending || cancellationReason.trim().length < 3 || !advanceDisposition} onClick={() => cancelOrderMutation.mutate({ id: orderToCancel.id, reason: cancellationReason.trim(), advanceRefunded: advanceDisposition === "refunded" })}>{cancelOrderMutation.isPending ? "Canceling…" : "Confirm cancellation"}</Button>
+                </div>
+              </>}
+            </div>
           </DialogContent>
         </Dialog>
       )}
