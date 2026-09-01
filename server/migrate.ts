@@ -239,6 +239,7 @@ export async function runMigrations() {
         status TEXT NOT NULL DEFAULT 'new',
         screenshot_url TEXT,
         admin_notes TEXT,
+        decision_note TEXT,
         created_by_id INTEGER NOT NULL REFERENCES users(id),
         reviewed_by_user_id INTEGER REFERENCES users(id),
         reviewed_at TIMESTAMP,
@@ -270,6 +271,10 @@ export async function runMigrations() {
         resolution                 TEXT,
         resolution_outcome         TEXT,
         screenshot_url             TEXT,
+        resolution_screenshot_url  TEXT,
+        dismissal_reason           TEXT,
+        dismissed_by_user_id       INTEGER REFERENCES users(id),
+        dismissed_at               TIMESTAMP,
         resolved_by_user_id        INTEGER REFERENCES users(id),
         resolved_at                TIMESTAMP,
         created_at                 TIMESTAMP DEFAULT NOW(),
@@ -388,7 +393,11 @@ export async function runMigrations() {
     await client.query(`
       ALTER TABLE complaints
         ADD COLUMN IF NOT EXISTS resolution_outcome TEXT,
-        ADD COLUMN IF NOT EXISTS screenshot_url TEXT
+        ADD COLUMN IF NOT EXISTS screenshot_url TEXT,
+        ADD COLUMN IF NOT EXISTS resolution_screenshot_url TEXT,
+        ADD COLUMN IF NOT EXISTS dismissal_reason TEXT,
+        ADD COLUMN IF NOT EXISTS dismissed_by_user_id INTEGER REFERENCES users(id),
+        ADD COLUMN IF NOT EXISTS dismissed_at TIMESTAMP
     `);
     await client.query(`CREATE SEQUENCE IF NOT EXISTS review_number_seq`);
     await client.query(`CREATE SEQUENCE IF NOT EXISTS suggestion_number_seq`);
@@ -415,6 +424,7 @@ export async function runMigrations() {
         ADD COLUMN IF NOT EXISTS suggestion_text TEXT,
         ADD COLUMN IF NOT EXISTS screenshot_url TEXT,
         ADD COLUMN IF NOT EXISTS admin_notes TEXT,
+        ADD COLUMN IF NOT EXISTS decision_note TEXT,
         ADD COLUMN IF NOT EXISTS reviewed_by_user_id INTEGER REFERENCES users(id),
         ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP;
     `);
@@ -441,8 +451,11 @@ export async function runMigrations() {
           COALESCE((SELECT last_value FROM suggestion_number_seq), 0)) AS value
       ) SELECT setval('suggestion_number_seq', GREATEST(value, 1), value > 0) FROM maximum
     `);
-    // Legacy review rows are safely returned to the current workflow entry state.
-    await client.query(`UPDATE complaints SET status = 'new' WHERE status = 'under_review'`);
+    // Preserve legacy decisions under the clearer professional vocabulary.
+    await client.query(`UPDATE complaints SET status = CASE status WHEN 'valid' THEN 'confirmed' WHEN 'invalid' THEN 'dismissed' WHEN 'order_canceled' THEN 'refunded' WHEN 'under_review' THEN 'new' ELSE status END WHERE status IN ('valid', 'invalid', 'order_canceled', 'under_review')`);
+    // Intermediate legacy suggestion states were decisions in progress; retain them
+    // safely as New rather than inventing a final outcome.
+    await client.query(`UPDATE client_suggestions SET status = 'new' WHERE status IN ('under_review', 'accepted')`);
     // The sequence is global, so suffixes cannot reset across months or deletions.
     await client.query(`CREATE SEQUENCE IF NOT EXISTS complaint_number_seq`);
     await client.query(`

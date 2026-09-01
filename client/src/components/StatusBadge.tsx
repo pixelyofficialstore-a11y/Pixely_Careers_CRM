@@ -18,10 +18,10 @@ const chatStatusConfig: Record<string, { color: string; label: string }> = {
 
 const complaintStatusConfig: Record<string, { color: string; label: string }> = {
   new: { color: "bg-slate-500/10 text-slate-300 border-slate-500/20", label: "New" },
-  valid: { color: "bg-amber-500/10 text-amber-300 border-amber-500/20", label: "Valid" },
-  invalid: { color: "bg-slate-500/10 text-slate-400 border-slate-500/20", label: "Invalid" },
+  confirmed: { color: "bg-amber-500/10 text-amber-300 border-amber-500/20", label: "Confirmed" },
+  dismissed: { color: "bg-slate-500/10 text-slate-400 border-slate-500/20", label: "Dismissed" },
   resolved: { color: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20", label: "Resolved" },
-  order_canceled: { color: "bg-rose-500/10 text-rose-300 border-rose-500/20", label: "Order Canceled" },
+  refunded: { color: "bg-rose-500/10 text-rose-300 border-rose-500/20", label: "Refunded" },
 };
 
 export function OrderStatusBadge({ status }: { status: string }) {

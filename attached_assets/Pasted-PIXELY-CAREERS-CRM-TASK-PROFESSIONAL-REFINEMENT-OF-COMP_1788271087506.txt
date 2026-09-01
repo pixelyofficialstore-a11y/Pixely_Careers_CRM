@@ -1,0 +1,2231 @@
+PIXELY CAREERS CRM
+TASK: PROFESSIONAL REFINEMENT OF COMPLAINT, REVIEW & SUGGESTION DRAWERS
++ COMPLAINT RESOLUTION / REFUND WORKFLOW
++ FINANCIAL CANCELLATION LOGIC
++ UNIFIED HUMAN-READABLE HISTORY
+
+==================================================
+IMPORTANT CONTEXT
+==================================================
+
+The CRM already has working:
+
+- Orders
+- Payments
+- Complaints
+- Reviews
+- Suggestions
+- Client Experience
+- Activity History
+- Cloudinary screenshots
+- Supabase database
+- Nested right-side drawer navigation
+- Cross-record navigation
+
+DO NOT rebuild these systems.
+
+This task is to REFINE the existing implementation.
+
+The current functionality works, but the wording, layout, status naming, history presentation and complaint-resolution logic need to become clearer and more professional.
+
+DO NOT damage:
+- Orders
+- Payment calculations
+- Complaints
+- Feedback
+- Authentication
+- Existing role permissions
+- Cloudinary
+- Notifications
+- Client Case Report
+- Nested drawer navigation
+- Existing data
+
+Inspect the current implementation FIRST.
+
+==================================================
+PART 1 — GENERAL UX OBJECTIVE
+==================================================
+
+Complaint, Review and Suggestion drawers should no longer look like raw backend/admin forms.
+
+They should look like professional CRM records.
+
+Every drawer should clearly answer:
+
+1. What is this record?
+2. Which client/order does it belong to?
+3. What happened?
+4. What is its current status?
+5. What does that status mean?
+6. Who performed each action?
+7. When did each action happen?
+8. Is there evidence/screenshot?
+9. What action is required next?
+10. What was the final outcome?
+
+Use simple professional English.
+
+Avoid:
+- technical database wording
+- confusing status names
+- vague labels
+- backend-style history entries
+- unexplained workflow states
+
+==================================================
+PART 2 — STANDARDIZE DRAWER STRUCTURE
+==================================================
+
+Complaint, Review and Suggestion drawers should use the same visual language.
+
+Reuse the existing right-side drawer shell.
+
+Recommended general structure:
+
+HEADER
+- Back button if opened from another record
+- Record ID
+- Current status
+- Close X
+
+PRIMARY INFORMATION
+
+RELATED ORDER
+
+EVIDENCE / SCREENSHOT
+
+WORKFLOW / DECISION SECTION
+
+ADMIN NOTES — only where applicable
+
+HISTORY
+
+Do not force every drawer to contain sections that are irrelevant.
+
+Keep each drawer clean.
+
+==================================================
+PART 3 — IMPROVE COMPLAINT TERMINOLOGY
+==================================================
+
+Replace the existing status words:
+
+Valid
+Invalid
+
+with:
+
+Confirmed
+Dismissed
+
+This is clearer and more professional.
+
+Final Complaint statuses should be:
+
+New
+Confirmed
+Dismissed
+Resolved
+Refunded
+
+==================================================
+COMPLAINT STATUS MEANINGS
+==================================================
+
+NEW
+
+Display description:
+
+"Complaint received and awaiting management review."
+
+CONFIRMED
+
+Display description:
+
+"Management reviewed the complaint and confirmed that the issue is genuine."
+
+DISMISSED
+
+Display description:
+
+"Management reviewed the complaint and decided that it should not be treated as a valid complaint."
+
+RESOLVED
+
+Display description:
+
+"The confirmed issue was addressed and the complaint has been closed."
+
+REFUNDED
+
+Display description:
+
+"The complaint resulted in a full refund and cancellation of the related order."
+
+Use these descriptions in tooltips/help text where useful.
+
+Do not put long explanations everywhere.
+
+==================================================
+PART 4 — COMPLAINT STATUS FLOW
+==================================================
+
+Required workflow:
+
+New
+↓
+Confirmed
+↓
+Resolved
+
+OR:
+
+New
+↓
+Confirmed
+↓
+Refunded
+
+Alternative:
+
+New
+↓
+Dismissed
+
+Therefore:
+
+New can become:
+- Confirmed
+- Dismissed
+
+Confirmed can become:
+- Resolved
+- Refunded
+
+Dismissed is final.
+
+Resolved is final.
+
+Refunded is final.
+
+Do not allow normal UI reversal after final decision.
+
+==================================================
+PART 5 — COMPLAINT ACTION BUTTON WORDING
+==================================================
+
+Replace:
+
+Valid
+
+with:
+
+Confirm Complaint
+
+Replace:
+
+Invalid
+
+with:
+
+Dismiss Complaint
+
+These buttons are much easier to understand.
+
+==================================================
+PART 6 — DISMISS COMPLAINT WORKFLOW
+==================================================
+
+When Admin clicks:
+
+Dismiss Complaint
+
+DO NOT immediately change the status.
+
+Open a confirmation modal/form.
+
+Title:
+
+Dismiss Complaint
+
+Explanation:
+
+"Please explain why this complaint should not be treated as a confirmed issue."
+
+Required field:
+
+Reason for Dismissal
+
+This field MUST be required.
+
+Example:
+
+"Client delivery was delayed because required information was not provided on time."
+
+Buttons:
+
+Cancel
+
+Dismiss Complaint
+
+Once submitted:
+
+Status:
+Dismissed
+
+Save:
+
+dismissal_reason
+
+dismissed_by_user_id
+
+dismissed_at
+
+or reuse existing appropriate schema.
+
+Create complaint history entry.
+
+Create related Order Activity entry.
+
+==================================================
+PART 7 — CONFIRM COMPLAINT WORKFLOW
+==================================================
+
+When Admin clicks:
+
+Confirm Complaint
+
+show confirmation:
+
+"Confirm this complaint?"
+
+Description:
+
+"This confirms that management has reviewed the complaint and determined that the issue is genuine."
+
+Buttons:
+
+Cancel
+
+Confirm Complaint
+
+After confirmation:
+
+Status = Confirmed
+
+Now display a new:
+
+RESOLUTION
+
+section.
+
+==================================================
+PART 8 — RESOLUTION SECTION
+==================================================
+
+When Complaint status = Confirmed:
+
+Show:
+
+RESOLUTION
+
+Fields:
+
+Resolution Details
+
+Screenshot / Resolution Evidence
+
+The Resolution Details field should explain:
+
+"What action was taken to resolve the complaint?"
+
+Example:
+
+"Designer corrected the requested sections and the revised documents were approved by the client."
+
+Resolution Screenshot:
+Optional image upload.
+
+Use CLOUDINARY.
+
+Supabase stores only returned URL.
+
+Use the SAME Cloudinary infrastructure already used for:
+
+Payment screenshots
+Complaint screenshots
+Review screenshots
+Suggestion screenshots
+
+Do not introduce another storage system.
+
+==================================================
+PART 9 — RESOLUTION ACTIONS
+==================================================
+
+After Complaint is Confirmed, Admin should have TWO final actions:
+
+1. Mark Resolved
+
+2. Mark Refunded & Cancel Order
+
+These are very different outcomes.
+
+==================================================
+PART 10 — MARK RESOLVED
+==================================================
+
+When Admin clicks:
+
+Mark Resolved
+
+Resolution Details MUST be present.
+
+If empty:
+
+Do not allow resolution.
+
+Show:
+
+"Please add the resolution details before closing this complaint."
+
+Resolution screenshot is optional.
+
+Confirmation modal:
+
+"Mark Complaint as Resolved?"
+
+"This will close the complaint as successfully resolved."
+
+Buttons:
+
+Cancel
+Mark Resolved
+
+Then:
+
+Complaint status = Resolved
+
+Store:
+
+resolution_text
+resolution_screenshot_url
+resolved_by_user_id
+resolved_at
+
+Create history event.
+
+Create Order Activity event.
+
+==================================================
+PART 11 — REFUND & ORDER CANCELLATION
+==================================================
+
+For a Confirmed Complaint, second option:
+
+Mark Refunded & Cancel Order
+
+This means:
+
+The client has been refunded.
+
+The complaint is closed.
+
+The related Order must be canceled.
+
+The Order must no longer contribute financially to active business metrics.
+
+IMPORTANT:
+
+The CRM does NOT execute an actual bank transfer.
+
+This button means management is CONFIRMING that the refund has already been made and should now be recorded in CRM.
+
+Use wording:
+
+"Mark Refunded & Cancel Order"
+
+NOT:
+
+"Process Refund"
+
+unless the CRM actually sends money, which it currently does not.
+
+==================================================
+PART 12 — REFUND CONFIRMATION
+==================================================
+
+When clicked:
+
+Open a serious confirmation modal.
+
+Title:
+
+Refund & Cancel Order
+
+Message:
+
+"You are about to mark this complaint as refunded and cancel Order PX-XXXX-XXX.
+
+The order will be excluded from revenue, collected payment and remaining-payment calculations.
+
+This action cannot be undone through the normal CRM interface."
+
+Required checkbox:
+
+"I confirm that the client refund has been completed."
+
+Require:
+
+Resolution / Refund Details
+
+Optional:
+
+Refund / Resolution Screenshot
+
+Buttons:
+
+Cancel
+
+Confirm Refund & Cancel Order
+
+==================================================
+PART 13 — REFUND DATABASE SAFETY
+==================================================
+
+This operation MUST be handled safely.
+
+Do NOT:
+
+delete the Order
+delete payment records
+delete payment screenshots
+overwrite original amounts with zero
+destroy financial history
+
+Historical amounts must remain stored.
+
+The CRM must preserve:
+
+Original Total
+Original Advance
+Original Remaining
+Original payment screenshot
+Original payment history
+
+The cancellation/refund creates a FINANCIAL ADJUSTMENT / EXCLUSION.
+
+==================================================
+PART 14 — REFUND EFFECT ON ORDER
+==================================================
+
+When Complaint becomes Refunded:
+
+Related Order must become:
+
+Canceled
+
+Use the EXISTING Order cancellation status/system.
+
+Do NOT create a conflicting second cancellation architecture.
+
+If the Order status value currently uses:
+
+Cancelled
+Canceled
+cancelled
+canceled
+
+follow the existing exact database convention.
+
+==================================================
+PART 15 — FINANCIAL EFFECT OF REFUNDED ORDER
+==================================================
+
+A Refunded/Canceled Order must NOT count toward:
+
+Monthly Revenue
+Today's Revenue
+Collected Amount
+Remaining Amount
+Outstanding Payments
+Revenue analytics
+Active revenue totals
+
+Example:
+
+Order Total:
+Rs1,000
+
+Advance Received:
+Rs500
+
+Remaining:
+Rs500
+
+Client is refunded and Order canceled.
+
+After refund:
+
+Monthly Revenue:
+subtract/exclude Rs1,000 from active revenue calculation.
+
+Collected:
+subtract/exclude Rs500.
+
+Remaining:
+subtract/exclude Rs500.
+
+The CRM should show the financial effect correctly.
+
+==================================================
+IMPORTANT ACCOUNTING PRINCIPLE
+==================================================
+
+DO NOT change historical amounts to zero.
+
+Historically:
+
+Rs500 WAS received.
+
+It was then returned.
+
+Therefore preserve:
+
+Advance: Rs500
+
+but visually mark it as refunded/canceled.
+
+==================================================
+PART 16 — STRIKETHROUGH DISPLAY
+==================================================
+
+Inside a Refunded/Canceled Order:
+
+Payment section should visually show:
+
+Advance:
+Rs500
+
+with STRIKETHROUGH.
+
+Example visual:
+
+Advance:
+~~Rs500~~
+
+small label:
+
+Refunded
+
+Remaining:
+
+~~Rs500~~
+
+small label:
+
+Canceled
+
+The original numbers remain visible for audit purposes.
+
+Do the same wherever appropriate in Order details.
+
+Do not physically change the database amount to zero.
+
+==================================================
+TOTAL VALUE
+==================================================
+
+Order Total may remain visible normally as historical order value.
+
+Add clear label:
+
+Canceled Order
+
+or:
+
+Refunded
+
+Do not confuse users into thinking the Order never existed.
+
+==================================================
+PART 17 — PAYMENT HISTORY
+==================================================
+
+Payment history must preserve:
+
+Advance received.
+Payment approved.
+Refund recorded.
+
+Example Activity:
+
+Advance payment of Rs500 approved by Soban Masood.
+
+Later:
+
+Rs500 refund recorded by Soban Masood.
+
+Order PX-2609-001 canceled following Complaint CMP-2609-006.
+
+This is a proper audit trail.
+
+==================================================
+PART 18 — AVOID DOUBLE REFUND CALCULATIONS
+==================================================
+
+The refund action must be IDEMPOTENT.
+
+If user refreshes or double-clicks:
+
+Do not subtract amounts twice.
+
+Do not create duplicate refund adjustments.
+
+Do not create duplicate activity events.
+
+Once complaint = Refunded:
+
+disable final action controls.
+
+==================================================
+PART 19 — REFUND TRANSACTION SAFETY
+==================================================
+
+Where possible perform the following atomically/server-side:
+
+Complaint → Refunded
+
+Order → Canceled
+
+Financial refund/exclusion record created
+
+Activity event created
+
+Complaint history event created
+
+If one critical step fails:
+
+Do not leave half the system updated.
+
+Use the project's existing database transaction/RPC/server architecture where possible.
+
+==================================================
+PART 20 — REFUND FINANCIAL MODEL
+==================================================
+
+Inspect current financial calculations BEFORE implementation.
+
+Do not blindly subtract values manually from dashboard totals.
+
+The preferred model is:
+
+Revenue queries exclude Canceled/Refunded Orders
+
+AND/OR
+
+use a properly recorded refund adjustment.
+
+Choose whichever is consistent with current CRM accounting architecture.
+
+Avoid having:
+
+Dashboard A calculate one way
+
+Analytics calculate another way
+
+Orders calculate another way.
+
+ALL financial pages must use consistent rules.
+
+==================================================
+PART 21 — COMPLAINT SCREENSHOT DISPLAY
+==================================================
+
+Complaint already supports uploaded screenshot/evidence.
+
+Ensure the detail drawer contains:
+
+EVIDENCE
+
+If screenshot exists:
+
+Show clean preview thumbnail.
+
+Click:
+
+Open larger image preview/lightbox.
+
+If no screenshot:
+
+Show small text:
+
+"No complaint evidence attached."
+
+Do not show giant empty card.
+
+==================================================
+PART 22 — RESOLUTION SCREENSHOT DISPLAY
+==================================================
+
+When resolution screenshot exists:
+
+Display under:
+
+RESOLUTION EVIDENCE
+
+Clickable image preview.
+
+Again:
+
+Cloudinary stores file.
+Supabase stores URL only.
+
+==================================================
+PART 23 — ADMIN NOTES
+==================================================
+
+Rename current generic:
+
+Internal Notes
+
+to:
+
+Admin Notes
+
+Description:
+
+"Private notes for management. These notes are not visible to Designers or Support."
+
+Admin Notes MUST be visible ONLY to Admin/authorized management according to existing Admin permissions.
+
+Designer:
+NO.
+
+Support:
+NO.
+
+Do not merely hide the field visually.
+
+Backend/API must not return Admin Notes to unauthorized roles.
+
+==================================================
+PART 24 — ADMIN NOTES HISTORY
+==================================================
+
+When Admin adds or updates a note:
+
+History should show:
+
+"Admin note added"
+
+or:
+
+"Admin note updated"
+
+with:
+
+Actor
+Date
+Time
+
+Do NOT display the actual private note content inside a Designer-visible history.
+
+Admin history may display more detail if appropriate.
+
+==================================================
+PART 25 — COMPLAINT DRAWER UI RESTRUCTURE
+==================================================
+
+Current Complaint drawer should be cleaned up.
+
+Recommended structure:
+
+HEADER
+
+CMP-2609-006
+[New]
+
+COMPLAINT
+
+Category
+Complaint Against
+Description
+
+EVIDENCE
+
+Screenshot if available
+
+RELATED ORDER
+
+PX-2609-001
+Client
+Services
+Total
+Advance
+Remaining
+
+FILED BY
+
+Admin only.
+
+DECISION
+
+If New:
+Confirm Complaint
+Dismiss Complaint
+
+If Confirmed:
+Resolution Details
+Resolution Evidence
+Mark Resolved
+Mark Refunded & Cancel Order
+
+If Dismissed:
+Reason for Dismissal
+Decision details
+
+If Resolved:
+Resolution summary
+Resolution evidence
+Resolved by
+Resolved at
+
+If Refunded:
+Refund summary
+Order cancellation
+Refund evidence
+Refunded by
+Refunded at
+
+ADMIN NOTES
+
+Admin only.
+
+HISTORY
+
+Clean human-readable timeline.
+
+==================================================
+PART 26 — REVIEW DRAWER CONTENT REFINEMENT
+==================================================
+
+The Review drawer currently uses technical progression wording.
+
+Improve labels.
+
+Replace:
+
+Requested
+
+with:
+
+Feedback Requested
+
+Replace:
+
+Received
+
+with:
+
+Feedback Received
+
+Replace:
+
+Public Review
+
+with:
+
+Public Review Added
+
+Replace:
+
+Closed
+
+with:
+
+Completed
+
+Final Review Progress:
+
+Feedback Requested
+Feedback Received
+Public Review Added
+Completed
+
+==================================================
+REVIEW STATUS MEANINGS
+==================================================
+
+Feedback Requested:
+
+"Client feedback has been requested but has not yet been received."
+
+Feedback Received:
+
+"Client feedback or rating has been received."
+
+Public Review Added:
+
+"A Facebook review, public testimonial or video review has been received."
+
+Completed:
+
+"The review collection process is complete."
+
+Use concise tooltip/info text.
+
+Do not show the huge explanatory paragraph currently visible beneath the progress bar if it makes the UI cluttered.
+
+Replace it with:
+
+small information icon
+or concise helper text.
+
+==================================================
+PART 27 — REVIEW DRAWER STRUCTURE
+==================================================
+
+Recommended:
+
+HEADER
+
+REV-2609-003
+Review Progress
+Update button where permitted
+
+CLIENT FEEDBACK
+
+Client Name
+Rating
+Order
+Date
+
+Feedback text
+
+REVIEW CHANNELS
+
+WhatsApp Feedback
+Facebook Review
+Video Review
+
+PUBLIC REVIEW
+
+Public Review Link if available
+
+EVIDENCE
+
+Screenshot preview
+
+DETAILS
+
+Designer
+Recorded By
+Marketing Permission
+
+HISTORY
+
+Do not overcrowd the top card.
+
+==================================================
+PART 28 — REVIEW SCREENSHOT DISPLAY
+==================================================
+
+Ensure Review drawer visibly contains uploaded review screenshot.
+
+If screenshot exists:
+
+Show:
+
+Review Evidence
+
+thumbnail + click-to-preview.
+
+If not:
+
+"No review screenshot attached."
+
+==================================================
+PART 29 — REVIEW HISTORY
+==================================================
+
+Add/clean Review History.
+
+History should contain understandable entries such as:
+
+Client Review recorded by Muhammad Anas
+Sep 01, 2026 · 6:34 PM
+
+Rating changed from 4/5 to 5/5 by Soban Masood
+Sep 02, 2026 · 7:15 PM
+
+Facebook Review marked as received by Muhammad Anas
+Sep 02, 2026 · 7:20 PM
+
+Review progress changed:
+Feedback Received → Public Review Added
+by Muhammad Anas
+Sep 02, 2026 · 7:20 PM
+
+Do NOT show backend field names.
+
+==================================================
+PART 30 — SUGGESTION WORKFLOW SIMPLIFICATION
+==================================================
+
+REMOVE the current complicated workflow:
+
+New
+Under Review
+Accepted
+Implemented
+Rejected
+
+New required Suggestion statuses:
+
+New
+Implemented
+Rejected
+
+THAT IS ALL.
+
+==================================================
+SUGGESTION STATUS MEANINGS
+==================================================
+
+NEW
+
+"Suggestion recorded and awaiting management decision."
+
+IMPLEMENTED
+
+"Management accepted the suggestion and the improvement has been implemented."
+
+REJECTED
+
+"Management reviewed the suggestion and decided not to implement it."
+
+No:
+
+Under Review
+Accepted
+
+These states are no longer needed.
+
+==================================================
+PART 31 — SUGGESTION STATUS FLOW
+==================================================
+
+Allowed:
+
+New → Implemented
+
+or
+
+New → Rejected
+
+Do not require intermediate states.
+
+==================================================
+PART 32 — SUGGESTION DECISION CONTROLS
+==================================================
+
+Instead of an unclear generic dropdown, Admin should see two clear actions when status = New:
+
+Implement Suggestion
+
+Reject Suggestion
+
+Confirmation required.
+
+==================================================
+IMPLEMENT SUGGESTION
+==================================================
+
+Modal:
+
+Title:
+Implement Suggestion
+
+Message:
+
+"Confirm that this suggestion has been adopted and implemented."
+
+Optional:
+
+Implementation Note
+
+Confirm button:
+
+Mark Implemented
+
+==================================================
+REJECT SUGGESTION
+==================================================
+
+Modal:
+
+Title:
+
+Reject Suggestion
+
+Message:
+
+"Confirm that this suggestion will not be implemented."
+
+Optional/Recommended:
+
+Reason for Rejection
+
+Button:
+
+Reject Suggestion
+
+If operationally easy, make Reason for Rejection required.
+
+==================================================
+PART 33 — SUGGESTION ADMIN NOTES
+==================================================
+
+Rename generic internal fields where applicable:
+
+Admin Notes
+
+Admin-only.
+
+Do not expose to Designers/Support.
+
+==================================================
+PART 34 — SUGGESTION SCREENSHOT
+==================================================
+
+Ensure uploaded Suggestion screenshot appears clearly in drawer:
+
+EVIDENCE
+
+thumbnail
+click-to-preview
+
+If absent:
+
+"No suggestion evidence attached."
+
+==================================================
+PART 35 — SUGGESTION DRAWER STRUCTURE
+==================================================
+
+HEADER
+
+SUG-2609-005
+Status
+
+SUGGESTION
+
+Client
+Order
+Date
+Category
+Related Designer
+
+Suggestion text
+
+EVIDENCE
+
+Screenshot
+
+DETAILS
+
+Recorded By
+
+DECISION
+
+If New:
+Implement Suggestion
+Reject Suggestion
+
+If Implemented:
+Implemented by
+Implemented date
+Implementation note if available
+
+If Rejected:
+Rejected by
+Rejected date
+Reason
+
+ADMIN NOTES
+
+Admin only.
+
+HISTORY
+
+==================================================
+PART 36 — ALL HISTORY MUST MATCH ORDER ACTIVITY UI
+==================================================
+
+Current Complaint/Review/Suggestion history is inconsistent with Order Activity.
+
+FIX THIS.
+
+First inspect the existing:
+
+Order Details → Activity
+
+timeline component.
+
+Reuse the same visual timeline style for:
+
+Complaint History
+Review History
+Suggestion History
+
+Do NOT maintain multiple unrelated timeline designs.
+
+==================================================
+PART 37 — HISTORY ORDERING
+==================================================
+
+Use EXACTLY THE SAME chronological direction used by Order Activity.
+
+If Orders Activity currently displays newest first:
+
+Use newest first everywhere.
+
+If it currently displays oldest first:
+
+Use oldest first everywhere.
+
+The important requirement is CONSISTENCY.
+
+Do not have:
+
+Orders one direction
+
+Complaints another direction
+
+Feedback another direction.
+
+==================================================
+PART 38 — HISTORY MUST BE HUMAN READABLE
+==================================================
+
+Current history appears too much like raw backend records.
+
+Every event must clearly state:
+
+WHO
+DID WHAT
+TO WHICH RECORD
+WHEN
+
+where role permissions allow.
+
+Bad:
+
+Complaint Status
+Soban Masood · Sep 01
+
+Good:
+
+Complaint status changed from New to Confirmed by Soban Masood
+Sep 01, 2026 · 6:31 PM
+
+Bad:
+
+Complaint Note
+
+Good:
+
+Admin note added by Soban Masood
+Sep 01, 2026 · 6:32 PM
+
+==================================================
+PART 39 — COMPLAINT HISTORY EXAMPLES
+==================================================
+
+Admin may see:
+
+Complaint CMP-2609-006 filed by Soban Masood
+Sep 01, 2026 · 5:30 PM
+
+Complaint confirmed by Soban Masood
+Sep 01, 2026 · 5:34 PM
+
+Resolution details added by Soban Masood
+Sep 01, 2026 · 5:40 PM
+
+Resolution evidence uploaded by Soban Masood
+Sep 01, 2026 · 5:41 PM
+
+Complaint marked Resolved by Soban Masood
+Sep 01, 2026 · 5:43 PM
+
+OR:
+
+Complaint dismissed by Soban Masood
+Reason: Client delay was caused by missing information.
+Sep 01, 2026 · 5:34 PM
+
+OR:
+
+Complaint marked Refunded by Soban Masood
+Sep 01, 2026 · 5:45 PM
+
+Order PX-2609-001 canceled following refund
+Sep 01, 2026 · 5:45 PM
+
+Refund of Rs500 recorded
+Sep 01, 2026 · 5:45 PM
+
+==================================================
+PART 40 — DESIGNER COMPLAINT HISTORY PRIVACY
+==================================================
+
+Existing anonymity rule remains.
+
+ADMIN sees:
+
+Complaint filed by Soban Masood.
+
+DESIGNER sees:
+
+Complaint filed.
+
+Designer must NOT see:
+
+filer name
+filer user ID
+filer role
+
+through:
+
+History
+API
+activity metadata
+tooltips
+screenshots
+network responses
+
+==================================================
+PART 41 — REVIEW HISTORY EXAMPLES
+==================================================
+
+Client Review recorded by Muhammad Anas
+Sep 01, 2026 · 6:34 PM
+
+Rating recorded as 5/5
+Sep 01, 2026 · 6:34 PM
+
+Facebook Review added by Muhammad Anas
+Sep 01, 2026 · 6:40 PM
+
+Review marked Completed by Muhammad Anas
+Sep 02, 2026 · 7:00 PM
+
+==================================================
+PART 42 — SUGGESTION HISTORY EXAMPLES
+==================================================
+
+Suggestion SUG-2609-005 recorded by Muhammad Anas
+Sep 01, 2026 · 6:41 PM
+
+Suggestion marked Implemented by Soban Masood
+Sep 05, 2026 · 4:20 PM
+
+Implementation note:
+"Updated the production response policy."
+
+OR:
+
+Suggestion rejected by Soban Masood
+Sep 05, 2026 · 4:20 PM
+
+Reason:
+"Pricing reduction is not commercially feasible."
+
+==================================================
+PART 43 — ORDER ACTIVITY SYNCHRONIZATION
+==================================================
+
+Important Complaint/Review/Suggestion events must ALSO appear inside:
+
+Order Details → Activity.
+
+Do not create two disconnected histories.
+
+Examples:
+
+Complaint CMP-2609-006 confirmed.
+
+Complaint CMP-2609-006 resolved.
+
+Complaint CMP-2609-006 refunded.
+
+Review REV-2609-003 recorded.
+
+Facebook Review received.
+
+Suggestion SUG-2609-005 implemented.
+
+These Order Activity entries should link back to the related record where possible.
+
+==================================================
+PART 44 — ONE EVENT, ONE RECORD
+==================================================
+
+Do not create duplicate history events.
+
+One user action should create:
+
+one entity history event
+
+and where applicable:
+
+one related Order Activity event.
+
+Do not accidentally log the same action 2–3 times.
+
+==================================================
+PART 45 — SCREENSHOT VIEWER
+==================================================
+
+Use one consistent screenshot/evidence viewer for:
+
+Payment screenshot
+Complaint evidence
+Complaint resolution evidence
+Review evidence
+Suggestion evidence
+
+Click thumbnail:
+
+open clean modal/lightbox.
+
+Support zoom/open full size if existing UI supports it.
+
+Do not navigate away from current CRM page.
+
+==================================================
+PART 46 — CLOUDINARY
+==================================================
+
+All screenshots remain:
+
+CLOUDINARY FILE
+↓
+Cloudinary secure URL
+↓
+URL stored in Supabase
+
+Do NOT use Supabase Storage.
+
+Do NOT store Base64.
+
+Do NOT modify existing Cloudinary credentials.
+
+==================================================
+PART 47 — UI VISUAL HIERARCHY
+==================================================
+
+Improve visual hierarchy.
+
+Use consistent:
+
+Section heading
+Primary text
+Secondary metadata
+Status chip
+Divider
+Action box
+History timeline
+
+Avoid:
+
+huge cards around tiny pieces of information.
+
+Use space efficiently.
+
+==================================================
+PART 48 — REMOVE BACKEND-LIKE LANGUAGE
+==================================================
+
+Do not show phrases like:
+
+"untriaged"
+"decision recorded"
+"terminal state"
+
+unless genuinely useful.
+
+Use normal business language.
+
+Replace:
+
+"This complaint has reached a terminal state."
+
+with:
+
+"This complaint is closed and no further action is required."
+
+Replace:
+
+"Every decision is recorded and cannot be reversed."
+
+with:
+
+"Complaint decisions are recorded for audit purposes and cannot be changed after confirmation."
+
+==================================================
+PART 49 — CONTENT WRITING STANDARD
+==================================================
+
+Every label should be understandable by a normal employee without training in software terminology.
+
+Use:
+
+Professional
+Simple
+Short
+Clear
+
+Example:
+
+Bad:
+Resolution Outcome
+
+Acceptable:
+Final Outcome
+
+Bad:
+Actor
+
+Use:
+Updated By
+
+Bad:
+Entity event
+
+Never display that wording.
+
+==================================================
+PART 50 — CURRENT STATUS SUMMARY
+==================================================
+
+Every drawer should immediately communicate current state.
+
+Example Complaint:
+
+CMP-2609-006
+Confirmed
+
+Small helper:
+
+"Complaint confirmed. Resolution action is now required."
+
+Example Suggestion:
+
+SUG-2609-005
+New
+
+"Awaiting management decision."
+
+Example Review:
+
+REV-2609-003
+Public Review Added
+
+"Client feedback and a public review have been received."
+
+==================================================
+PART 51 — REFUND DASHBOARD EFFECT
+==================================================
+
+Audit ALL financial metrics.
+
+Canceled/Refunded Orders must not count in:
+
+Dashboard Monthly Revenue
+Dashboard Today's Revenue
+Collected
+Remaining
+Analytics revenue
+Payment outstanding totals
+Designer/order financial totals where applicable
+
+Do not only fix the Orders Page while leaving Dashboard wrong.
+
+==================================================
+PART 52 — REFUND PAYMENT PAGE EFFECT
+==================================================
+
+Existing Payment records should remain visible for audit.
+
+If related Order is Refunded/Canceled:
+
+Payment Verification / Payment History should display:
+
+Refunded
+
+or:
+
+Order Canceled
+
+where appropriate.
+
+Do not display a refunded payment as active collected revenue.
+
+==================================================
+PART 53 — CANCELED ORDER TABLE
+==================================================
+
+Order remains visible in Orders table.
+
+Status:
+
+Canceled
+
+Do NOT delete it.
+
+Financial values remain historically visible.
+
+Use canceled/refunded visual style consistently.
+
+==================================================
+PART 54 — ORDER DRAWER PAYMENT DISPLAY
+==================================================
+
+For normal Order:
+
+Total: Rs1,000
+Advance: Rs500
+Remaining: Rs500
+
+For Refunded/Canceled:
+
+Order Status:
+Canceled
+
+Total:
+Rs1,000
+
+Advance:
+~~Rs500~~
+Refunded
+
+Remaining:
+~~Rs500~~
+Canceled
+
+Show a small note:
+
+"This order was canceled following a client refund. Original amounts are retained for record keeping and excluded from financial totals."
+
+Admin/authorized roles only if necessary.
+
+==================================================
+PART 55 — CLIENT CASE REPORT
+==================================================
+
+Update Client Case Report so it correctly reflects:
+
+Complaint Confirmed/Dismissed terminology
+
+Dismissal reason
+
+Resolution text
+
+Resolution evidence
+
+Refund details
+
+Order cancellation
+
+Financial refund
+
+Suggestion simplified statuses
+
+Updated Review status wording
+
+Human-readable history
+
+If Order is refunded:
+
+Report should clearly show:
+
+Order Status:
+Canceled
+
+Refund:
+Rs500
+
+Original Order Total:
+Rs1,000
+
+Net Collected:
+Rs0
+
+Remaining Receivable:
+Rs0
+
+Do not erase original values.
+
+==================================================
+PART 56 — REFUND REPORT AUDIT
+==================================================
+
+Client Case Report should show:
+
+Original Advance:
+Rs500
+
+Refunded:
+Rs500
+
+Net Advance Retained:
+Rs0
+
+Original Remaining:
+Rs500
+
+Remaining Receivable:
+Rs0
+
+This is clearer than pretending original values never existed.
+
+==================================================
+PART 57 — PERMISSIONS
+==================================================
+
+ADMIN:
+
+Can:
+Confirm complaint
+Dismiss complaint
+Resolve complaint
+Mark Refunded & Cancel Order
+Add Admin Notes
+See Filed By
+Manage Suggestions
+See full History
+
+DESIGNER:
+
+Can:
+View complaint against them
+View evidence
+View allowed resolution information
+View Reviews
+Add Reviews
+Add Suggestions
+
+Cannot:
+See Complaint Filed By
+See Admin Notes
+Manage complaint decision
+Refund order
+Implement/Reject Suggestion unless their role specifically has management authority
+
+SUPPORT:
+
+Can:
+Use previously approved complaint/review/suggestion permissions.
+
+Cannot:
+See Admin Notes
+Manage refunds
+Make management complaint decisions unless existing permission explicitly allows it.
+
+==================================================
+PART 58 — EXISTING NESTED DRAWER NAVIGATION
+==================================================
+
+DO NOT break the newly implemented nested drawer navigation.
+
+Example:
+
+Orders
+→ Order drawer
+→ Complaint drawer
+
+Back:
+returns to Order.
+
+Same for Review/Suggestion.
+
+This task changes drawer CONTENT and workflows, not the navigation philosophy.
+
+==================================================
+PART 59 — DATABASE MIGRATION SAFETY
+==================================================
+
+Before adding fields:
+
+Inspect existing complaint/review/suggestion schema.
+
+Add only required fields.
+
+Potential complaint fields if not already available:
+
+dismissal_reason
+dismissed_by_user_id
+dismissed_at
+resolution_text
+resolution_screenshot_url
+resolved_by_user_id
+resolved_at
+refunded_by_user_id
+refunded_at
+refunded_amount
+
+Potential suggestion fields:
+
+implementation_note
+rejection_reason
+decision_by_user_id
+decision_at
+
+Potential review fields:
+
+review_progress
+
+Use existing columns where appropriate.
+
+Do NOT create duplicate concepts.
+
+==================================================
+PART 60 — MIGRATE EXISTING STATUS VALUES SAFELY
+==================================================
+
+Existing Complaint records may contain:
+
+valid
+invalid
+
+Safely map:
+
+valid → confirmed
+
+invalid → dismissed
+
+Do not lose history.
+
+If existing historical status-change entries say Valid/Invalid, preferably display them using the new UI terminology while preserving underlying historical audit data where technically appropriate.
+
+==================================================
+SUGGESTION MIGRATION
+==================================================
+
+Existing Suggestions may contain:
+
+under_review
+accepted
+
+Need safe migration.
+
+Recommended:
+
+New remains New.
+
+Under Review:
+map to New unless already implemented/rejected.
+
+Accepted but not implemented:
+map to New OR carefully preserve as a legacy state internally until management chooses final outcome.
+
+Do NOT blindly label an Accepted but not implemented suggestion as Implemented.
+
+If migration ambiguity exists:
+
+keep existing value internally and show:
+
+"Decision Required"
+
+for Admin until manually resolved.
+
+Do not falsify implementation status.
+
+==================================================
+PART 61 — TEST COMPLAINT DISMISSAL
+==================================================
+
+Create New Complaint.
+
+Click Dismiss Complaint.
+
+Expected:
+
+Reason required.
+
+Save.
+
+Status becomes Dismissed.
+
+History shows:
+
+Who dismissed it.
+When.
+Why.
+
+Order Activity updated.
+
+==================================================
+PART 62 — TEST COMPLAINT CONFIRMATION
+==================================================
+
+New Complaint.
+
+Confirm Complaint.
+
+Expected:
+
+Status = Confirmed.
+
+Resolution section appears.
+
+==================================================
+PART 63 — TEST RESOLUTION
+==================================================
+
+Confirmed Complaint.
+
+Enter resolution.
+
+Upload screenshot.
+
+Mark Resolved.
+
+Expected:
+
+Status Resolved.
+
+Screenshot loads.
+
+History clear.
+
+Order Activity clear.
+
+==================================================
+PART 64 — TEST REFUND
+==================================================
+
+Test Order:
+
+Total Rs1,000
+Advance Rs500
+Remaining Rs500
+
+Confirmed Complaint.
+
+Mark Refunded & Cancel Order.
+
+Expected:
+
+Complaint = Refunded
+
+Order = Canceled
+
+Original Total = Rs1,000 retained
+
+Advance Rs500 retained historically but visually struck/refunded
+
+Remaining Rs500 retained historically but struck/canceled
+
+Dashboard Collected decreases/excludes Rs500
+
+Remaining decreases/excludes Rs500
+
+Monthly revenue excludes/refunds Rs1,000 according to existing business metric logic
+
+Payment history remains
+
+Refund history created
+
+Order Activity created
+
+No duplicate adjustment if action is retried.
+
+==================================================
+PART 65 — TEST SCREENSHOTS
+==================================================
+
+Complaint evidence:
+visible.
+
+Resolution evidence:
+visible.
+
+Review evidence:
+visible.
+
+Suggestion evidence:
+visible.
+
+All use Cloudinary.
+
+==================================================
+PART 66 — TEST ADMIN NOTES
+==================================================
+
+Admin:
+can see and edit Admin Notes.
+
+Designer:
+API/UI must not expose them.
+
+Support:
+API/UI must not expose them.
+
+==================================================
+PART 67 — TEST HISTORY CONSISTENCY
+==================================================
+
+Open:
+
+Order Activity
+Complaint History
+Review History
+Suggestion History
+
+Expected:
+
+Same timeline design.
+
+Same chronological direction.
+
+Same date formatting.
+
+Same actor formatting.
+
+Same professional wording.
+
+==================================================
+PART 68 — TEST SUGGESTION WORKFLOW
+==================================================
+
+New Suggestion.
+
+Admin sees:
+
+Implement Suggestion
+Reject Suggestion
+
+No:
+
+Under Review
+Accepted
+
+Implement:
+
+Status becomes Implemented.
+
+Reject:
+
+Status becomes Rejected.
+
+History recorded.
+
+==================================================
+PART 69 — TEST REVIEW UI
+==================================================
+
+Review drawer should be easy to understand without reading a long paragraph.
+
+Status labels:
+
+Feedback Requested
+Feedback Received
+Public Review Added
+Completed
+
+Screenshot visible.
+
+History visible.
+
+Recorded By visible.
+
+==================================================
+PART 70 — REGRESSION TESTING
+==================================================
+
+After all changes test:
+
+Orders
+Orders drawer
+Nested drawers
+Complaints page
+Complaint creation
+Complaint status
+Complaint screenshot
+Reviews page
+Review creation/update
+Review screenshot
+Suggestions page
+Suggestion creation
+Suggestion screenshot
+Payments
+Payment screenshots
+Dashboard
+Revenue
+Remaining
+Collected
+Analytics
+Client Case Report
+Notifications
+Authentication
+Designer role
+Support role
+Admin role
+Cloudinary
+Supabase
+Production build
+
+==================================================
+FINAL PRODUCT PRINCIPLE
+==================================================
+
+The CRM must tell a HUMAN STORY.
+
+Not a database story.
+
+When someone opens a Complaint they should understand:
+
+What the client complained about.
+Who the complaint was against.
+Whether management confirmed or dismissed it.
+Why it was dismissed if dismissed.
+How it was resolved if confirmed.
+Whether a refund happened.
+Who performed each action.
+When it happened.
+What evidence exists.
+What happened to the related Order.
+
+When someone opens a Review they should immediately understand:
+
+What the client said.
+What rating they gave.
+Which public feedback channels were received.
+Who recorded it.
+What evidence exists.
+
+When someone opens a Suggestion they should understand:
+
+What was suggested.
+Who recorded it.
+Whether management implemented or rejected it.
+Why where applicable.
+
+All three systems must use:
+
+professional wording
+simple language
+consistent UI
+clear history
+clear evidence
+clear actions
+clear role permissions
+
+DO NOT make the CRM technically complicated for the employee.
+
+Make the backend strong and the frontend simple.

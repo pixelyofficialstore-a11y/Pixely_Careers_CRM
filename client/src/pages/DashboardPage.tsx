@@ -44,8 +44,8 @@ interface DashboardStats {
   };
   complaints?: {
     all: number;
-    valid: number;
-    invalid: number;
+    confirmed: number;
+    dismissed: number;
     resolved: number;
     refund: number;
   };
@@ -53,7 +53,7 @@ interface DashboardStats {
 
 interface FeedbackStats {
   reviews: { all: number; averageRating: number | null; whatsapp: number; facebook: number; video: number };
-  suggestions: { all: number; new: number; underReview: number; accepted: number; implemented: number; rejected: number };
+  suggestions: { all: number; new: number; implemented: number; rejected: number };
 }
 
 function ClientExperienceGrid({ stats, role, onOpenFeedback }: { stats?: FeedbackStats; role?: string; onOpenFeedback: (tab: "reviews" | "suggestions") => void }) {
@@ -69,7 +69,7 @@ function ClientExperienceGrid({ stats, role, onOpenFeedback }: { stats?: Feedbac
         <StatCard title={reviewTitle} value={stats?.reviews.all ?? 0} icon={MessageSquareHeart} color="blue" testId="stat-feedback-reviews" onClick={() => onOpenFeedback("reviews")} />
         <StatCard title="Average Client Rating" value={stats?.reviews.averageRating == null ? "—" : `${stats.reviews.averageRating.toFixed(1)}/5`} icon={Star} color="orange" testId="stat-feedback-rating" onClick={() => onOpenFeedback("reviews")} />
         <StatCard title={suggestionTitle} value={stats?.suggestions.all ?? 0} icon={Lightbulb} color="purple" testId="stat-feedback-suggestions" onClick={() => onOpenFeedback("suggestions")} />
-        <StatCard title="Suggestions Under Review" value={stats?.suggestions.underReview ?? 0} icon={ClipboardCheck} color="green" testId="stat-feedback-under-review" onClick={() => onOpenFeedback("suggestions")} />
+        <StatCard title="Implemented Suggestions" value={stats?.suggestions.implemented ?? 0} icon={ClipboardCheck} color="green" testId="stat-feedback-implemented" onClick={() => onOpenFeedback("suggestions")} />
       </div>
     </div>
   );
@@ -181,9 +181,9 @@ function ComplaintStatsGrid({
   stats: NonNullable<DashboardStats["complaints"]> | undefined;
   totalTitle: string;
 }) {
-  const defaultOrder = ["all", "valid", "invalid", "resolved", "refund"] as const;
+  const defaultOrder = ["all", "confirmed", "dismissed", "resolved", "refund"] as const;
   type ComplaintMetric = typeof defaultOrder[number];
-  const values = stats ?? { all: 0, valid: 0, invalid: 0, resolved: 0, refund: 0 };
+  const values = stats ?? { all: 0, confirmed: 0, dismissed: 0, resolved: 0, refund: 0 };
 
   const metrics: Record<ComplaintMetric, {
     title: string;
@@ -201,17 +201,17 @@ function ComplaintStatsGrid({
       iconClass: "bg-red-500/10 text-red-400",
       valueClass: "text-red-300",
     },
-    valid: {
-      title: "Valid",
-      value: values.valid,
+    confirmed: {
+      title: "Confirmed",
+      value: values.confirmed,
       description: "Complaints confirmed for action",
       icon: ShieldAlert,
       iconClass: "bg-orange-500/10 text-orange-400",
       valueClass: "text-orange-300",
     },
-    invalid: {
-      title: "Invalid",
-      value: values.invalid,
+    dismissed: {
+      title: "Dismissed",
+      value: values.dismissed,
       description: "Complaints closed without action",
       icon: XCircle,
       iconClass: "bg-slate-500/10 text-slate-400",
@@ -356,9 +356,9 @@ export default function DashboardPage() {
   const monthlyApprovedOrders = approvedOrders.filter(o => new Date(o.createdAt!) >= monthStart);
 
   const nonCanceledApproved = approvedOrders.filter(o => o.status !== 'canceled');
-  const totalCollected = approvedOrders.reduce((acc, o) => acc + (o.advanceAmount || 0), 0);
+  const totalCollected = nonCanceledApproved.reduce((acc, o) => acc + (o.advanceAmount || 0), 0);
   const outstandingBalance = nonCanceledApproved.reduce((acc, o) => acc + (o.remainingAmount || 0), 0);
-  const monthlyCollected = monthlyApprovedOrders.reduce((acc, o) => acc + (o.advanceAmount || 0), 0);
+  const monthlyCollected = monthlyApprovedOrders.filter(o => o.status !== 'canceled').reduce((acc, o) => acc + (o.advanceAmount || 0), 0);
   const monthlyRemaining = monthlyApprovedOrders
     .filter(o => o.status !== 'canceled')
     .reduce((acc, o) => acc + (o.remainingAmount || 0), 0);

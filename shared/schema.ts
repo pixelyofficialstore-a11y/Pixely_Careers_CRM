@@ -64,7 +64,7 @@ export const activityTypes = [
   "suggestion_updated",
   "suggestion_status",
 ] as const;
-export const suggestionStatuses = ["new", "under_review", "accepted", "implemented", "rejected"] as const;
+export const suggestionStatuses = ["new", "implemented", "rejected"] as const;
 export const suggestionCategories = ["communication", "document_quality", "delivery", "revision_experience", "production_process", "sales_experience", "pricing", "crm_technical", "service_offering", "after_sales", "other"] as const;
 export const complaintCategories = [
   "communication_issue",
@@ -79,7 +79,7 @@ export const complaintCategories = [
   "unauthorized_commitment",
   "other",
 ] as const;
-export const complaintStatuses = ["new", "valid", "invalid", "resolved", "order_canceled"] as const;
+export const complaintStatuses = ["new", "confirmed", "dismissed", "resolved", "refunded"] as const;
 export const complaintResolutionOutcomes = ["correction_revision", "refund", "other"] as const;
 
 export const users = pgTable("users", {
@@ -206,6 +206,7 @@ export const clientSuggestions = pgTable("client_suggestions", {
   status: text("status", { enum: suggestionStatuses }).notNull().default("new"),
   screenshotUrl: text("screenshot_url"),
   adminNotes: text("admin_notes"),
+  decisionNote: text("decision_note"),
   createdById: integer("created_by_id").notNull().references(() => users.id),
   reviewedByUserId: integer("reviewed_by_user_id").references(() => users.id),
   reviewedAt: timestamp("reviewed_at"),
@@ -228,6 +229,10 @@ export const complaints = pgTable("complaints", {
   resolution: text("resolution"),
   resolutionOutcome: text("resolution_outcome", { enum: complaintResolutionOutcomes }),
   screenshotUrl: text("screenshot_url"),
+  resolutionScreenshotUrl: text("resolution_screenshot_url"),
+  dismissalReason: text("dismissal_reason"),
+  dismissedByUserId: integer("dismissed_by_user_id").references(() => users.id),
+  dismissedAt: timestamp("dismissed_at"),
   resolvedByUserId: integer("resolved_by_user_id").references(() => users.id),
   resolvedAt: timestamp("resolved_at"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -448,6 +453,10 @@ export type ComplaintResponse = {
   resolution?: string | null;
   resolutionOutcome?: (typeof complaintResolutionOutcomes)[number] | null;
   screenshotUrl?: string | null;
+  resolutionScreenshotUrl?: string | null;
+  dismissalReason?: string | null;
+  dismissedBy?: ComplaintUserSummary | null;
+  dismissedAt?: Date | null;
   resolvedBy?: ComplaintUserSummary | null;
   resolvedAt: Date | null;
   createdAt: Date | null;
@@ -466,8 +475,8 @@ export type ComplaintHistoryEntry = {
 
 export type ComplaintStats = {
   all: number;
-  valid: number;
-  invalid: number;
+  confirmed: number;
+  dismissed: number;
   resolved: number;
   refund: number;
 };

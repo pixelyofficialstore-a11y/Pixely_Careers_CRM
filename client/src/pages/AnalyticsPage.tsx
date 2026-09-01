@@ -401,9 +401,10 @@ export default function AnalyticsPage() {
       o => o.createdById === agentId && o.advancePaymentStatus === 'approved'
     ).length;
 
-    const totalRevenue = agentMonthOrders.reduce((sum, o) => sum + (o.advanceAmount || 0) + (o.remainingAmount || 0), 0);
-    const collectedAmount = agentMonthOrders.reduce((sum, o) => sum + (o.advanceAmount || 0), 0);
-    const pendingAmount = agentMonthOrders.reduce((sum, o) => sum + (o.remainingAmount || 0), 0);
+    const activeAgentMonthOrders = agentMonthOrders.filter(o => o.status !== "canceled");
+    const totalRevenue = activeAgentMonthOrders.reduce((sum, o) => sum + (o.advanceAmount || 0) + (o.remainingAmount || 0), 0);
+    const collectedAmount = activeAgentMonthOrders.reduce((sum, o) => sum + (o.advanceAmount || 0), 0);
+    const pendingAmount = activeAgentMonthOrders.reduce((sum, o) => sum + (o.remainingAmount || 0), 0);
 
     return {
       totalMonthOrders: agentMonthOrders.length,
@@ -914,7 +915,7 @@ export default function AnalyticsPage() {
                   <span className="text-sm text-slate-400">Monthly Revenue</span>
                 </div>
                 <p className="text-2xl font-bold text-white" data-testid="text-support-month-revenue">
-                  ₨{Math.round(supportMonthOrders.reduce((s, o) => s + (o.advanceAmount || 0) + (o.remainingAmount || 0), 0) / 100).toLocaleString()}
+                  ₨{Math.round(supportMonthOrders.filter(o => o.status !== "canceled").reduce((s, o) => s + (o.advanceAmount || 0) + (o.remainingAmount || 0), 0) / 100).toLocaleString()}
                 </p>
                 <p className="text-xs text-slate-500 mt-1">Collected + remaining of approved</p>
               </div>

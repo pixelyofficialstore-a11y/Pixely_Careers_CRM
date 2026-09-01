@@ -196,7 +196,7 @@ export default function PaymentsPage() {
   // Get orders with remaining balance for designer to submit
   const ordersWithRemaining = orders?.filter(o => {
     if (isDesigner && o.assignedToId !== user?.id) return false;
-    return (o.remainingAmount || 0) > 0 && o.paymentStatus !== "paid";
+    return o.status !== "canceled" && (o.remainingAmount || 0) > 0 && o.paymentStatus !== "paid";
   }) || [];
 
   const getStatusBadge = (status: string) => {

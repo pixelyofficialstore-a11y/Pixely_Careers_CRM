@@ -656,14 +656,14 @@ export async function registerRoutes(
   const userSummary = (person: User | null | undefined) => person ? ({
     id: person.id, name: person.name, role: person.role, title: person.title, avatar: person.avatar,
   }) : null;
-  const feedbackProjection = async (items: any[], kind: "review" | "suggestion") => {
+  const feedbackProjection = async (items: any[], kind: "review" | "suggestion", role: string) => {
     const [allUsers, allOrders] = await Promise.all([storage.getUsers(), Promise.all(items.map(item => storage.getOrder(item.orderId)))]);
     const userById = new Map(allUsers.map(person => [person.id, person]));
     return items.map((item, index) => {
       const order = allOrders[index];
       const summary = (id: number | null | undefined) => id ? userById.get(id) || null : null;
       return kind === "review" ? { ...item, orderNumber: order?.orderNumber || null, clientName: order?.clientName || "", order: order ? { packageType: order.packageType, services: order.services, paymentStatus: order.paymentStatus } : undefined, reviewForDesigner: summary(item.reviewForDesignerId), createdBy: summary(item.createdById) } :
-        { ...item, orderNumber: order?.orderNumber || null, clientName: order?.clientName || "", order: order ? { packageType: order.packageType, services: order.services } : undefined, relatedDesigner: summary(item.relatedDesignerId), createdBy: summary(item.createdById), reviewedBy: summary(item.reviewedByUserId) };
+        { ...item, ...(role === "admin" ? {} : { adminNotes: undefined }), orderNumber: order?.orderNumber || null, clientName: order?.clientName || "", order: order ? { packageType: order.packageType, services: order.services } : undefined, relatedDesigner: summary(item.relatedDesignerId), createdBy: summary(item.createdById), reviewedBy: summary(item.reviewedByUserId) };
     });
   };
   const feedbackFilters = (req: Request) => ({
@@ -735,7 +735,8 @@ export async function registerRoutes(
       if (!req.file) return res.status(400).json({ message: "An image is required." });
       if (!isCloudinaryConfigured()) return res.status(503).json({ message: "Feedback uploads require Cloudinary configuration." });
       try {
-        const screenshotUrl = await uploadToCloudinary(req.file.buffer, req.body.folder === "suggestions" ? "pixelcrm/suggestions" : "pixelcrm/reviews");
+        const folder = req.body.folder === "suggestions" ? "pixelcrm/suggestions" : req.body.folder === "complaints" ? "pixelcrm/complaints" : "pixelcrm/reviews";
+        const screenshotUrl = await uploadToCloudinary(req.file.buffer, folder);
         return res.json({ screenshotUrl });
       } catch { return res.status(502).json({ message: "Unable to upload feedback image." }); }
     });
@@ -745,7 +746,7 @@ export async function registerRoutes(
     const user = req.user as User;
     const orderId = typeof req.query.orderId === "string" && /^\d+$/.test(req.query.orderId) ? Number(req.query.orderId) : undefined;
     const rows = filterFeedback(await storage.getClientReviews(user.role, user.id, orderId), feedbackFilters(req), "review");
-    const projected = await feedbackProjection(rows, "review");
+    const projected = await feedbackProjection(rows, "review", user.role);
     const search = feedbackFilters(req).search;
     res.json(search ? projected.filter((r: any) => [r.reviewNumber, r.clientName, r.feedbackText, r.orderNumber, r.reviewForDesigner?.name].some(v => String(v || "").toLowerCase().includes(search))) : projected);
   });
@@ -753,7 +754,7 @@ export async function registerRoutes(
     const orderId = Number(req.params.id); const user = req.user as User;
     const order = await canAccessOrder(user, orderId);
     if (!order) return res.sendStatus(order === null ? 403 : 404);
-    res.json(await feedbackProjection(await storage.getClientReviews(user.role, user.id, orderId), "review"));
+    res.json(await feedbackProjection(await storage.getClientReviews(user.role, user.id, orderId), "review", user.role));
   });
   app.post(api.feedback.reviews.create.path, requireAuth, async (req, res) => {
     try {
@@ -765,7 +766,7 @@ export async function registerRoutes(
       const initialProgress = deriveReviewProgress({ ...input, reviewProgress: "requested" });
       const review = await storage.createClientReview({ ...input, reviewProgress: initialProgress, reviewForDesignerId: order.assignedToId ?? null, createdById: user.id });
       await storage.createActivityLog({ orderId: input.orderId, actorId: user.id, activityType: "review_created", newValue: review.reviewNumber, details: { reviewId: review.id, reviewProgress: initialProgress } });
-      res.status(201).json((await feedbackProjection([review], "review"))[0]);
+      res.status(201).json((await feedbackProjection([review], "review", user.role))[0]);
     } catch (err) { if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message || "Invalid review." }); return res.status(500).json({ message: "Unable to create client review." }); }
   });
   app.patch(api.feedback.reviews.update.path, requireAuth, async (req, res) => {
@@ -793,13 +794,13 @@ export async function registerRoutes(
           await storage.createActivityLog({ orderId: existing.orderId, actorId: user.id, activityType: "review_updated", newValue: label, details: { reviewId: id, channelReceived: label } });
         }
       }
-      res.json((await feedbackProjection([review], "review"))[0]);
+      res.json((await feedbackProjection([review], "review", user.role))[0]);
     } catch (err) { if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid review." }); return res.status(500).json({ message: "Unable to update client review." }); }
   });
   app.get(api.feedback.suggestions.list.path, requireAuth, async (req, res) => {
     const user = req.user as User; const orderId = typeof req.query.orderId === "string" && /^\d+$/.test(req.query.orderId) ? Number(req.query.orderId) : undefined;
     const rows = filterFeedback(await storage.getClientSuggestions(user.role, user.id, orderId), feedbackFilters(req), "suggestion");
-    const projected = await feedbackProjection(rows, "suggestion");
+    const projected = await feedbackProjection(rows, "suggestion", user.role);
     const search = feedbackFilters(req).search;
     res.json(search ? projected.filter((r: any) => [r.suggestionNumber, r.clientName, r.suggestionText, r.orderNumber, r.relatedDesigner?.name].some(v => String(v || "").toLowerCase().includes(search))) : projected);
   });
@@ -807,7 +808,7 @@ export async function registerRoutes(
     const orderId = Number(req.params.id); const user = req.user as User;
     const order = await canAccessOrder(user, orderId);
     if (!order) return res.sendStatus(order === null ? 403 : 404);
-    res.json(await feedbackProjection(await storage.getClientSuggestions(user.role, user.id, orderId), "suggestion"));
+    res.json(await feedbackProjection(await storage.getClientSuggestions(user.role, user.id, orderId), "suggestion", user.role));
   });
   app.get("/api/feedback/stats", requireAuth, async (req, res) => {
     const user = req.user as User;
@@ -823,7 +824,7 @@ export async function registerRoutes(
     const rated = reviews.filter(review => review.rating !== null);
     res.json({
       reviews: { all: reviews.length, averageRating: rated.length ? rated.reduce((sum, review) => sum + (review.rating || 0), 0) / rated.length : null, whatsapp: reviews.filter(r => r.whatsappFeedbackReceived).length, facebook: reviews.filter(r => r.facebookReviewReceived).length, video: reviews.filter(r => r.videoReviewReceived).length },
-      suggestions: { all: suggestions.length, new: suggestions.filter(s => s.status === "new").length, underReview: suggestions.filter(s => s.status === "under_review").length, accepted: suggestions.filter(s => s.status === "accepted").length, implemented: suggestions.filter(s => s.status === "implemented").length, rejected: suggestions.filter(s => s.status === "rejected").length },
+      suggestions: { all: suggestions.length, new: suggestions.filter(s => s.status === "new").length, implemented: suggestions.filter(s => s.status === "implemented").length, rejected: suggestions.filter(s => s.status === "rejected").length },
     });
   });
   app.post(api.feedback.suggestions.create.path, requireAuth, async (req, res) => {
@@ -833,7 +834,7 @@ export async function registerRoutes(
       if (input.screenshotUrl && !isCloudinaryUrl(input.screenshotUrl)) return res.status(400).json({ message: "Screenshot must be an HTTPS Cloudinary URL." });
       const suggestion = await storage.createClientSuggestion({ ...input, relatedDesignerId: order.assignedToId ?? null, createdById: user.id, reviewedByUserId: null, reviewedAt: null, adminNotes: null });
       await storage.createActivityLog({ orderId: input.orderId, actorId: user.id, activityType: "suggestion_created", newValue: suggestion.suggestionNumber, details: { suggestionId: suggestion.id } });
-      res.status(201).json((await feedbackProjection([suggestion], "suggestion"))[0]);
+      res.status(201).json((await feedbackProjection([suggestion], "suggestion", user.role))[0]);
     } catch (err) { if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid suggestion." }); return res.status(500).json({ message: "Unable to create client suggestion." }); }
   });
   app.patch(api.feedback.suggestions.update.path, requireAuth, async (req, res) => {
@@ -842,8 +843,14 @@ export async function registerRoutes(
       if (!existing) return res.sendStatus(404);
       const user = req.user as User; const order = await canAccessOrder(user, existing.orderId);
       if (!order) return res.sendStatus(order === null ? 403 : 404);
-      if ((input.status !== undefined || input.adminNotes !== undefined) && user.role !== "admin") return res.status(403).json({ message: "Only admins can review suggestions." });
-      const suggestion = await storage.updateClientSuggestion(id, { ...input, reviewedByUserId: user.id, reviewedAt: new Date() });
+      if ((input.status !== undefined || input.adminNotes !== undefined || input.decisionNote !== undefined) && user.role !== "admin") return res.status(403).json({ message: "Only admins can review suggestions." });
+      if (input.status !== undefined && input.status !== existing.status) {
+        if (existing.status !== "new" || !["implemented", "rejected"].includes(input.status) || input.confirmDecision !== true) {
+          return res.status(400).json({ message: "Suggestions can only move from New to Implemented or Rejected after confirmation." });
+        }
+      }
+      const { confirmDecision: _confirmDecision, ...suggestionChanges } = input;
+      const suggestion = await storage.updateClientSuggestion(id, { ...suggestionChanges, reviewedByUserId: user.id, reviewedAt: new Date() });
       if (input.status !== undefined && input.status !== existing.status) {
         await storage.createActivityLog({
           orderId: existing.orderId, actorId: user.id, activityType: "suggestion_status",
@@ -856,7 +863,7 @@ export async function registerRoutes(
           details: { suggestionId: id, fields: ["adminNotes"] },
         });
       }
-      res.json((await feedbackProjection([suggestion], "suggestion"))[0]);
+      res.json((await feedbackProjection([suggestion], "suggestion", user.role))[0]);
     } catch (err) { if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid suggestion." }); return res.status(500).json({ message: "Unable to update client suggestion." }); }
   });
 
@@ -988,16 +995,16 @@ export async function registerRoutes(
       const input = api.complaints.update.input.parse(req.body);
       const existing = await storage.getComplaintRecord(id);
       if (!existing) return res.sendStatus(404);
-      if (input.status === undefined && input.adminNotes === undefined && input.resolution === undefined && input.resolutionOutcome === undefined) {
-        return res.status(400).json({ message: "Provide a status, internal note, or resolution." });
+      if (input.status === undefined && input.adminNotes === undefined && input.resolution === undefined && input.resolutionScreenshotUrl === undefined && input.dismissalReason === undefined) {
+        return res.status(400).json({ message: "Provide a status, admin note, or decision details." });
       }
 
       const status = input.status;
       const transitionAllowed =
         status === undefined ||
         status === existing.status ||
-        (existing.status === "new" && (status === "valid" || status === "invalid")) ||
-        (existing.status === "valid" && (status === "resolved" || status === "order_canceled"));
+        (existing.status === "new" && (status === "confirmed" || status === "dismissed")) ||
+        (existing.status === "confirmed" && (status === "resolved" || status === "refunded"));
       if (!transitionAllowed) {
         return res.status(400).json({
           message: `Cannot move a complaint from ${statusLabel(existing.status)} to ${statusLabel(status)}.`,
@@ -1007,33 +1014,29 @@ export async function registerRoutes(
       if (status !== undefined && status !== existing.status && input.confirmDecision !== true) {
         return res.status(400).json({ message: "Confirm the complaint decision before saving it." });
       }
-      if ((status === "resolved" || status === "order_canceled") && existing.status !== "valid") {
-        return res.status(400).json({ message: "Only valid complaints can be closed." });
+      if (status === "dismissed" && (!input.dismissalReason?.trim())) {
+        return res.status(400).json({ message: "A reason for dismissal is required." });
       }
-      if ((status === "resolved" || status === "order_canceled") && (!input.resolution?.trim() && !existing.resolution?.trim())) {
-        return res.status(400).json({ message: "A resolution is required before closing a valid complaint." });
+      if ((status === "resolved" || status === "refunded") && existing.status !== "confirmed") {
+        return res.status(400).json({ message: "Only confirmed complaints can be closed." });
       }
-      if ((status === "resolved" || status === "order_canceled") && !input.resolutionOutcome) {
-        return res.status(400).json({ message: "Select a resolution outcome before closing the complaint." });
+      if ((status === "resolved" || status === "refunded") && (!input.resolution?.trim() && !existing.resolution?.trim())) {
+        return res.status(400).json({ message: "Please add the resolution details before closing this complaint." });
       }
-      const isClosingTransition =
-        existing.status === "valid" &&
-        (status === "resolved" || status === "order_canceled");
-      if (input.resolutionOutcome !== undefined && !isClosingTransition) {
-        return res.status(400).json({
-          message: "A resolution outcome can only be recorded while closing a valid complaint.",
-        });
+      if (status === "refunded" && input.refundConfirmed !== true) {
+        return res.status(400).json({ message: "Confirm that the client refund has been completed." });
       }
+      if (input.resolutionScreenshotUrl && !isCloudinaryUrl(input.resolutionScreenshotUrl)) return res.status(400).json({ message: "Resolution evidence must be an HTTPS Cloudinary URL." });
       if (
         input.resolution !== undefined &&
         input.resolution !== existing.resolution &&
-        existing.status !== "valid" &&
-        status !== "resolved" && status !== "order_canceled"
+        existing.status !== "confirmed" &&
+        status !== "resolved" && status !== "refunded"
       ) {
-        return res.status(400).json({ message: "A resolution can only be recorded for a valid complaint." });
+        return res.status(400).json({ message: "A resolution can only be recorded for a confirmed complaint." });
       }
       if (
-        (existing.status === "resolved" || existing.status === "order_canceled") &&
+        (existing.status === "resolved" || existing.status === "refunded" || existing.status === "dismissed") &&
         (
           (input.resolution !== undefined && input.resolution !== existing.resolution) ||
           (input.resolutionOutcome !== undefined && input.resolutionOutcome !== existing.resolutionOutcome)
@@ -1048,14 +1051,21 @@ export async function registerRoutes(
         historyEvents.push({
           orderId: existing.orderId,
           actorId: actor.id,
-          activityType: status === "resolved" || status === "order_canceled" ? "complaint_resolved" : "complaint_status",
+          activityType: status === "resolved" || status === "refunded" ? "complaint_resolved" : "complaint_status",
           previousValue: existing.status,
           newValue: status,
           details: {
             complaintId: existing.id,
             complaintNumber: existing.complaintNumber,
-            ...(status === "resolved" || status === "order_canceled" ? { resolution: input.resolution?.trim() || existing.resolution, resolutionOutcome: input.resolutionOutcome } : {}),
+            ...(status === "resolved" || status === "refunded" ? { resolution: input.resolution?.trim() || existing.resolution, resolutionOutcome: status === "refunded" ? "refund" : input.resolutionOutcome } : {}),
           },
+        });
+      }
+      if (status === "refunded" && status !== existing.status) {
+        historyEvents.push({
+          orderId: existing.orderId, actorId: actor.id, activityType: "status_change",
+          previousValue: "active", newValue: "canceled",
+          details: { complaintId: existing.id, complaintNumber: existing.complaintNumber, refundRecorded: true },
         });
       }
       if (input.adminNotes !== undefined && (input.adminNotes?.trim() || null) !== existing.adminNotes) {
@@ -1100,10 +1110,13 @@ export async function registerRoutes(
         ...(input.adminNotes !== undefined ? { adminNotes: input.adminNotes?.trim() || null } : {}),
         ...(input.resolution !== undefined ? { resolution: input.resolution?.trim() || null } : {}),
         ...(input.resolutionOutcome !== undefined ? { resolutionOutcome: input.resolutionOutcome } : {}),
-        ...((status === "resolved" || status === "order_canceled") && status !== existing.status
+        ...(input.resolutionScreenshotUrl !== undefined ? { resolutionScreenshotUrl: input.resolutionScreenshotUrl } : {}),
+        ...(status === "dismissed" && status !== existing.status ? { dismissalReason: input.dismissalReason!.trim(), dismissedByUserId: actor.id, dismissedAt: new Date() } : {}),
+        ...((status === "resolved" || status === "refunded") && status !== existing.status
           ? { resolvedByUserId: actor.id, resolvedAt: new Date() }
           : {}),
-      }, historyEvents, status === "order_canceled" && status !== existing.status);
+        ...(status === "refunded" ? { resolutionOutcome: "refund" } : {}),
+      }, historyEvents, status === "refunded" && status !== existing.status);
       if (!updated) {
         return res.status(409).json({
           message: "This complaint changed while you were reviewing it. Reload and try again.",

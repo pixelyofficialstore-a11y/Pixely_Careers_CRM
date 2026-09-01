@@ -260,6 +260,10 @@ export class DatabaseStorage implements IStorage {
   async getStats(role: string, userId: number, complaintFilters: ComplaintListFilters = {}): Promise<any> {
     const allOrdersRaw = await db.select().from(orders);
     const allOrders = allOrdersRaw.filter(o => o.advancePaymentStatus === 'approved');
+    // Canceled orders retain their original amounts for audit, but never count
+    // in active revenue, collected, outstanding, or cash-flow metrics.
+    const activeFinancialOrders = allOrders.filter(o => o.status !== "canceled");
+    const activeOrderIds = new Set(activeFinancialOrders.map(order => order.id));
     const allPaymentVerifications = await db.select().from(paymentVerifications);
     const allUsers = await db.select().from(users);
     
@@ -279,11 +283,12 @@ export class DatabaseStorage implements IStorage {
       canceled: allOrders.filter(o => o.status === 'canceled').length,
     };
 
-    const totalRevenue = allOrders.reduce((acc, curr) => acc + (curr.advanceAmount || 0), 0);
-    const pendingPayments = allOrders.reduce((acc, curr) => acc + (curr.remainingAmount || 0), 0);
+    const totalRevenue = activeFinancialOrders.reduce((acc, curr) => acc + (curr.advanceAmount || 0), 0);
+    const pendingPayments = activeFinancialOrders.reduce((acc, curr) => acc + (curr.remainingAmount || 0), 0);
     const adminUserIds = new Set(allUsers.filter(user => user.role === "admin").map(user => user.id));
     const approvedPaymentsToday = allPaymentVerifications.filter(payment =>
       payment.status === "approved" &&
+      activeOrderIds.has(payment.orderId) &&
       payment.reviewedAt &&
       new Date(payment.reviewedAt) >= today
     );
@@ -292,7 +297,7 @@ export class DatabaseStorage implements IStorage {
     const verifiedAdvanceOrderIdsToday = new Set(approvedAdvancePaymentsToday.map(payment => payment.orderId));
     const verifiedAdvanceToday = approvedAdvancePaymentsToday
       .reduce((sum, payment) => sum + (payment.amount || 0), 0);
-    const directAdminAdvanceToday = allOrders
+    const directAdminAdvanceToday = activeFinancialOrders
       .filter(order =>
         adminUserIds.has(order.createdById || -1) &&
         order.createdAt &&
@@ -310,7 +315,7 @@ export class DatabaseStorage implements IStorage {
       complaints: await this.getComplaintStats(role, userId, complaintFilters),
       finance: {
         totalRevenue,
-        monthlyRevenue: monthlyOrders.reduce((acc, curr) => acc + (curr.advanceAmount || 0), 0),
+          monthlyRevenue: monthlyOrders.filter(order => order.status !== "canceled").reduce((acc, curr) => acc + (curr.advanceAmount || 0), 0),
         pendingPayments,
         todayCashFlow: {
           advance: advanceReceivedToday,
@@ -431,6 +436,9 @@ export class DatabaseStorage implements IStorage {
       description: complaint.description,
       status: complaint.status,
       resolvedAt: complaint.resolvedAt,
+      dismissedAt: complaint.dismissedAt,
+      dismissalReason: complaint.dismissalReason,
+      resolutionScreenshotUrl: complaint.resolutionScreenshotUrl,
       createdAt: complaint.createdAt,
       updatedAt: complaint.updatedAt,
     };
@@ -448,6 +456,9 @@ export class DatabaseStorage implements IStorage {
     if (role === "admin") {
       response.resolvedBy = complaint.resolvedByUserId
         ? this.complaintUserSummary(usersById.get(complaint.resolvedByUserId))
+        : null;
+      response.dismissedBy = complaint.dismissedByUserId
+        ? this.complaintUserSummary(usersById.get(complaint.dismissedByUserId))
         : null;
     }
     return response;
@@ -584,7 +595,7 @@ export class DatabaseStorage implements IStorage {
     if (!complaint) return [];
     const logs = await db.select().from(activityLogs)
       .where(eq(activityLogs.orderId, complaint.orderId))
-      .orderBy(asc(activityLogs.createdAt));
+      .orderBy(desc(activityLogs.createdAt));
     const allUsers = await this.getUsers();
     const usersById = new Map(allUsers.map(user => [user.id, user]));
 
@@ -608,12 +619,11 @@ export class DatabaseStorage implements IStorage {
     const rows = await this.getComplaints(role, userId, filters);
     return {
       all: rows.length,
-      valid: rows.filter(row => row.status === "valid").length,
-      invalid: rows.filter(row => row.status === "invalid").length,
+      confirmed: rows.filter(row => row.status === "confirmed").length,
+      dismissed: rows.filter(row => row.status === "dismissed").length,
       resolved: rows.filter(row => row.status === "resolved").length,
       refund: rows.filter(row =>
-        (row.status === "resolved" || row.status === "order_canceled") &&
-        row.resolutionOutcome === "refund"
+        row.status === "refunded"
       ).length,
     };
   }
