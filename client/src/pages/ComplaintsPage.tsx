@@ -66,12 +66,13 @@ function ComplaintDrawer({ id, open, onOpenChange }: { id: number | null; open: 
 
 export default function ComplaintsPage() {
   const { user } = useAuth(); const [, setLocation] = useLocation(); const [, routeParams] = useRoute("/complaints/:id");
-  const [search, setSearch] = useState(""); const [status, setStatus] = useState("all"); const [outcome, setOutcome] = useState(""); const [category, setCategory] = useState("all"); const [page, setPage] = useState(1); const [createOpen, setCreateOpen] = useState(false); const [selectedId, setSelectedId] = useState<number | null>(routeParams?.id ? Number(routeParams.id) : null);
+  const [search, setSearch] = useState(""); const [status, setStatus] = useState("all"); const [outcome, setOutcome] = useState(""); const [category, setCategory] = useState("all"); const [designerId, setDesignerId] = useState("all"); const [page, setPage] = useState(1); const [createOpen, setCreateOpen] = useState(false); const [selectedId, setSelectedId] = useState<number | null>(routeParams?.id ? Number(routeParams.id) : null);
   const now = new Date(); const [month, setMonth] = useState(String(now.getMonth() + 1)); const [year, setYear] = useState(String(now.getFullYear()));
-  const query = new URLSearchParams({ month, year, ...(search ? { search } : {}), ...(status !== "all" ? { status } : {}), ...(category !== "all" ? { category } : {}) }).toString();
+  const query = new URLSearchParams({ month, year, ...(search ? { search } : {}), ...(status !== "all" ? { status } : {}), ...(category !== "all" ? { category } : {}), ...(designerId !== "all" ? { designerId } : {}) }).toString();
   const { data: complaints = [], isLoading, isError, refetch } = useQuery<ComplaintResponse[]>({ queryKey: [`/api/complaints?${query}`] });
-  const { data: statsResponse } = useQuery<{ complaints: ComplaintStats }>({ queryKey: [`/api/stats?month=${month}&year=${year}`] });
+  const { data: statsResponse } = useQuery<{ complaints: ComplaintStats }>({ queryKey: [`/api/stats?month=${month}&year=${year}${designerId !== "all" ? `&designerId=${designerId}` : ""}`] });
   const { data: categories = [] } = useQuery<ComplaintCategoryConfig[]>({ queryKey: ["/api/complaint-categories"], staleTime: 300000 });
+  const { data: teamMembers = [] } = useQuery<{ id: number; name: string; role: string; isActive: boolean }[]>({ queryKey: ["/api/users"], enabled: user?.role === "admin" || user?.role === "support", staleTime: 300000 });
   const { data: orders = [] } = useQuery<OrderWithServices[]>({ queryKey: ["/api/orders"], enabled: user?.role === "admin" || user?.role === "support" });
   const stats = statsResponse?.complaints; const isAdmin = user?.role === "admin"; const canCreate = isAdmin || user?.role === "support";
   const categoryOptions = categories.length ? categories.filter(c => c.isActive) : complaintCategories.map(key => ({ key, label: complaintCategoryLabels[key] }));
@@ -88,12 +89,14 @@ export default function ComplaintsPage() {
   );
   const pageSize = 10; const pages = Math.max(1, Math.ceil(filteredComplaints.length / pageSize)); const visible = useMemo(() => filteredComplaints.slice((page - 1) * pageSize, page * pageSize), [filteredComplaints, page]);
   const openComplaint = (id: number) => { setSelectedId(id); setLocation(`/complaints/${id}`); };
-  const hasActiveFilters = Boolean(search) || status !== "all" || category !== "all" || outcome === "refund";
+  const designerOptions = teamMembers.filter(member => member.role === "designer");
+  const hasActiveFilters = Boolean(search) || status !== "all" || category !== "all" || designerId !== "all" || outcome === "refund";
   const clearFilters = () => {
     setSearch("");
     setStatus("all");
     setOutcome("");
     setCategory("all");
+    setDesignerId("all");
     setMonth(String(now.getMonth() + 1));
     setYear(String(now.getFullYear()));
     setPage(1);
@@ -104,6 +107,7 @@ export default function ComplaintsPage() {
     const marginX = 32;
     const contentWidth = pageWidth - marginX * 2;
     const reportMonth = format(new Date(Number(year), Number(month) - 1, 1), "MMMM yyyy");
+    const selectedDesigner = designerOptions.find(designer => String(designer.id) === designerId);
     const BRAND: [number, number, number] = [37, 99, 235];
     const INK: [number, number, number] = [30, 41, 59];
     const MUTED: [number, number, number] = [100, 116, 139];
@@ -121,7 +125,7 @@ export default function ComplaintsPage() {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     doc.setTextColor(...MUTED);
-    doc.text(`Complaints Report  •  ${reportMonth}`, marginX + 20, 68);
+    doc.text(`Complaints Report  •  ${reportMonth}${selectedDesigner ? `  •  ${selectedDesigner.name}` : ""}`, marginX + 20, 68);
     doc.setFontSize(8.5);
     doc.text(`Generated ${format(new Date(), "MMM dd, yyyy · h:mm a")}`, pageWidth - marginX, 68, { align: "right" });
 
@@ -189,6 +193,10 @@ export default function ComplaintsPage() {
             <SelectTrigger className="w-44 bg-slate-900 border-slate-800 text-white" data-testid="select-complaint-category-filter"><SelectValue placeholder="All categories" /></SelectTrigger>
             <SelectContent className="bg-slate-900 border-slate-800 text-white"><SelectItem value="all">All categories</SelectItem>{categoryOptions.map(item => <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>)}</SelectContent>
           </Select>
+          {(isAdmin || user?.role === "support") && <Select value={designerId} onValueChange={v => { setDesignerId(v); setPage(1); }}>
+            <SelectTrigger className="w-40 bg-slate-900 border-slate-800 text-white" data-testid="select-complaint-designer-filter"><SelectValue placeholder="All designers" /></SelectTrigger>
+            <SelectContent className="bg-slate-900 border-slate-800 text-white"><SelectItem value="all">All designers</SelectItem>{designerOptions.map(designer => <SelectItem key={designer.id} value={String(designer.id)}>{designer.name}{!designer.isActive ? " (Inactive)" : ""}</SelectItem>)}</SelectContent>
+          </Select>}
           {hasActiveFilters && <Button type="button" variant="ghost" size="sm" onClick={clearFilters} className="text-slate-400 hover:text-white" data-testid="button-clear-complaint-filters"><X className="w-4 h-4 mr-1" />Clear</Button>}
         </div>
         {isAdmin && <Button variant="outline" onClick={exportComplaintsPDF} data-testid="button-export-complaints"><Download className="w-4 h-4 mr-2" />Export PDF</Button>}

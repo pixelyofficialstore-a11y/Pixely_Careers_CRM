@@ -22,6 +22,7 @@ export type ComplaintListFilters = {
   status?: string;
   category?: string;
   orderId?: number;
+  designerId?: number;
   month?: number;
   year?: number;
 };
@@ -425,6 +426,9 @@ export class DatabaseStorage implements IStorage {
 
     if (filters.orderId) {
       visible = visible.filter(complaint => complaint.orderId === filters.orderId);
+    }
+    if (filters.designerId) {
+      visible = visible.filter(complaint => complaint.complaintAgainstUserId === filters.designerId);
     }
     if (filters.status) {
       visible = visible.filter(complaint => complaint.status === filters.status);

@@ -633,6 +633,7 @@ export async function registerRoutes(
       search: typeof req.query.search === "string" ? req.query.search : undefined,
       status: typeof req.query.status === "string" ? req.query.status : undefined,
       category: typeof req.query.category === "string" ? req.query.category : undefined,
+      designerId: typeof req.query.designerId === "string" && /^\d+$/.test(req.query.designerId) ? Number(req.query.designerId) : undefined,
       month: typeof req.query.month === "string" && /^(?:[1-9]|1[0-2])$/.test(req.query.month) ? Number(req.query.month) : undefined,
       year: typeof req.query.year === "string" && /^\d{4}$/.test(req.query.year) ? Number(req.query.year) : undefined,
     };
@@ -1209,7 +1210,9 @@ export async function registerRoutes(
       ? Number(req.query.month) : undefined;
     const year = typeof req.query.year === "string" && /^\d{4}$/.test(req.query.year)
       ? Number(req.query.year) : undefined;
-    const stats = await storage.getStats(user.role, user.id, { month, year });
+    const designerId = typeof req.query.designerId === "string" && /^\d+$/.test(req.query.designerId)
+      ? Number(req.query.designerId) : undefined;
+    const stats = await storage.getStats(user.role, user.id, { month, year, designerId });
 
     if (user.role !== 'admin') {
       delete stats.finance;
