@@ -14,7 +14,10 @@ import {
   Activity,
   FileWarning,
   ShieldAlert,
-  ClipboardCheck
+  ClipboardCheck,
+  Star,
+  MessageSquareHeart,
+  Lightbulb
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, isToday, startOfMonth } from "date-fns";
@@ -45,6 +48,30 @@ interface DashboardStats {
     resolved: number;
     refund: number;
   };
+}
+
+interface FeedbackStats {
+  reviews: { all: number; averageRating: number | null; whatsapp: number; facebook: number; video: number };
+  suggestions: { all: number; new: number; underReview: number; accepted: number; implemented: number; rejected: number };
+}
+
+function ClientExperienceGrid({ stats, role }: { stats?: FeedbackStats; role?: string }) {
+  const reviewTitle = role === "designer" ? "Reviews Received" : role === "support" ? "Reviews Recorded" : "Reviews This Month";
+  const suggestionTitle = role === "designer" ? "Related Suggestions" : role === "support" ? "Suggestions Recorded" : "Suggestions This Month";
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <MessageSquareHeart className="h-5 w-5 text-blue-400" />
+        <h2 className="text-lg font-semibold text-white">Client Experience</h2>
+      </div>
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard title={reviewTitle} value={stats?.reviews.all ?? 0} icon={MessageSquareHeart} color="blue" testId="stat-feedback-reviews" />
+        <StatCard title="Average Client Rating" value={stats?.reviews.averageRating == null ? "—" : `${stats.reviews.averageRating.toFixed(1)}/5`} icon={Star} color="orange" testId="stat-feedback-rating" />
+        <StatCard title={suggestionTitle} value={stats?.suggestions.all ?? 0} icon={Lightbulb} color="purple" testId="stat-feedback-suggestions" />
+        <StatCard title="Suggestions Under Review" value={stats?.suggestions.underReview ?? 0} icon={ClipboardCheck} color="green" testId="stat-feedback-under-review" />
+      </div>
+    </div>
+  );
 }
 
 function StatCard({ 
@@ -262,6 +289,15 @@ export default function DashboardPage() {
     staleTime: 30 * 1000,
   });
 
+  const currentMonth = new Date().getMonth() + 1;
+  const currentYear = new Date().getFullYear();
+  const { data: feedbackStats } = useQuery<FeedbackStats>({
+    queryKey: [`/api/feedback/stats?month=${currentMonth}&year=${currentYear}`],
+    enabled: Boolean(user),
+    refetchInterval: 60 * 1000,
+    staleTime: 30 * 1000,
+  });
+
   useEffect(() => {
     if (user?.role !== "admin") return;
 
@@ -368,6 +404,7 @@ export default function DashboardPage() {
           />
         </div>
 
+        <ClientExperienceGrid stats={feedbackStats} role={user?.role} />
         <ComplaintStatsGrid stats={dashboardStats?.complaints} totalTitle="Complaints About Me" />
 
         <div className="glass-panel p-6 rounded-2xl">
@@ -444,6 +481,7 @@ export default function DashboardPage() {
           />
         </div>
 
+        <ClientExperienceGrid stats={feedbackStats} role={user?.role} />
         <ComplaintStatsGrid stats={dashboardStats?.complaints} totalTitle="Complaints Filed" />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -546,6 +584,7 @@ export default function DashboardPage() {
         />
       </div>
 
+      <ClientExperienceGrid stats={feedbackStats} role={user?.role} />
       <ComplaintStatsGrid stats={dashboardStats?.complaints} totalTitle="All Complaints" />
 
       {/* Finance Section - Admin Only */}

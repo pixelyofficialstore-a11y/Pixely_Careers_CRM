@@ -1,0 +1,2699 @@
+PIXELY CAREERS CRM
+MASTER TASK:
+
+1. Add a complete Client Reviews system.
+2. Add a complete Client Suggestions system.
+3. Create a unified Client Feedback page.
+4. Connect Reviews, Suggestions, Complaints, Payments, Orders, Assignments and other order-related activity together.
+5. Build a clean chronological Order History.
+6. Make the CRM behave like ONE CONNECTED SYSTEM instead of separate isolated pages.
+
+THIS IS AN EXISTING PRODUCTION CRM.
+
+DO NOT rebuild the application.
+
+DO NOT break:
+- Orders
+- Payments
+- Complaints
+- Authentication
+- User roles
+- Designer assignment
+- Notifications
+- Existing dashboards
+- Cloudinary payment screenshots
+- Supabase database integration
+- Existing complaint security/anonymity
+- Existing complaint status logic
+
+The new implementation must be ADDITIVE and carefully integrated.
+
+==================================================
+CORE ARCHITECTURE PRINCIPLE
+==================================================
+
+THE ORDER MUST BECOME THE CENTRAL SOURCE OF CONTEXT.
+
+Every client-related record should connect back to an Order.
+
+Conceptually:
+
+CLIENT
+   ↓
+ORDER
+   ├── Created By
+   ├── Assigned Designer
+   ├── Package / Services
+   ├── Payment
+   ├── Payment Screenshot
+   ├── Complaints
+   ├── Complaint History
+   ├── Client Review
+   ├── Client Suggestions
+   └── Activity History
+
+Do NOT create separate copies of Order data inside every module.
+
+Example:
+
+Complaint should reference order_id.
+Review should reference order_id.
+Suggestion should reference order_id.
+Payment already references Order and should continue doing so.
+
+Client name, package, service, payment amounts, current designer, etc. should normally be READ from the actual Order relationships.
+
+Do not duplicate them unnecessarily.
+
+==================================================
+MANDATORY FIRST STEP — AUDIT EXISTING CODE
+==================================================
+
+Before changing ANYTHING:
+
+Study:
+
+1. Orders Page
+2. Order Details right-side drawer
+3. Complaints Page
+4. Complaint detail drawer
+5. Payments Page
+6. Dashboard
+7. Team/User system
+8. Authentication
+9. Role permissions
+10. Notifications
+11. Cloudinary payment screenshot upload
+12. Supabase tables/schema
+13. Existing API/server actions
+14. Existing status dropdown components
+15. Existing month/year filters
+16. Existing search components
+17. Existing metric cards
+18. Existing modal/drawer components
+
+Especially inspect the screenshots/current implementation style of:
+
+Orders Management
+Complaints Management
+Payment Verification
+
+The new modules MUST visually match these existing modules.
+
+Do not introduce another UI language.
+
+==================================================
+DO NOT MAKE UNRELATED FIXES
+==================================================
+
+If unrelated problems are found during implementation:
+
+DO NOT change them unless they directly prevent this task from working.
+
+Report unrelated issues at the end.
+
+Do not use this task as an excuse to refactor the entire CRM.
+
+==================================================
+PART 1 — NEW CLIENT FEEDBACK MODULE
+==================================================
+
+Add ONE new main navigation item:
+
+Client Feedback
+
+or simply:
+
+Feedback
+
+Prefer:
+
+Feedback
+
+Inside Feedback create two tabs:
+
+REVIEWS
+SUGGESTIONS
+
+Do NOT add separate sidebar items for Reviews and Suggestions unless the existing navigation architecture makes tabs impossible.
+
+The objective is to keep the sidebar clean.
+
+Navigation becomes conceptually:
+
+Dashboard
+Orders
+Complaints
+Feedback
+Payments
+Team
+Analytics
+Settings
+
+==================================================
+PART 2 — REVIEWS DATA MODEL
+==================================================
+
+Create a Client Reviews table/entity following existing database conventions.
+
+IMPORTANT:
+
+A Review represents the overall feedback received from the client for ONE Order.
+
+Do NOT create three duplicate review records just because the same client provided WhatsApp feedback, Facebook review and video feedback.
+
+One Order should normally have one consolidated Review record.
+
+Suggested fields:
+
+id
+
+review_number
+
+order_id
+
+review_for_designer_id
+
+created_by_user_id
+
+rating
+
+feedback_text
+
+whatsapp_feedback_received
+
+facebook_review_received
+
+video_review_received
+
+public_review_link
+
+screenshot_url
+
+marketing_permission
+
+created_at
+
+updated_at
+
+==================================================
+REVIEW NUMBER FORMAT
+==================================================
+
+Use the same philosophy as Complaint IDs.
+
+Format:
+
+REV-2609-001
+
+Meaning:
+
+REV = Review
+26 = 2026
+09 = September
+001 = universal Review sequence
+
+The final number must NEVER reset each month.
+
+Example:
+
+REV-2609-001
+REV-2609-002
+REV-2610-003
+REV-2610-004
+
+If the Complaints module already has a safe database-backed sequence-generation implementation:
+
+REUSE or extend that approach.
+
+Do not generate IDs from visible row count.
+
+Review Number must be unique.
+
+==================================================
+ONE REVIEW PER ORDER
+==================================================
+
+Prefer one consolidated Review record per Order.
+
+If a Review already exists and an employee selects:
+
+Add Review
+
+then open:
+
+Update Review
+
+instead of generating duplicates.
+
+The review may be progressively updated.
+
+Example:
+
+Day 1:
+WhatsApp feedback received.
+
+Later:
+Facebook review received.
+
+Later:
+Video review received.
+
+All should remain part of the SAME Order Review.
+
+==================================================
+REVIEW RATING
+==================================================
+
+Allow:
+
+1
+2
+3
+4
+5
+Not Rated
+
+IMPORTANT:
+
+Do NOT require employees to invent a numerical rating if the client did not provide one.
+
+If client directly gives 5 stars:
+select 5.
+
+If client just says:
+"Excellent service"
+
+but gives no number:
+
+employee may use:
+Not Rated
+
+Average Review Rating metrics MUST exclude Not Rated records.
+
+==================================================
+REVIEW FIELDS
+==================================================
+
+Review Form:
+
+Order
+Auto-selected when opened from Order.
+
+Client
+Auto-derived.
+
+Designer
+Use Designer associated with the Order at review creation.
+
+Store review_for_designer_id so the historical Review remains connected to the Designer who handled the client even if the Order is later reassigned.
+
+Client Rating
+1–5 / Not Rated
+
+Client Feedback
+Large text field.
+
+WhatsApp Feedback Received
+Yes / No
+
+Facebook Review Received
+Yes / No
+
+Video Review Received
+Yes / No
+
+Public Review Link
+Optional.
+
+Marketing Permission
+Yes / No / Not Asked
+
+Screenshot / Evidence
+Optional.
+
+==================================================
+IMPORTANT REVIEW PRINCIPLE
+==================================================
+
+The review must represent CLIENT FEEDBACK.
+
+The employee who adds the Review into CRM is only recording it.
+
+created_by_user_id identifies the staff member who recorded it.
+
+review_for_designer_id identifies which Designer's client experience it belongs to.
+
+These are different concepts.
+
+==================================================
+PART 3 — REVIEW SCREENSHOT STORAGE
+==================================================
+
+REVIEW SCREENSHOTS MUST USE CLOUDINARY.
+
+DO NOT use Supabase Storage.
+
+The CRM already uploads PAYMENT SCREENSHOTS to Cloudinary.
+
+Find that implementation first.
+
+Reuse:
+
+- Cloudinary configuration
+- server upload method
+- environment variables
+- image validation
+- URL handling
+- error handling
+
+Required workflow:
+
+User selects image
+↓
+Backend uploads to Cloudinary
+↓
+Cloudinary stores image
+↓
+Cloudinary returns secure URL
+↓
+ONLY the URL is stored in Supabase
+↓
+CRM renders screenshot from URL
+
+Supabase should store:
+
+screenshot_url
+
+It must NOT store:
+
+Image binary
+Base64
+Blob
+Raw image
+
+==================================================
+REVIEW SCREENSHOT FORM
+==================================================
+
+Allow:
+
+PNG
+JPG
+JPEG
+WEBP
+
+Use the same size restrictions as Payment Screenshots unless there is a technical reason otherwise.
+
+Show:
+
+Selected image
+Preview
+Uploading state
+Upload failure
+Retry option
+
+If screenshot upload fails:
+
+Do not silently create a broken screenshot reference.
+
+If no screenshot is supplied:
+
+Review can still be submitted.
+
+==================================================
+PART 4 — WHO CAN ADD REVIEWS
+==================================================
+
+The following existing CRM roles should be allowed to ADD/UPDATE a Review:
+
+Designer
+Support / Sales
+Admin
+Authorized Management
+
+DO NOT guess role strings.
+
+Inspect the actual role enum/values used in the application.
+
+When opened from Order:
+
+Order is automatically selected.
+
+==================================================
+REVIEW VISIBILITY
+==================================================
+
+ADMIN:
+See all Reviews.
+
+DESIGNER:
+See Reviews related to Orders assigned/attributed to them according to review_for_designer_id.
+
+SUPPORT:
+See Reviews they created and Reviews accessible through Orders they are otherwise authorized to view.
+
+Do not let the Feedback module bypass existing Order permissions.
+
+==================================================
+PART 5 — SUGGESTIONS DATA MODEL
+==================================================
+
+Create a separate Suggestions table/entity.
+
+Suggestions are NOT Reviews.
+
+A client can be satisfied and still give a useful Suggestion.
+
+Example:
+
+Review:
+"Excellent CV and very professional service."
+
+Suggestion:
+"Revision updates could be faster."
+
+These must remain separate records.
+
+Suggested fields:
+
+id
+
+suggestion_number
+
+order_id
+
+related_designer_id
+
+created_by_user_id
+
+category
+
+suggestion_text
+
+status
+
+screenshot_url
+
+admin_notes
+
+reviewed_by_user_id
+
+reviewed_at
+
+created_at
+
+updated_at
+
+==================================================
+SUGGESTION NUMBER
+==================================================
+
+Use:
+
+SUG-2609-001
+
+Same global numbering philosophy.
+
+Example:
+
+SUG-2609-001
+SUG-2609-002
+SUG-2610-003
+
+Number NEVER resets.
+
+==================================================
+MULTIPLE SUGGESTIONS PER ORDER
+==================================================
+
+Unlike Review:
+
+An Order may have MULTIPLE Suggestions.
+
+Do NOT limit Suggestions to one per Order.
+
+==================================================
+SUGGESTION FORM
+==================================================
+
+Fields:
+
+Order
+Auto-filled when opened from Order.
+
+Client
+Derived from Order.
+
+Related Designer
+Derived from Order where applicable.
+
+Category
+
+Options:
+
+Communication
+Document Quality
+Delivery
+Revision Experience
+Production Process
+Sales Experience
+Pricing
+CRM / Technical
+Service Offering
+After-Sales
+Other
+
+Suggestion
+
+Large required textarea.
+
+Screenshot / Evidence
+Optional.
+
+Submit:
+
+Add Suggestion
+
+==================================================
+SUGGESTION STATUS
+==================================================
+
+Suggested statuses:
+
+New
+Under Review
+Accepted
+Implemented
+Rejected
+
+Workflow:
+
+New
+↓
+Under Review
+↓
+Accepted
+↓
+Implemented
+
+OR
+
+Under Review
+↓
+Rejected
+
+Only Admin/authorized Management can change Suggestion status.
+
+Designer and Support may submit Suggestions but cannot approve their own Suggestions as company policy decisions.
+
+==================================================
+SUGGESTION SCREENSHOT
+==================================================
+
+Use CLOUDINARY.
+
+Reuse exactly the same Cloudinary architecture already used by:
+
+Payment Screenshot
+Complaint Screenshot
+Review Screenshot
+
+Supabase stores ONLY:
+
+screenshot_url
+
+Do not create another storage system.
+
+==================================================
+PART 6 — FEEDBACK PAGE UI
+==================================================
+
+Build a dedicated:
+
+Feedback
+
+page.
+
+The UI MUST match Orders and Complaints.
+
+Same:
+
+Page margins
+Header position
+Search style
+Buttons
+Metric cards
+Tables
+Dropdowns
+Filters
+Status badges
+Right drawer
+Spacing
+Fonts
+Responsive behavior
+
+==================================================
+FEEDBACK PAGE HEADER
+==================================================
+
+Title:
+
+Client Feedback
+
+Subtitle:
+
+Track client reviews, testimonials and improvement suggestions.
+
+Top right:
+
+Search
+
+Export PDF if the existing table architecture supports it safely.
+
+New Review
+
+New Suggestion
+
+Use the same button UI as:
+
+Create Order
+New Complaint
+
+==================================================
+FEEDBACK PAGE TABS
+==================================================
+
+Below the header:
+
+Reviews
+Suggestions
+
+Use the same tab design already used on Orders:
+
+Today's Orders
+Monthly Orders
+
+Reuse that style.
+
+==================================================
+PART 7 — REVIEWS TAB METRICS
+==================================================
+
+When Reviews tab is selected show top metric cards:
+
+All Reviews
+
+Average Rating
+
+WhatsApp Feedback
+
+Facebook Reviews
+
+Video Reviews
+
+All metrics should respect selected Month + Year.
+
+Average Rating should ignore Not Rated.
+
+==================================================
+REVIEWS MONTH/YEAR FILTER
+==================================================
+
+Use the same Month + Year dropdown experience already used on Complaints/Orders.
+
+Example:
+
+Year:
+2026
+
+Month:
+September
+
+Filtering must update:
+
+Metrics
+Table
+Search context
+
+==================================================
+REVIEWS TABLE
+==================================================
+
+Columns:
+
+Review ID
+
+Date
+
+Client
+
+Designer
+
+Order ID
+
+Rating
+
+Channels
+
+Added By
+
+For ADMIN:
+Added By visible.
+
+For other roles:
+show according to permissions/UI needs.
+
+Channels should display clean small badges:
+
+WhatsApp
+Facebook
+Video
+
+Only show channels actually received.
+
+==================================================
+REVIEWS SEARCH
+==================================================
+
+Search:
+
+Review ID
+Order ID
+Client
+Designer
+Feedback text where technically practical
+
+==================================================
+PART 8 — SUGGESTIONS TAB METRICS
+==================================================
+
+When Suggestions tab is selected:
+
+Show:
+
+All Suggestions
+
+New
+
+Under Review
+
+Accepted
+
+Implemented
+
+Optionally Rejected can be shown through filtering instead of another card if space is limited.
+
+Match the Orders metric-card design.
+
+==================================================
+SUGGESTIONS TABLE
+==================================================
+
+Columns:
+
+Suggestion ID
+
+Date
+
+Client
+
+Designer
+
+Order ID
+
+Category
+
+Status
+
+Added By
+
+Admin can see all.
+
+Apply role permissions.
+
+==================================================
+PART 9 — FEEDBACK DETAIL DRAWER
+==================================================
+
+DO NOT open Reviews or Suggestions on totally separate full pages.
+
+Use a RIGHT-SIDE DRAWER like:
+
+Order Details
+Complaint Details
+
+Reuse the same drawer width and visual style.
+
+==================================================
+REVIEW DETAIL DRAWER
+==================================================
+
+Show:
+
+Review ID
+
+Date
+
+Client
+
+Order ID
+
+Designer
+
+Rating
+
+Feedback
+
+Channels
+
+WhatsApp Received
+
+Facebook Received
+
+Video Received
+
+Public Review Link
+
+Marketing Permission
+
+Screenshot / Evidence
+
+Added By
+
+Related Order summary
+
+Package
+
+Services
+
+Payment status
+
+==================================================
+SUGGESTION DETAIL DRAWER
+==================================================
+
+Show:
+
+Suggestion ID
+
+Date
+
+Client
+
+Order
+
+Designer
+
+Category
+
+Suggestion
+
+Screenshot
+
+Status
+
+Added By
+
+Admin Notes
+
+Reviewed By
+
+Reviewed Date
+
+Related Order summary
+
+==================================================
+PART 10 — ORDER DETAILS MUST BECOME THE CENTER
+==================================================
+
+The current Order drawer is the most important CRM record.
+
+Improve it carefully WITHOUT destroying the existing layout.
+
+The Order drawer currently contains items such as:
+
+Client Information
+Complaints
+Package & Add-ons
+Assignment
+Payment
+
+Keep those.
+
+But reorganize the Order drawer so everything is easier to understand.
+
+Recommended drawer navigation:
+
+OVERVIEW
+ACTIVITY
+CLIENT EXPERIENCE
+
+Use clean internal tabs under the Order heading if this can be implemented without destabilizing existing Order functionality.
+
+==================================================
+ORDER DRAWER — OVERVIEW TAB
+==================================================
+
+Keep existing information:
+
+Client Information
+
+Package & Add-ons
+
+Assignment
+
+Payment
+
+Order Status
+
+Other existing Order information
+
+DO NOT remove working content.
+
+==================================================
+ORDER DRAWER — CLIENT EXPERIENCE TAB
+==================================================
+
+Create one clean Client Experience area.
+
+Show three sections:
+
+COMPLAINTS
+
+REVIEWS
+
+SUGGESTIONS
+
+==================================================
+COMPLAINTS SECTION
+==================================================
+
+Show:
+
+Complaint count
+
+Existing complaints
+
+Complaint ID
+
+Category
+
+Status
+
+Raise Complaint button where role permits.
+
+Reuse existing complaint functionality.
+
+DO NOT rebuild Complaints.
+
+==================================================
+REVIEWS SECTION
+==================================================
+
+Show:
+
+Review Status
+
+Example:
+
+No Review Added
+
+or:
+
+Review Collected
+
+Rating
+
+WhatsApp
+Facebook
+Video indicators
+
+Review ID
+
+Button:
+
+Add Review
+
+If Review already exists:
+
+View / Update Review
+
+==================================================
+SUGGESTIONS SECTION
+==================================================
+
+Show:
+
+Suggestion count
+
+Recent Suggestions
+
+Suggestion ID
+
+Category
+
+Status
+
+Button:
+
+Add Suggestion
+
+==================================================
+CLIENT EXPERIENCE BUTTONS
+==================================================
+
+Designer
+Support
+Admin
+
+may see appropriate:
+
+Add Review
+
+Add Suggestion
+
+Existing complaint permissions remain unchanged.
+
+==================================================
+PART 11 — ORDER ACTIVITY / HISTORY
+==================================================
+
+THIS IS ONE OF THE MOST IMPORTANT PARTS OF THIS TASK.
+
+Create a clean chronological Order Activity system.
+
+When Admin opens an Order and selects:
+
+ACTIVITY
+
+they should understand the COMPLETE history of that Order.
+
+Example:
+
+Sep 01, 5:16 PM
+Order PX-2609-001 created by Soban Masood.
+
+Sep 01, 5:18 PM
+Muhammad Anas assigned as Designer by Soban Masood.
+
+Sep 01, 5:25 PM
+Advance payment request submitted.
+
+Sep 01, 5:27 PM
+Advance payment approved.
+
+Sep 01, 5:27 PM
+Payment screenshot attached.
+
+Sep 01, 8:40 PM
+Complaint CMP-2609-002 filed.
+
+Sep 01, 9:05 PM
+Complaint CMP-2609-002 marked Valid.
+
+Sep 02, 4:30 PM
+Review REV-2609-001 recorded.
+
+Sep 02, 4:35 PM
+Facebook review received.
+
+Sep 02, 4:42 PM
+Suggestion SUG-2609-001 added.
+
+The system should behave like a TRUE CRM timeline.
+
+==================================================
+PART 12 — ACTIVITY DATA MODEL
+==================================================
+
+First inspect whether there is already an:
+
+Audit Log
+Activity Log
+Order History
+Events table
+
+If it exists:
+
+EXTEND IT.
+
+Do NOT create a duplicate history system.
+
+If no appropriate system exists:
+
+Create an additive table such as:
+
+order_activity
+
+Suggested fields:
+
+id
+
+order_id
+
+actor_user_id
+
+event_type
+
+entity_type
+
+entity_id
+
+description
+
+metadata
+
+created_at
+
+This table is an AUDIT/TIMELINE record.
+
+It is NOT the source of truth for business data.
+
+Example:
+
+Payment amount continues to come from Payment/Order tables.
+
+The activity merely says:
+
+"Advance payment approved."
+
+==================================================
+ACTIVITY EVENT TYPES
+==================================================
+
+Capture future events such as:
+
+ORDER_CREATED
+
+ORDER_STATUS_CHANGED
+
+DESIGNER_ASSIGNED
+
+DESIGNER_REASSIGNED
+
+PAYMENT_REQUESTED
+
+PAYMENT_APPROVED
+
+PAYMENT_REJECTED
+
+PAYMENT_SCREENSHOT_ADDED
+
+COMPLAINT_CREATED
+
+COMPLAINT_MARKED_VALID
+
+COMPLAINT_MARKED_INVALID
+
+COMPLAINT_RESOLVED
+
+ORDER_CANCELED_FROM_COMPLAINT
+
+REFUND_RECORDED
+
+REVIEW_CREATED
+
+REVIEW_UPDATED
+
+FACEBOOK_REVIEW_RECEIVED
+
+VIDEO_REVIEW_RECEIVED
+
+SUGGESTION_CREATED
+
+SUGGESTION_STATUS_CHANGED
+
+and any other important existing order-level actions that can safely be tracked.
+
+==================================================
+IMPORTANT — DO NOT INVENT OLD HISTORY
+==================================================
+
+For existing Orders:
+
+Do not fabricate events that cannot be proven.
+
+If existing records contain:
+
+created_by
+created_at
+payment timestamps
+complaint timestamps
+
+these may be displayed/derived legitimately.
+
+But do not invent:
+
+who assigned a Designer
+
+or
+
+when something happened
+
+if that information does not exist.
+
+Going forward, record all relevant actions properly.
+
+==================================================
+PART 13 — COMPLAINT ANONYMITY IN ACTIVITY HISTORY
+==================================================
+
+VERY IMPORTANT.
+
+Existing Complaint rule:
+
+Designer MUST NOT know who filed the complaint.
+
+Therefore:
+
+ADMIN ACTIVITY VIEW:
+
+"Complaint CMP-2609-002 filed by Soban Masood."
+
+DESIGNER ACTIVITY VIEW:
+
+"Complaint CMP-2609-002 filed."
+
+DO NOT expose complainant through:
+
+Activity metadata
+API response
+Actor ID
+Tooltip
+Screenshot metadata
+Network response
+Drawer
+Notifications
+
+Preserve existing Complaint anonymity.
+
+==================================================
+PART 14 — PAYMENT CONNECTION
+==================================================
+
+Payments must remain connected to Orders.
+
+Inside Order Overview / Activity show:
+
+Total
+
+Advance
+
+Remaining
+
+Payment status
+
+Payment request history
+
+Payment screenshot
+
+Payment approver/requester where existing data supports it.
+
+DO NOT create duplicate payment numbers inside Review/Suggestion tables.
+
+Use the existing Payment data.
+
+==================================================
+PAYMENT SCREENSHOT
+==================================================
+
+Continue using the existing Cloudinary Payment Screenshot system.
+
+Do not change working payment upload architecture.
+
+Clicking payment screenshot inside Order should open clean preview.
+
+==================================================
+PART 15 — TWO-WAY NAVIGATION
+==================================================
+
+Everything should link back to everything appropriately.
+
+Example:
+
+FROM COMPLAINT:
+Click Order ID
+→ Open corresponding Order drawer.
+
+FROM REVIEW:
+Click Order ID
+→ Open Order drawer.
+
+FROM SUGGESTION:
+Click Order ID
+→ Open Order drawer.
+
+FROM PAYMENT:
+Click Order ID
+→ Open Order drawer.
+
+FROM ORDER:
+View:
+Payments
+Complaints
+Review
+Suggestions
+Activity
+
+Do not create dead-end modules.
+
+==================================================
+IMPORTANT ORDER DRAWER REUSE
+==================================================
+
+If OrderDetailsDrawer is already reusable:
+
+Use it across modules.
+
+If it is NOT reusable:
+
+Do not rewrite the working Orders page recklessly.
+
+A safe alternative is:
+
+navigate to:
+
+/orders?order=PX-2609-001
+
+and automatically open the existing Order drawer.
+
+Choose the safest architecture after inspecting current code.
+
+==================================================
+PART 16 — SINGLE SOURCE OF TRUTH
+==================================================
+
+THIS IS STRICT.
+
+ORDER DATA:
+Source = Orders table.
+
+PAYMENT DATA:
+Source = existing Payments/Order payment system.
+
+COMPLAINT:
+Source = Complaints table.
+
+REVIEW:
+Source = Reviews table.
+
+SUGGESTION:
+Source = Suggestions table.
+
+ACTIVITY:
+Source = Activity/Audit system.
+
+Do NOT keep conflicting copies.
+
+Example:
+
+Do not save:
+
+order_total
+
+inside Review.
+
+Instead:
+
+Review → order_id → Order → total.
+
+Do not save:
+
+package_name
+
+inside Suggestion.
+
+Suggestion → order_id → Order → package.
+
+==================================================
+PART 17 — DASHBOARD INTEGRATION
+==================================================
+
+Add Client Experience metrics to existing role dashboards.
+
+DO NOT replace existing metrics.
+
+Create a clean additional section/card row where appropriate.
+
+==================================================
+ADMIN DASHBOARD
+==================================================
+
+Suggested Client Experience metrics:
+
+Reviews This Month
+
+Average Rating
+
+Suggestions This Month
+
+Suggestions Under Review
+
+Valid Complaints
+
+Refund Cases
+
+Use the selected/current month where existing dashboard conventions apply.
+
+==================================================
+DESIGNER DASHBOARD
+==================================================
+
+Designer sees ONLY their relevant data:
+
+Reviews Received
+
+Average Client Rating
+
+Suggestions Related to Their Orders
+
+Valid Complaints
+
+Resolved Complaints
+
+Do not expose other Designers' data.
+
+==================================================
+SUPPORT / SALES DASHBOARD
+==================================================
+
+Support sees their own operational contribution:
+
+Reviews Recorded
+
+Suggestions Recorded
+
+Complaints Filed
+
+Pending Complaint Decisions
+
+Do not expose confidential global employee metrics unless role already has permission.
+
+==================================================
+PART 18 — CLIENT EXPERIENCE SUMMARY ON ORDER
+==================================================
+
+At the top or inside Client Experience tab add a compact summary:
+
+Complaints: 2
+Valid Complaints: 1
+
+Review:
+4/5
+Facebook Review: Yes
+Video Review: No
+
+Suggestions:
+1
+
+This lets management understand the client relationship instantly.
+
+==================================================
+PART 19 — REVIEWS AND SUGGESTIONS PERMISSIONS
+==================================================
+
+Use server-side authorization.
+
+Frontend visibility alone is insufficient.
+
+ADMIN:
+Full access.
+
+DESIGNER:
+Can add Review.
+Can add Suggestion.
+Can see feedback related to their assigned/attributed Orders.
+
+SUPPORT:
+Can add Review.
+Can add Suggestion.
+Can view what existing Order access permits.
+
+Do not allow Feedback page to expose Orders/users that the role could not otherwise access.
+
+==================================================
+PART 20 — EDIT / DELETE RULES
+==================================================
+
+REVIEWS:
+
+Designer/Support:
+May create or update Review where permitted.
+
+Do not casually delete Reviews.
+
+Admin:
+Can correct Review information.
+
+Prefer audit history over destructive deletion.
+
+SUGGESTIONS:
+
+Designer/Support:
+Can create.
+
+Only Admin/Management:
+Can change Suggestion company-decision status.
+
+Do not allow normal users to delete historical Suggestion records.
+
+==================================================
+PART 21 — FEEDBACK ACTIVITY LOG
+==================================================
+
+Whenever Review changes:
+
+Log:
+
+Review created
+
+Rating updated
+
+Facebook Review marked received
+
+Video Review marked received
+
+Marketing permission changed
+
+Whenever Suggestion changes:
+
+Log:
+
+Suggestion created
+
+Marked Under Review
+
+Accepted
+
+Rejected
+
+Implemented
+
+Show these inside Order Activity.
+
+==================================================
+PART 22 — CLOUDINARY COMMON UPLOAD SYSTEM
+==================================================
+
+There should NOT be separate random upload logic for:
+
+Payment screenshot
+
+Complaint screenshot
+
+Review screenshot
+
+Suggestion screenshot
+
+They all use CLOUDINARY.
+
+Supabase stores URL only.
+
+Study existing Payment Screenshot code first.
+
+If safe, create a reusable internal upload helper.
+
+Example conceptual service:
+
+uploadImageToCloudinary(file, folder)
+
+But DO NOT refactor existing Payment code if doing so risks breaking it.
+
+If needed:
+
+leave Payment implementation untouched
+
+and create a safe wrapper using the same proven Cloudinary configuration.
+
+==================================================
+CLOUDINARY FOLDERS
+==================================================
+
+If existing Cloudinary organization allows folders:
+
+payments/
+
+complaints/
+
+reviews/
+
+suggestions/
+
+But follow existing conventions.
+
+Do not change Cloudinary account/environment settings.
+
+==================================================
+PART 23 — SEARCH / FILTER CONSISTENCY
+==================================================
+
+Orders
+Complaints
+Feedback
+
+should use consistent UI positioning.
+
+Same:
+
+Search height
+Search icon
+Dropdown size
+Border styling
+Month
+Year
+Table spacing
+
+Do not make every module appear designed by a different developer.
+
+==================================================
+PART 24 — DATE FILTER CONSISTENCY
+==================================================
+
+Use the same Month/Year filtering pattern.
+
+Feedback Reviews:
+filter by Review created date.
+
+Suggestions:
+filter by Suggestion created date.
+
+Complaints:
+preserve existing complaint filter behavior.
+
+Orders:
+preserve existing Order filtering.
+
+Do not globally change old date filtering unless required.
+
+==================================================
+PART 25 — RIGHT DRAWER CONSISTENCY
+==================================================
+
+Use consistent side drawers for:
+
+Order Details
+
+Complaint Details
+
+Review Details
+
+Suggestion Details
+
+Same:
+
+Width
+Overlay
+X button
+Border
+Spacing
+Headers
+Cards
+Scrolling
+Mobile response
+
+This should feel like one CRM.
+
+==================================================
+PART 26 — RESPONSIVE DESIGN
+==================================================
+
+Desktop:
+Right drawer approximately current width.
+
+Tablet:
+Larger responsive width.
+
+Mobile:
+Full-width drawer where needed.
+
+Feedback tables should follow the same responsive pattern as Orders/Complaints.
+
+==================================================
+PART 27 — ERROR HANDLING
+==================================================
+
+Handle:
+
+Review already exists
+
+Order missing
+
+Designer missing
+
+Unauthorized user
+
+Cloudinary failure
+
+Database failure
+
+Invalid Review ID
+
+Invalid Suggestion ID
+
+Screenshot URL missing
+
+Network failure
+
+Duplicate button clicks
+
+Suggestion invalid status transition
+
+Do not expose raw SQL/database/server errors.
+
+==================================================
+PART 28 — NOTIFICATIONS
+==================================================
+
+Use the EXISTING notification system.
+
+Do not build another one.
+
+Useful notifications:
+
+When a Review is recorded:
+Notify attributed Designer if another employee entered it.
+
+Example:
+
+"New client feedback has been recorded for Order PX-2609-001."
+
+When a Suggestion is recorded:
+Notify assigned Designer only if operationally useful.
+
+Avoid notification spam.
+
+Admin does not need a notification for every minor Review if dashboards already provide visibility.
+
+==================================================
+PART 29 — NO DUPLICATE NOTIFICATIONS
+==================================================
+
+Before sending:
+
+inspect existing notification triggers.
+
+Ensure one action creates one notification.
+
+Do not recreate the duplicate-notification issue elsewhere.
+
+==================================================
+PART 30 — CLIENT DATA CONSISTENCY
+==================================================
+
+If client name changes on Order:
+
+Review page should reflect current client details through relationship.
+
+Suggestion should reflect current Order context.
+
+Complaint should remain connected.
+
+Do not manually update five different tables just because client data changed.
+
+==================================================
+PART 31 — DESIGNER HISTORY
+==================================================
+
+Store Designer attribution appropriately.
+
+Order's current assigned Designer can change.
+
+Therefore:
+
+Review should preserve:
+
+review_for_designer_id
+
+Complaint already preserves:
+
+complaint_against_user_id
+
+Suggestion may store:
+
+related_designer_id
+
+if the Suggestion relates to the Designer experience.
+
+This protects historical reporting.
+
+==================================================
+PART 32 — ORDER ASSIGNMENT HISTORY
+==================================================
+
+Whenever Designer assignment changes going forward:
+
+Record:
+
+Previous Designer
+
+New Designer
+
+Changed By
+
+Timestamp
+
+in the Activity/Audit system.
+
+Example:
+
+"Muhammad Anas replaced Muhammad Hamza as assigned Designer."
+
+Do not overwrite history silently.
+
+==================================================
+PART 33 — ORDER CREATION HISTORY
+==================================================
+
+Activity should show:
+
+Who created Order
+
+When
+
+Initial Designer if available
+
+Initial package
+
+But only use actual stored information.
+
+==================================================
+PART 34 — PAYMENT HISTORY
+==================================================
+
+Activity should show existing payment actions where data supports it:
+
+Advance requested
+
+Advance approved
+
+Remaining payment requested
+
+Remaining payment approved
+
+Payment rejected
+
+Screenshot uploaded
+
+Do not duplicate payment rows.
+
+==================================================
+PART 35 — COMPLAINT HISTORY
+==================================================
+
+Inside Client Experience:
+
+show complaint cards.
+
+Inside Activity:
+
+show chronological complaint actions.
+
+Example:
+
+Complaint CMP-2609-003 filed.
+
+Complaint marked Invalid.
+
+Do not display only current status and lose historical transitions.
+
+==================================================
+PART 36 — REVIEW HISTORY
+==================================================
+
+Example:
+
+Review created.
+
+WhatsApp feedback recorded.
+
+Facebook review added.
+
+Video testimonial added.
+
+This should appear chronologically.
+
+==================================================
+PART 37 — SUGGESTION HISTORY
+==================================================
+
+Example:
+
+Suggestion SUG-2609-001 added.
+
+Suggestion moved to Under Review.
+
+Suggestion Accepted.
+
+Suggestion Implemented.
+
+==================================================
+PART 38 — FEEDBACK PAGE EXPORT
+==================================================
+
+If current Orders/Complaints support Export PDF cleanly:
+
+Reviews and Suggestions may support export.
+
+Do not spend excessive development effort on export before core functionality works.
+
+If implemented:
+
+export current filtered Month/Year and tab data.
+
+==================================================
+PART 39 — ANALYTICS FUTURE COMPATIBILITY
+==================================================
+
+Structure Reviews/Suggestions so later Analytics can calculate:
+
+Reviews by Designer
+
+Average Rating by Designer
+
+Facebook Review conversion
+
+Video Review conversion
+
+Review rate per completed Order
+
+Valid complaints per Designer
+
+Suggestions by category
+
+Top recurring Suggestion themes
+
+Client satisfaction trends
+
+DO NOT build advanced analytics in this task.
+
+Only ensure data is correctly structured.
+
+==================================================
+PART 40 — DO NOT BUILD DESIGNER SCORE YET
+==================================================
+
+Do NOT implement the final Designer Experience Score now.
+
+The new data should make it possible later.
+
+Future metrics will use:
+
+Review rating
+
+Valid complaints
+
+QC quality
+
+Response time
+
+On-time delivery
+
+Review conversion
+
+etc.
+
+But this task is about creating reliable connected data first.
+
+==================================================
+PART 41 — IMPORTANT COMPLETED ORDER EXPERIENCE
+==================================================
+
+An Admin should be able to open ONE Order and understand:
+
+Who created it?
+
+When was it created?
+
+Who was assigned?
+
+Was Designer changed?
+
+What package was purchased?
+
+Which services?
+
+How much was paid?
+
+What remains?
+
+What Payment Screenshot exists?
+
+Were Complaints filed?
+
+Who filed them? — Admin only.
+
+Were Complaints Valid?
+
+Were they Resolved?
+
+Did the client give a Review?
+
+What was their rating?
+
+Did they leave Facebook Review?
+
+Did they give Video Review?
+
+Did they provide Suggestions?
+
+What was done with those Suggestions?
+
+This information must no longer require searching across multiple unrelated pages.
+
+==================================================
+PART 42 — EACH MODULE STILL REMAINS USEFUL
+==================================================
+
+Interconnected does NOT mean deleting dedicated pages.
+
+Orders Page:
+Order management.
+
+Complaints Page:
+Complaint management.
+
+Payments Page:
+Payment verification.
+
+Feedback Page:
+Reviews and Suggestions.
+
+Dashboard:
+High-level metrics.
+
+Order Drawer:
+One-client / one-order full picture.
+
+Activity:
+Chronological story.
+
+Each page has its own job, but all records link together.
+
+==================================================
+PART 43 — CROSS-MODULE UI
+==================================================
+
+Where practical use clickable IDs.
+
+Complaint:
+CMP-2609-003
+
+Review:
+REV-2609-001
+
+Suggestion:
+SUG-2609-001
+
+Order:
+PX-2609-001
+
+Clicking entity should open the relevant drawer.
+
+Clicking Order ID should return/open corresponding Order.
+
+Maintain user context.
+
+==================================================
+PART 44 — DO NOT OPEN RANDOM NEW PAGES
+==================================================
+
+Follow current CRM behavior.
+
+Prefer:
+
+Right-side details drawer
+
+rather than:
+
+Full page navigation
+
+for individual entities.
+
+If URL state is useful, use routes/query parameters while retaining drawer UX.
+
+==================================================
+PART 45 — TEST EXISTING COMPLAINTS
+==================================================
+
+After changes verify:
+
+Existing Complaint IDs work.
+
+Complaints page works.
+
+Complaint filters work.
+
+Complaint drawer works.
+
+Complaint anonymity remains intact.
+
+Admin sees Placed By.
+
+Designer does NOT.
+
+Complaint screenshot still loads from Cloudinary.
+
+Complaint status transitions remain correct.
+
+Do NOT regress Complaints while integrating Client Experience.
+
+==================================================
+PART 46 — TEST EXISTING PAYMENTS
+==================================================
+
+Verify:
+
+Payment requests
+
+Approval
+
+Rejection
+
+Payment Screenshot
+
+Cloudinary upload
+
+Amounts
+
+Filters
+
+Payment page
+
+All remain functional.
+
+==================================================
+PART 47 — TEST EXISTING ORDERS
+==================================================
+
+Verify:
+
+Create Order
+
+Edit Order
+
+Assign Designer
+
+Change Status
+
+Advance Payment
+
+Remaining Payment
+
+Order filters
+
+Search
+
+Order drawer
+
+Export
+
+Package & Add-ons
+
+All remain functional.
+
+==================================================
+PART 48 — TEST REVIEW CREATION
+==================================================
+
+Test:
+
+Designer adds Review.
+
+Support adds Review.
+
+Admin adds Review.
+
+Correct Order connected.
+
+Correct Designer attributed.
+
+Cloudinary screenshot works.
+
+Supabase contains URL only.
+
+Activity event created.
+
+Dashboard metrics update.
+
+Feedback page updates.
+
+Order Client Experience updates.
+
+==================================================
+PART 49 — TEST REVIEW UPDATE
+==================================================
+
+Create Review with WhatsApp only.
+
+Later update:
+
+Facebook = Yes.
+
+Expected:
+
+NO duplicate Review.
+
+Existing Review updated.
+
+Activity logs change.
+
+Facebook metric increases.
+
+==================================================
+PART 50 — TEST SUGGESTION
+==================================================
+
+Create Suggestion.
+
+Expected:
+
+Suggestion connected to Order.
+
+Screenshot uploads.
+
+Activity generated.
+
+Feedback page updates.
+
+Order drawer shows Suggestion.
+
+Admin can move:
+
+New → Under Review → Accepted → Implemented.
+
+==================================================
+PART 51 — TEST ORDER HISTORY
+==================================================
+
+Perform multiple actions on one test Order:
+
+Create Order
+
+Assign Designer
+
+Approve Payment
+
+Create Complaint
+
+Mark Valid
+
+Add Review
+
+Add Suggestion
+
+Then open:
+
+Order → Activity
+
+Expected:
+
+All actions appear chronologically.
+
+No duplicated events.
+
+Correct timestamps.
+
+Correct actors.
+
+Complaint filer hidden from Designer.
+
+==================================================
+PART 52 — DATA SECURITY
+==================================================
+
+Use backend/server/database authorization.
+
+Do not rely only on hidden UI.
+
+Ensure:
+
+Designer cannot fetch unauthorized Feedback.
+
+Support cannot fetch unauthorized Orders through Feedback.
+
+Complaint identity remains protected.
+
+Cloudinary secrets remain server-side.
+
+Supabase service keys remain server-side.
+
+==================================================
+PART 53 — PERFORMANCE
+==================================================
+
+Do not load every related record for every Order in list view.
+
+Orders table should remain fast.
+
+Load detailed:
+
+Activity
+Complaints
+Reviews
+Suggestions
+Payments
+
+when Order drawer is opened.
+
+Use efficient indexes.
+
+Suggested indexes where appropriate:
+
+reviews.order_id
+
+reviews.review_for_designer_id
+
+reviews.created_at
+
+suggestions.order_id
+
+suggestions.related_designer_id
+
+suggestions.status
+
+suggestions.created_at
+
+order_activity.order_id
+
+order_activity.created_at
+
+Do not duplicate indexes if already present.
+
+==================================================
+PART 54 — DATABASE MIGRATIONS
+==================================================
+
+All schema changes must be additive.
+
+DO NOT:
+
+reset Supabase
+
+drop existing tables
+
+delete existing data
+
+rename working Order fields
+
+change Payment schema unnecessarily
+
+destroy Complaint records
+
+Use safe migrations.
+
+==================================================
+PART 55 — FINAL UI QUALITY CHECK
+==================================================
+
+After implementation compare:
+
+Orders
+Complaints
+Feedback
+Payments
+Dashboard
+
+They must appear to belong to the same application.
+
+Standardize only where safe:
+
+Table padding
+Headers
+Metric cards
+Search field
+Filter dropdown
+Status chips
+Drawer cards
+Button style
+Empty states
+
+Do not globally redesign the whole application.
+
+==================================================
+PART 56 — EXPECTED FINAL ORDER DRAWER
+==================================================
+
+Conceptually:
+
+---------------------------------
+ORDER DETAILS
+
+PX-2609-001
+Status
+Created Date
+
+[ Overview ] [ Activity ] [ Client Experience ]
+
+OVERVIEW
+
+Client Information
+
+Package & Add-ons
+
+Assignment
+
+Payment
+
+Other Existing Order Details
+
+
+ACTIVITY
+
+Chronological History
+
+
+CLIENT EXPERIENCE
+
+Complaints
+2
+
+CMP-2609-002 — Valid
+CMP-2609-003 — Invalid
+
+[Raise Complaint]
+
+
+Client Review
+
+REV-2609-001
+
+Rating: 5/5
+
+WhatsApp: Yes
+Facebook: Yes
+Video: No
+
+[View / Update Review]
+
+
+Suggestions
+1
+
+SUG-2609-001
+Delivery
+Under Review
+
+[Add Suggestion]
+---------------------------------
+
+Use actual CRM design, not this text layout literally.
+
+==================================================
+PART 57 — EXPECTED FEEDBACK PAGE
+==================================================
+
+Client Feedback
+
+Search                        New Review
+                              New Suggestion
+
+[ Reviews ] [ Suggestions ]
+
+
+REVIEWS
+
+All Reviews
+Average Rating
+WhatsApp
+Facebook
+Video
+
+Year   Month
+
+Review ID | Date | Client | Designer | Order | Rating | Channels
+
+
+SUGGESTIONS
+
+All Suggestions
+New
+Under Review
+Accepted
+Implemented
+
+Year   Month
+
+Suggestion ID | Date | Client | Designer | Order | Category | Status
+==================================================
+PART 58 — FINAL IMPLEMENTATION PRINCIPLE
+==================================================
+
+DO NOT MAKE THE CRM MORE COMPLICATED.
+
+Make the DATA more connected.
+
+Every page should answer a specific question.
+
+Dashboard:
+How is the business performing?
+
+Orders:
+What is happening with client Orders?
+
+Payments:
+What payments require action?
+
+Complaints:
+What problems require management?
+
+Feedback:
+What are clients saying?
+
+Order Activity:
+What exactly happened with this client from start to finish?
+
+==================================================
+PART 59 — FINAL ACCEPTANCE TEST
+==================================================
+
+The task is successful only if:
+
+1. Review can be created from Order.
+2. Suggestion can be created from Order.
+3. Review screenshot uploads to Cloudinary.
+4. Suggestion screenshot uploads to Cloudinary.
+5. Supabase stores URLs only.
+6. Review appears on Feedback page.
+7. Suggestion appears on Feedback page.
+8. Both appear inside related Order.
+9. Both appear inside Order Activity.
+10. Complaint appears inside related Order.
+11. Payment appears inside related Order.
+12. Payment Screenshot can be viewed.
+13. Order creator is visible where existing data supports it.
+14. Designer assignment is visible.
+15. New Designer assignment changes are historically logged.
+16. Complaint history appears.
+17. Review history appears.
+18. Suggestion history appears.
+19. Admin sees full information.
+20. Designer sees only authorized information.
+21. Complaint filer remains anonymous to Designer.
+22. Existing Orders continue working.
+23. Existing Payments continue working.
+24. Existing Complaints continue working.
+25. Dashboard remains functional.
+26. Production build passes.
+27. No console errors.
+28. No duplicate notifications.
+29. No duplicate Activity events.
+30. Existing data remains intact.
+
+==================================================
+PART 60 — FINAL REPORT REQUIRED
+==================================================
+
+After implementation provide a report containing:
+
+DATABASE
+- New tables
+- New columns
+- New indexes
+- Migrations
+
+REVIEWS
+- Form
+- Permissions
+- Screenshot handling
+- Metrics
+- Page
+
+SUGGESTIONS
+- Form
+- Workflow
+- Permissions
+- Metrics
+- Page
+
+ORDERS
+- Drawer changes
+- Client Experience
+- Activity
+
+CLOUDINARY
+- How existing upload architecture was reused
+
+ACTIVITY
+- Events implemented
+
+DASHBOARD
+- Role-specific metrics added
+
+SECURITY
+- Authorization rules
+
+REGRESSION TESTING
+- Orders
+- Payments
+- Complaints
+- Notifications
+- Authentication
+
+Explicitly confirm:
+
+"Existing CRM data was preserved."
+
+"Existing Orders functionality was preserved."
+
+"Existing Payments functionality was preserved."
+
+"Existing Complaints functionality was preserved."
+
+"Complaint anonymity was preserved."
+
+"No unrelated module was intentionally redesigned or removed."
+
+==================================================
+FINAL WARNING
+==================================================
+
+DO NOT blindly rewrite shared components.
+
+DO NOT replace working OrderDetails code with newly generated simplified code.
+
+DO NOT change existing Supabase URL or credentials.
+
+DO NOT replace Cloudinary.
+
+DO NOT create Supabase Storage buckets for screenshots.
+
+DO NOT store image binaries inside Supabase.
+
+DO NOT duplicate existing Payment data.
+
+DO NOT duplicate Order data.
+
+DO NOT create separate client records for Reviews/Suggestions.
+
+DO NOT create duplicate Review records for one Order.
+
+DO NOT expose complaint creator to Designers.
+
+DO NOT delete existing complaint/payment/order records.
+
+DO NOT stop after writing code.
+
+Run the project, inspect console/server logs, test the flows above, and fix all errors created by this implementation.
+
+The final result must feel like ONE connected Pixely Careers CRM rather than independent Orders, Payments, Complaints and Feedback applications.

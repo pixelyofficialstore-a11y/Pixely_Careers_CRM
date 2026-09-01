@@ -530,6 +530,10 @@ export async function registerRoutes(
           createdById: user.id,
           status: "new",
         }, services || []);
+        await storage.createActivityLog({ orderId: order.id, actorId: user.id, activityType: "order_created", newValue: "new" });
+        if (intendedDesignerId) {
+          await storage.createActivityLog({ orderId: order.id, actorId: user.id, activityType: "assignment", newValue: String(intendedDesignerId) });
+        }
 
         // Notify all OTHER admins (not the one who placed it)
         const admins = await storage.getAdmins();
@@ -572,6 +576,7 @@ export async function registerRoutes(
         createdById: user.id,
         status: "pending_payment",
       }, services || []);
+      await storage.createActivityLog({ orderId: order.id, actorId: user.id, activityType: "order_created", newValue: "pending_payment" });
 
       // Notify admins of a new payment request (not "order placed" — no order exists yet)
       const admins = await storage.getAdmins();
@@ -625,6 +630,164 @@ export async function registerRoutes(
     }
     const complaints = await storage.getComplaints(user.role, user.id, { orderId });
     res.json(complaints);
+  });
+
+  const canAccessOrder = async (user: User, orderId: number) => {
+    const order = await storage.getOrder(orderId);
+    if (!order) return undefined;
+    if (user.role === "designer" && order.assignedToId !== user.id) return null;
+    return order;
+  };
+  const feedbackProjection = async (items: any[], kind: "review" | "suggestion") => {
+    const [allUsers, allOrders] = await Promise.all([storage.getUsers(), Promise.all(items.map(item => storage.getOrder(item.orderId)))]);
+    const userById = new Map(allUsers.map(person => [person.id, person]));
+    return items.map((item, index) => {
+      const order = allOrders[index];
+      const summary = (id: number | null | undefined) => id ? userById.get(id) || null : null;
+      return kind === "review" ? { ...item, orderNumber: order?.orderNumber || null, clientName: order?.clientName || "", order: order ? { packageType: order.packageType, services: order.services, paymentStatus: order.paymentStatus } : undefined, reviewForDesigner: summary(item.reviewForDesignerId), createdBy: summary(item.createdById) } :
+        { ...item, orderNumber: order?.orderNumber || null, clientName: order?.clientName || "", order: order ? { packageType: order.packageType, services: order.services } : undefined, relatedDesigner: summary(item.relatedDesignerId), createdBy: summary(item.createdById), reviewedBy: summary(item.reviewedByUserId) };
+    });
+  };
+  const feedbackFilters = (req: Request) => ({
+    search: typeof req.query.search === "string" ? req.query.search.toLowerCase() : "",
+    month: typeof req.query.month === "string" ? Number(req.query.month) : undefined,
+    year: typeof req.query.year === "string" ? Number(req.query.year) : undefined,
+    designerId: typeof req.query.designerId === "string" ? Number(req.query.designerId) : undefined,
+    status: typeof req.query.status === "string" ? req.query.status : undefined,
+  });
+  const filterFeedback = (items: any[], filters: ReturnType<typeof feedbackFilters>, kind: "review" | "suggestion") => items.filter(item => {
+    const created = item.createdAt ? new Date(item.createdAt) : null;
+    if (filters.month && created?.getMonth() !== filters.month - 1) return false;
+    if (filters.year && created?.getFullYear() !== filters.year) return false;
+    if (filters.designerId && (kind === "review" ? item.reviewForDesignerId : item.relatedDesignerId) !== filters.designerId) return false;
+    if (filters.status && kind === "suggestion" && item.status !== filters.status) return false;
+    return true;
+  });
+
+  app.get("/api/orders/:id/activity", requireAuth, async (req, res) => {
+    const orderId = Number(req.params.id);
+    if (!Number.isInteger(orderId) || orderId <= 0) return res.status(400).json({ message: "Invalid order id" });
+    const user = req.user as User;
+    const order = await canAccessOrder(user, orderId);
+    if (!order) return res.sendStatus(order === null ? 403 : 404);
+    const logs = await storage.getOrderActivity(orderId);
+    // Complaint activity must never reveal a filer to the designer it concerns.
+    res.json(logs.map(log => user.role === "designer" && log.activityType.startsWith("complaint_")
+      ? { ...log, actor: null } : log));
+  });
+
+  const feedbackUpload = multer({
+    storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => cb(null, ["image/png", "image/jpeg", "image/webp"].includes(file.mimetype)),
+  }).single("screenshot");
+  app.post("/api/feedback/upload", requireRole(["admin", "support", "designer"]), (req, res) => {
+    feedbackUpload(req, res, async err => {
+      if (err) return res.status(400).json({ message: "Invalid image upload." });
+      if (!req.file) return res.status(400).json({ message: "An image is required." });
+      if (!isCloudinaryConfigured()) return res.status(503).json({ message: "Feedback uploads require Cloudinary configuration." });
+      try {
+        const screenshotUrl = await uploadToCloudinary(req.file.buffer, req.body.folder === "suggestions" ? "pixelcrm/suggestions" : "pixelcrm/reviews");
+        return res.json({ screenshotUrl });
+      } catch { return res.status(502).json({ message: "Unable to upload feedback image." }); }
+    });
+  });
+
+  app.get(api.feedback.reviews.list.path, requireAuth, async (req, res) => {
+    const user = req.user as User;
+    const orderId = typeof req.query.orderId === "string" && /^\d+$/.test(req.query.orderId) ? Number(req.query.orderId) : undefined;
+    const rows = filterFeedback(await storage.getClientReviews(user.role, user.id, orderId), feedbackFilters(req), "review");
+    const projected = await feedbackProjection(rows, "review");
+    const search = feedbackFilters(req).search;
+    res.json(search ? projected.filter((r: any) => [r.reviewNumber, r.clientName, r.feedbackText, r.orderNumber, r.reviewForDesigner?.name].some(v => String(v || "").toLowerCase().includes(search))) : projected);
+  });
+  app.get("/api/orders/:id/client-reviews", requireAuth, async (req, res) => {
+    const orderId = Number(req.params.id); const user = req.user as User;
+    const order = await canAccessOrder(user, orderId);
+    if (!order) return res.sendStatus(order === null ? 403 : 404);
+    res.json(await feedbackProjection(await storage.getClientReviews(user.role, user.id, orderId), "review"));
+  });
+  app.post(api.feedback.reviews.create.path, requireAuth, async (req, res) => {
+    try {
+      const input = api.feedback.reviews.create.input.parse(req.body);
+      const user = req.user as User; const order = await canAccessOrder(user, input.orderId);
+      if (!order) return res.sendStatus(order === null ? 403 : 404);
+      if (input.screenshotUrl && !isCloudinaryUrl(input.screenshotUrl)) return res.status(400).json({ message: "Screenshot must be an HTTPS Cloudinary URL." });
+      if (await storage.getClientReviewByOrder(input.orderId)) return res.status(409).json({ message: "This order already has a client review." });
+      const review = await storage.createClientReview({ ...input, reviewForDesignerId: order.assignedToId ?? null, createdById: user.id });
+      await storage.createActivityLog({ orderId: input.orderId, actorId: user.id, activityType: "review_created", newValue: review.reviewNumber, details: { reviewId: review.id } });
+      res.status(201).json((await feedbackProjection([review], "review"))[0]);
+    } catch (err) { if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message || "Invalid review." }); return res.status(500).json({ message: "Unable to create client review." }); }
+  });
+  app.patch(api.feedback.reviews.update.path, requireAuth, async (req, res) => {
+    try {
+      const input = api.feedback.reviews.update.input.parse(req.body); const id = Number(req.params.id);
+      const existing = (await storage.getClientReviews("admin", 0)).find(row => row.id === id);
+      if (!existing) return res.sendStatus(404);
+      const user = req.user as User; const order = await canAccessOrder(user, existing.orderId);
+      if (!order) return res.sendStatus(order === null ? 403 : 404);
+      if (input.screenshotUrl && !isCloudinaryUrl(input.screenshotUrl)) return res.status(400).json({ message: "Screenshot must be an HTTPS Cloudinary URL." });
+      const review = await storage.updateClientReview(id, input);
+      await storage.createActivityLog({ orderId: existing.orderId, actorId: user.id, activityType: "review_updated", details: { reviewId: id } });
+      for (const [field, label] of [["whatsappFeedbackReceived", "whatsapp"], ["facebookReviewReceived", "facebook"], ["videoReviewReceived", "video"]] as const) {
+        if (input[field] === true && existing[field] === false) {
+          await storage.createActivityLog({ orderId: existing.orderId, actorId: user.id, activityType: "review_updated", newValue: label, details: { reviewId: id, channelReceived: label } });
+        }
+      }
+      res.json((await feedbackProjection([review], "review"))[0]);
+    } catch (err) { if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid review." }); return res.status(500).json({ message: "Unable to update client review." }); }
+  });
+  app.get(api.feedback.suggestions.list.path, requireAuth, async (req, res) => {
+    const user = req.user as User; const orderId = typeof req.query.orderId === "string" && /^\d+$/.test(req.query.orderId) ? Number(req.query.orderId) : undefined;
+    const rows = filterFeedback(await storage.getClientSuggestions(user.role, user.id, orderId), feedbackFilters(req), "suggestion");
+    const projected = await feedbackProjection(rows, "suggestion");
+    const search = feedbackFilters(req).search;
+    res.json(search ? projected.filter((r: any) => [r.suggestionNumber, r.clientName, r.suggestionText, r.orderNumber, r.relatedDesigner?.name].some(v => String(v || "").toLowerCase().includes(search))) : projected);
+  });
+  app.get("/api/orders/:id/client-suggestions", requireAuth, async (req, res) => {
+    const orderId = Number(req.params.id); const user = req.user as User;
+    const order = await canAccessOrder(user, orderId);
+    if (!order) return res.sendStatus(order === null ? 403 : 404);
+    res.json(await feedbackProjection(await storage.getClientSuggestions(user.role, user.id, orderId), "suggestion"));
+  });
+  app.get("/api/feedback/stats", requireAuth, async (req, res) => {
+    const user = req.user as User;
+    const [reviewRows, suggestionRows] = await Promise.all([
+      storage.getClientReviews(user.role, user.id),
+      storage.getClientSuggestions(user.role, user.id),
+    ]);
+    const filters = feedbackFilters(req);
+    const visibleReviews = user.role === "support" ? reviewRows.filter(review => review.createdById === user.id) : reviewRows;
+    const visibleSuggestions = user.role === "support" ? suggestionRows.filter(suggestion => suggestion.createdById === user.id) : suggestionRows;
+    const reviews = filterFeedback(visibleReviews, filters, "review");
+    const suggestions = filterFeedback(visibleSuggestions, filters, "suggestion");
+    const rated = reviews.filter(review => review.rating !== null);
+    res.json({
+      reviews: { all: reviews.length, averageRating: rated.length ? rated.reduce((sum, review) => sum + (review.rating || 0), 0) / rated.length : null, whatsapp: reviews.filter(r => r.whatsappFeedbackReceived).length, facebook: reviews.filter(r => r.facebookReviewReceived).length, video: reviews.filter(r => r.videoReviewReceived).length },
+      suggestions: { all: suggestions.length, new: suggestions.filter(s => s.status === "new").length, underReview: suggestions.filter(s => s.status === "under_review").length, accepted: suggestions.filter(s => s.status === "accepted").length, implemented: suggestions.filter(s => s.status === "implemented").length, rejected: suggestions.filter(s => s.status === "rejected").length },
+    });
+  });
+  app.post(api.feedback.suggestions.create.path, requireAuth, async (req, res) => {
+    try {
+      const input = api.feedback.suggestions.create.input.parse(req.body); const user = req.user as User; const order = await canAccessOrder(user, input.orderId);
+      if (!order) return res.sendStatus(order === null ? 403 : 404);
+      if (input.screenshotUrl && !isCloudinaryUrl(input.screenshotUrl)) return res.status(400).json({ message: "Screenshot must be an HTTPS Cloudinary URL." });
+      const suggestion = await storage.createClientSuggestion({ ...input, relatedDesignerId: order.assignedToId ?? null, createdById: user.id, reviewedByUserId: null, reviewedAt: null, adminNotes: null });
+      await storage.createActivityLog({ orderId: input.orderId, actorId: user.id, activityType: "suggestion_created", newValue: suggestion.suggestionNumber, details: { suggestionId: suggestion.id } });
+      res.status(201).json((await feedbackProjection([suggestion], "suggestion"))[0]);
+    } catch (err) { if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid suggestion." }); return res.status(500).json({ message: "Unable to create client suggestion." }); }
+  });
+  app.patch(api.feedback.suggestions.update.path, requireAuth, async (req, res) => {
+    try {
+      const input = api.feedback.suggestions.update.input.parse(req.body); const id = Number(req.params.id); const existing = await storage.getClientSuggestion(id);
+      if (!existing) return res.sendStatus(404);
+      const user = req.user as User; const order = await canAccessOrder(user, existing.orderId);
+      if (!order) return res.sendStatus(order === null ? 403 : 404);
+      if ((input.status !== undefined || input.adminNotes !== undefined) && user.role !== "admin") return res.status(403).json({ message: "Only admins can review suggestions." });
+      if (input.status !== undefined && !({ new: ["under_review"], under_review: ["accepted", "rejected"], accepted: ["implemented"] } as Record<string, string[]>)[existing.status]?.includes(input.status)) return res.status(400).json({ message: "Invalid suggestion status transition." });
+      const suggestion = await storage.updateClientSuggestion(id, { ...input, reviewedByUserId: user.id, reviewedAt: new Date() });
+      await storage.createActivityLog({ orderId: existing.orderId, actorId: user.id, activityType: input.status !== undefined && input.status !== existing.status ? "suggestion_status" : "suggestion_updated", previousValue: input.status !== undefined ? existing.status : null, newValue: input.status, details: { suggestionId: id } });
+      res.json((await feedbackProjection([suggestion], "suggestion"))[0]);
+    } catch (err) { if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid suggestion." }); return res.status(500).json({ message: "Unable to update client suggestion." }); }
   });
 
   app.get(api.complaints.list.path, requireAuth, async (req, res) => {
@@ -1043,6 +1206,16 @@ export async function registerRoutes(
     }
 
     const updatedOrder = await storage.updateOrder(orderId, updates);
+    if ("assignedToId" in updates && updates.assignedToId !== oldAssignedToId) {
+      await storage.createActivityLog({
+        orderId, actorId: user.id, activityType: "assignment",
+        previousValue: oldAssignedToId?.toString() ?? null,
+        newValue: updates.assignedToId?.toString() ?? null,
+      });
+    }
+    if (updates.status && updates.status !== existingOrder.status) {
+      await storage.createActivityLog({ orderId, actorId: user.id, activityType: "status_change", previousValue: existingOrder.status, newValue: updates.status });
+    }
 
     // Only admins can replace an order's services (add / remove / edit quantity & instructions).
     if (incomingServices && user.role === 'admin') {
@@ -1357,6 +1530,11 @@ export async function registerRoutes(
         submittedById: user.id,
         status: "pending_confirmation",
       });
+      await storage.createActivityLog({
+        orderId: order.id, actorId: user.id, activityType: "payment_change",
+        newValue: "pending_confirmation",
+        details: { paymentVerificationId: verification.id, paymentType, amount: Number(amount) },
+      });
 
       // Only send screenshot notification for EXISTING approved orders (remaining payments).
       // For initial pending_payment orders, the order creation already notified all admins.
@@ -1402,6 +1580,11 @@ export async function registerRoutes(
       reviewedById: user.id,
       reviewedAt: new Date(),
       notes,
+    });
+    await storage.createActivityLog({
+      orderId: verification.orderId, actorId: user.id, activityType: "payment_change",
+      previousValue: "pending_confirmation", newValue: "approved",
+      details: { paymentVerificationId: verificationId, paymentType: verification.paymentType, amount: verification.amount },
     });
     
     const order = await storage.getOrder(verification.orderId);

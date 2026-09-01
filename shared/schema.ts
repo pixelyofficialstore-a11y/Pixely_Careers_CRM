@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -46,6 +46,7 @@ export const paymentTypes = ["advance", "full", "remaining"] as const;
 export const advancePaymentStatuses = ["pending", "approved", "disapproved"] as const;
 export const clientTypes = ["national", "international"] as const;
 export const activityTypes = [
+  "order_created",
   "status_change",
   "payment_change",
   "assignment",
@@ -56,7 +57,14 @@ export const activityTypes = [
   "complaint_note",
   "complaint_resolution",
   "complaint_resolved",
+  "review_created",
+  "review_updated",
+  "suggestion_created",
+  "suggestion_updated",
+  "suggestion_status",
 ] as const;
+export const suggestionStatuses = ["new", "under_review", "accepted", "implemented", "rejected"] as const;
+export const suggestionCategories = ["communication", "document_quality", "delivery", "revision_experience", "production_process", "sales_experience", "pricing", "crm_technical", "service_offering", "after_sales", "other"] as const;
 export const complaintCategories = [
   "communication_issue",
   "slow_response",
@@ -168,6 +176,41 @@ export const paymentVerifications = pgTable("payment_verifications", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const clientReviews = pgTable("client_reviews", {
+  id: serial("id").primaryKey(),
+  reviewNumber: text("review_number").notNull().unique(),
+  orderId: integer("order_id").notNull().references(() => orders.id),
+  rating: integer("rating"),
+  reviewForDesignerId: integer("review_for_designer_id").references(() => users.id),
+  feedbackText: text("feedback_text").notNull().default(""),
+  whatsappFeedbackReceived: boolean("whatsapp_feedback_received").notNull().default(false),
+  facebookReviewReceived: boolean("facebook_review_received").notNull().default(false),
+  videoReviewReceived: boolean("video_review_received").notNull().default(false),
+  marketingPermission: text("marketing_permission").notNull().default("not_asked"),
+  publicReviewLink: text("public_review_link"),
+  screenshotUrl: text("screenshot_url"),
+  createdById: integer("created_by_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({ orderUnique: uniqueIndex("client_reviews_order_id_unique").on(table.orderId) }));
+
+export const clientSuggestions = pgTable("client_suggestions", {
+  id: serial("id").primaryKey(),
+  suggestionNumber: text("suggestion_number").notNull().unique(),
+  orderId: integer("order_id").notNull().references(() => orders.id),
+  category: text("category", { enum: suggestionCategories }).notNull(),
+  relatedDesignerId: integer("related_designer_id").references(() => users.id),
+  suggestionText: text("suggestion_text").notNull(),
+  status: text("status", { enum: suggestionStatuses }).notNull().default("new"),
+  screenshotUrl: text("screenshot_url"),
+  adminNotes: text("admin_notes"),
+  createdById: integer("created_by_id").notNull().references(() => users.id),
+  reviewedByUserId: integer("reviewed_by_user_id").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const complaints = pgTable("complaints", {
   id: serial("id").primaryKey(),
   complaintNumber: text("complaint_number").notNull().unique(),
@@ -224,6 +267,8 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
   activityLogs: many(activityLogs),
   paymentVerifications: many(paymentVerifications),
   complaints: many(complaints),
+  clientReviews: many(clientReviews),
+  clientSuggestions: many(clientSuggestions),
 }));
 
 export const activityLogsRelations = relations(activityLogs, ({ one }) => ({
@@ -250,6 +295,16 @@ export const paymentVerificationsRelations = relations(paymentVerifications, ({ 
     fields: [paymentVerifications.reviewedById],
     references: [users.id],
   }),
+}));
+export const clientReviewsRelations = relations(clientReviews, ({ one }) => ({
+  order: one(orders, { fields: [clientReviews.orderId], references: [orders.id] }),
+  designer: one(users, { fields: [clientReviews.reviewForDesignerId], references: [users.id], relationName: "reviewDesigner" }),
+  createdBy: one(users, { fields: [clientReviews.createdById], references: [users.id], relationName: "reviewCreator" }),
+}));
+export const clientSuggestionsRelations = relations(clientSuggestions, ({ one }) => ({
+  order: one(orders, { fields: [clientSuggestions.orderId], references: [orders.id] }),
+  createdBy: one(users, { fields: [clientSuggestions.createdById], references: [users.id], relationName: "suggestionCreator" }),
+  reviewedBy: one(users, { fields: [clientSuggestions.reviewedByUserId], references: [users.id], relationName: "suggestionReviewer" }),
 }));
 
 export const complaintsRelations = relations(complaints, ({ one }) => ({
@@ -295,6 +350,8 @@ export const insertOrderSchema = createInsertSchema(orders).omit({ id: true, cre
 export const insertOrderServiceSchema = createInsertSchema(orderServices).omit({ id: true });
 export const insertActivityLogSchema = createInsertSchema(activityLogs).omit({ id: true, createdAt: true });
 export const insertPaymentVerificationSchema = createInsertSchema(paymentVerifications).omit({ id: true, createdAt: true });
+export const insertClientReviewSchema = createInsertSchema(clientReviews).omit({ id: true, reviewNumber: true, createdAt: true, updatedAt: true });
+export const insertClientSuggestionSchema = createInsertSchema(clientSuggestions).omit({ id: true, suggestionNumber: true, createdAt: true, updatedAt: true });
 export const insertComplaintSchema = createInsertSchema(complaints).omit({
   id: true,
   complaintNumber: true,
@@ -318,6 +375,10 @@ export type ActivityLog = typeof activityLogs.$inferSelect;
 export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;
 export type PaymentVerification = typeof paymentVerifications.$inferSelect;
 export type InsertPaymentVerification = z.infer<typeof insertPaymentVerificationSchema>;
+export type ClientReview = typeof clientReviews.$inferSelect;
+export type InsertClientReview = z.infer<typeof insertClientReviewSchema>;
+export type ClientSuggestion = typeof clientSuggestions.$inferSelect;
+export type InsertClientSuggestion = z.infer<typeof insertClientSuggestionSchema>;
 export type Complaint = typeof complaints.$inferSelect;
 export type InsertComplaint = z.infer<typeof insertComplaintSchema>;
 export type MonthlyFinance = typeof monthlyFinance.$inferSelect;

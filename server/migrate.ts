@@ -206,6 +206,53 @@ export async function runMigrations() {
       )
     `);
 
+    // ── Client feedback (depends on orders + users) ──────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS client_reviews (
+        id SERIAL PRIMARY KEY,
+        review_number TEXT NOT NULL UNIQUE,
+        order_id INTEGER NOT NULL REFERENCES orders(id),
+        rating INTEGER,
+        review_for_designer_id INTEGER REFERENCES users(id),
+        feedback_text TEXT NOT NULL DEFAULT '',
+        whatsapp_feedback_received BOOLEAN NOT NULL DEFAULT false,
+        facebook_review_received BOOLEAN NOT NULL DEFAULT false,
+        video_review_received BOOLEAN NOT NULL DEFAULT false,
+        marketing_permission TEXT NOT NULL DEFAULT 'not_asked',
+        public_review_link TEXT,
+        screenshot_url TEXT,
+        created_by_id INTEGER NOT NULL REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(order_id)
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS client_suggestions (
+        id SERIAL PRIMARY KEY,
+        suggestion_number TEXT NOT NULL UNIQUE,
+        order_id INTEGER NOT NULL REFERENCES orders(id),
+        category TEXT NOT NULL,
+        related_designer_id INTEGER REFERENCES users(id),
+        suggestion_text TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'new',
+        screenshot_url TEXT,
+        admin_notes TEXT,
+        created_by_id INTEGER NOT NULL REFERENCES users(id),
+        reviewed_by_user_id INTEGER REFERENCES users(id),
+        reviewed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS client_reviews_designer_idx ON client_reviews(review_for_designer_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS client_reviews_created_at_idx ON client_reviews(created_at)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS client_suggestions_order_idx ON client_suggestions(order_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS client_suggestions_designer_idx ON client_suggestions(related_designer_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS client_suggestions_status_idx ON client_suggestions(status)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS client_suggestions_created_at_idx ON client_suggestions(created_at)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS activity_logs_order_created_idx ON activity_logs(order_id, created_at DESC)`);
+
     // ── Complaints (depends on orders + users) ───────────────────────────────
 
     await client.query(`
@@ -341,6 +388,56 @@ export async function runMigrations() {
       ALTER TABLE complaints
         ADD COLUMN IF NOT EXISTS resolution_outcome TEXT,
         ADD COLUMN IF NOT EXISTS screenshot_url TEXT
+    `);
+    await client.query(`CREATE SEQUENCE IF NOT EXISTS review_number_seq`);
+    await client.query(`CREATE SEQUENCE IF NOT EXISTS suggestion_number_seq`);
+    await client.query(`
+      WITH maximum AS (
+        SELECT GREATEST(COALESCE((SELECT MAX(regexp_replace(review_number, '^.*-', '')::bigint)
+          FROM client_reviews WHERE review_number ~ '^REV-[0-9]{4}-[0-9]+$'), 0),
+          COALESCE((SELECT last_value FROM review_number_seq), 0)) AS value
+      ) SELECT setval('review_number_seq', GREATEST(value, 1), value > 0) FROM maximum
+    `);
+    // Translate the short-lived feedback schema additively; retain every value.
+    await client.query(`
+      ALTER TABLE client_reviews
+        ADD COLUMN IF NOT EXISTS review_for_designer_id INTEGER REFERENCES users(id),
+        ADD COLUMN IF NOT EXISTS feedback_text TEXT NOT NULL DEFAULT '',
+        ADD COLUMN IF NOT EXISTS whatsapp_feedback_received BOOLEAN NOT NULL DEFAULT false,
+        ADD COLUMN IF NOT EXISTS facebook_review_received BOOLEAN NOT NULL DEFAULT false,
+        ADD COLUMN IF NOT EXISTS video_review_received BOOLEAN NOT NULL DEFAULT false,
+        ADD COLUMN IF NOT EXISTS public_review_link TEXT,
+        ADD COLUMN IF NOT EXISTS screenshot_url TEXT;
+      ALTER TABLE client_suggestions
+        ADD COLUMN IF NOT EXISTS related_designer_id INTEGER REFERENCES users(id),
+        ADD COLUMN IF NOT EXISTS suggestion_text TEXT,
+        ADD COLUMN IF NOT EXISTS screenshot_url TEXT,
+        ADD COLUMN IF NOT EXISTS admin_notes TEXT,
+        ADD COLUMN IF NOT EXISTS reviewed_by_user_id INTEGER REFERENCES users(id),
+        ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP;
+    `);
+    await client.query(`
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='client_reviews' AND column_name='designer_id') THEN
+          UPDATE client_reviews SET review_for_designer_id = COALESCE(review_for_designer_id, designer_id),
+            feedback_text = CASE WHEN feedback_text = '' THEN COALESCE(comment, '') ELSE feedback_text END,
+            facebook_review_received = COALESCE(facebook_review_received, channel_facebook),
+            screenshot_url = COALESCE(screenshot_url, image_url),
+            public_review_link = COALESCE(public_review_link, public_link);
+          ALTER TABLE client_reviews ALTER COLUMN marketing_permission TYPE TEXT USING CASE WHEN marketing_permission::text IN ('true','t','1') THEN 'yes' WHEN marketing_permission::text IN ('false','f','0') THEN 'no' ELSE 'not_asked' END;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='client_suggestions' AND column_name='suggestion') THEN
+          UPDATE client_suggestions SET suggestion_text = COALESCE(suggestion_text, suggestion), screenshot_url = COALESCE(screenshot_url, image_url);
+          ALTER TABLE client_suggestions ALTER COLUMN suggestion_text SET NOT NULL;
+        END IF;
+      END $$;
+    `);
+    await client.query(`
+      WITH maximum AS (
+        SELECT GREATEST(COALESCE((SELECT MAX(regexp_replace(suggestion_number, '^.*-', '')::bigint)
+          FROM client_suggestions WHERE suggestion_number ~ '^SUG-[0-9]{4}-[0-9]+$'), 0),
+          COALESCE((SELECT last_value FROM suggestion_number_seq), 0)) AS value
+      ) SELECT setval('suggestion_number_seq', GREATEST(value, 1), value > 0) FROM maximum
     `);
     // Legacy review rows are safely returned to the current workflow entry state.
     await client.query(`UPDATE complaints SET status = 'new' WHERE status = 'under_review'`);

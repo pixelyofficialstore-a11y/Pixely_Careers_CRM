@@ -1,6 +1,6 @@
 import { 
   users, orders, notifications, orderServices, paymentVerifications, supportDesignerAssignments,
-  servicesCatalog, packageConfigs, platformsCatalog, complaintCategoryConfigs, pushSubscriptions, activityLogs, complaints,
+  servicesCatalog, packageConfigs, platformsCatalog, complaintCategoryConfigs, pushSubscriptions, activityLogs, complaints, clientReviews, clientSuggestions,
   type User, type InsertUser, type Order, type InsertOrder,
   type OrderService, type InsertOrderService, type OrderWithServices,
   type PaymentVerification, type InsertPaymentVerification, type PaymentVerificationWithUsers,
@@ -12,6 +12,7 @@ import {
   type PushSubscription, type Complaint, type InsertComplaint, type ComplaintResponse,
   type ComplaintHistoryEntry, type ComplaintStats,
   type InsertActivityLog, type ActivityLog,
+  type ClientReview, type InsertClientReview, type ClientSuggestion, type InsertClientSuggestion, type ActivityLogWithActor,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, ne, desc, sql, and, isNotNull, inArray, asc } from "drizzle-orm";
@@ -89,6 +90,15 @@ export interface IStorage {
   getPushSubscriptionsForUser(userId: number): Promise<PushSubscription[]>;
 
   createActivityLog(log: InsertActivityLog): Promise<ActivityLog>;
+  getOrderActivity(orderId: number): Promise<ActivityLogWithActor[]>;
+  getClientReviews(role: string, userId: number, orderId?: number): Promise<ClientReview[]>;
+  getClientReviewByOrder(orderId: number): Promise<ClientReview | undefined>;
+  createClientReview(data: InsertClientReview): Promise<ClientReview>;
+  updateClientReview(id: number, updates: Partial<InsertClientReview>): Promise<ClientReview>;
+  getClientSuggestions(role: string, userId: number, orderId?: number): Promise<ClientSuggestion[]>;
+  getClientSuggestion(id: number): Promise<ClientSuggestion | undefined>;
+  createClientSuggestion(data: InsertClientSuggestion): Promise<ClientSuggestion>;
+  updateClientSuggestion(id: number, updates: Partial<InsertClientSuggestion>): Promise<ClientSuggestion>;
   createComplaint(data: InsertComplaint, actorId: number): Promise<Complaint>;
   getComplaints(role: string, userId: number, filters?: ComplaintListFilters): Promise<ComplaintResponse[]>;
   getComplaintForUser(id: number, role: string, userId: number): Promise<ComplaintResponse | undefined>;
@@ -195,6 +205,8 @@ export class DatabaseStorage implements IStorage {
       await tx.delete(orderServices).where(eq(orderServices.orderId, id));
       await tx.delete(activityLogs).where(eq(activityLogs.orderId, id));
       await tx.delete(paymentVerifications).where(eq(paymentVerifications.orderId, id));
+      await tx.delete(clientReviews).where(eq(clientReviews.orderId, id));
+      await tx.delete(clientSuggestions).where(eq(clientSuggestions.orderId, id));
       await tx.delete(notifications).where(and(eq(notifications.relatedId, id), eq(notifications.relatedType, "order")));
       await tx.delete(orders).where(eq(orders.id, id));
     });
@@ -312,6 +324,66 @@ export class DatabaseStorage implements IStorage {
   async createActivityLog(log: InsertActivityLog): Promise<ActivityLog> {
     const [created] = await db.insert(activityLogs).values(log).returning();
     return created;
+  }
+
+  async getOrderActivity(orderId: number): Promise<ActivityLogWithActor[]> {
+    const logs = await db.select().from(activityLogs).where(eq(activityLogs.orderId, orderId)).orderBy(desc(activityLogs.createdAt));
+    const usersById = new Map((await this.getUsers()).map(user => [user.id, user]));
+    return logs.map(log => ({ ...log, actor: log.actorId ? usersById.get(log.actorId) || null : null }));
+  }
+
+  private async feedbackOrders(role: string, userId: number): Promise<number[]> {
+    if (role === "admin" || role === "support") return (await db.select({ id: orders.id }).from(orders)).map(row => row.id);
+    return (await db.select({ id: orders.id }).from(orders).where(eq(orders.assignedToId, userId))).map(row => row.id);
+  }
+
+  async getClientReviews(role: string, userId: number, orderId?: number): Promise<ClientReview[]> {
+    const ids = await this.feedbackOrders(role, userId);
+    if (orderId !== undefined && !ids.includes(orderId)) return [];
+    const where = orderId !== undefined ? eq(clientReviews.orderId, orderId) : inArray(clientReviews.orderId, ids);
+    return db.select().from(clientReviews).where(where).orderBy(desc(clientReviews.createdAt));
+  }
+  async getClientReviewByOrder(orderId: number): Promise<ClientReview | undefined> {
+    const [review] = await db.select().from(clientReviews).where(eq(clientReviews.orderId, orderId));
+    return review;
+  }
+  async createClientReview(data: InsertClientReview): Promise<ClientReview> {
+    return db.transaction(async tx => {
+      const result = await tx.execute(sql`SELECT nextval('review_number_seq') AS value`);
+      const value = Number((result as any).rows?.[0]?.value ?? (result as any)[0]?.value);
+      if (!Number.isSafeInteger(value) || value < 1) throw new Error("Unable to allocate a review number");
+      const now = new Date();
+      const [created] = await tx.insert(clientReviews).values({ ...data, reviewNumber: `REV-${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, "0")}-${String(value).padStart(3, "0")}` }).returning();
+      return created;
+    });
+  }
+  async updateClientReview(id: number, updates: Partial<InsertClientReview>): Promise<ClientReview> {
+    const [updated] = await db.update(clientReviews).set({ ...updates, updatedAt: new Date() }).where(eq(clientReviews.id, id)).returning();
+    return updated;
+  }
+  async getClientSuggestions(role: string, userId: number, orderId?: number): Promise<ClientSuggestion[]> {
+    const ids = await this.feedbackOrders(role, userId);
+    if (orderId !== undefined && !ids.includes(orderId)) return [];
+    const where = orderId !== undefined ? eq(clientSuggestions.orderId, orderId) : inArray(clientSuggestions.orderId, ids);
+    return db.select().from(clientSuggestions).where(where).orderBy(desc(clientSuggestions.createdAt));
+  }
+  async getClientSuggestion(id: number): Promise<ClientSuggestion | undefined> {
+    const [suggestion] = await db.select().from(clientSuggestions).where(eq(clientSuggestions.id, id));
+    return suggestion;
+  }
+  async createClientSuggestion(data: InsertClientSuggestion): Promise<ClientSuggestion> {
+    return db.transaction(async tx => {
+      const result = await tx.execute(sql`SELECT nextval('suggestion_number_seq') AS value`);
+      const value = Number((result as any).rows?.[0]?.value ?? (result as any)[0]?.value);
+      if (!Number.isSafeInteger(value) || value < 1) throw new Error("Unable to allocate a suggestion number");
+      const now = new Date();
+      const [created] = await tx.insert(clientSuggestions).values({ ...data, suggestionNumber: `SUG-${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, "0")}-${String(value).padStart(3, "0")}` }).returning();
+      return created;
+    });
+  }
+  async updateClientSuggestion(id: number, updates: Partial<InsertClientSuggestion>): Promise<ClientSuggestion> {
+    const [updated] = await db.update(clientSuggestions).set({ ...updates, updatedAt: new Date() }).where(eq(clientSuggestions.id, id)).returning();
+    return updated;
   }
 
   private complaintUserSummary(user: User | undefined) {

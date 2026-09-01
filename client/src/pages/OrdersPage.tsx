@@ -58,7 +58,9 @@ import {
   Crown,
   Wrench,
   Pencil,
-  FileWarning
+  FileWarning,
+  MessageSquareHeart,
+  Lightbulb
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -82,7 +84,7 @@ import {
 } from "@/components/ui/tooltip";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { OrderWithServices, User, SupportDesignerAssignment, ServiceCatalogItem, PackageConfig, PlatformCatalogItem, PaymentVerification, ComplaintResponse } from "@shared/schema";
+import type { OrderWithServices, User, SupportDesignerAssignment, ServiceCatalogItem, PackageConfig, PlatformCatalogItem, PaymentVerification, ComplaintResponse, ActivityLogWithActor, ClientReview, ClientSuggestion } from "@shared/schema";
 import { ComplaintDialog } from "@/components/ComplaintDialog";
 import { ComplaintStatusBadge } from "@/components/StatusBadge";
 
@@ -116,12 +118,40 @@ const ORDER_STATUS_FILTERS: Array<{ value: string; label: string; statuses: stri
   { value: "completed", label: "Completed", statuses: ["ready"] },
 ];
 
+const orderActivityLabel = (entry: ActivityLogWithActor) => {
+  const details = (entry.details || {}) as Record<string, unknown>;
+  switch (entry.activityType) {
+    case "order_created": return "Order created.";
+    case "assignment": return entry.previousValue ? "Assigned designer changed." : "Designer assigned.";
+    case "status_change": return `Order status changed from ${entry.previousValue || "unknown"} to ${entry.newValue || "unknown"}.`;
+    case "payment_change": return `Payment ${entry.newValue || "updated"}.`;
+    case "complaint_created": return `Complaint ${String(details.complaintNumber || "")} filed.`.replace("  ", " ");
+    case "complaint_status": return `Complaint status changed to ${entry.newValue || "updated"}.`;
+    case "complaint_resolved": return `Complaint marked ${entry.newValue || "resolved"}.`;
+    case "review_created": return `Review ${entry.newValue || ""} recorded.`.replace("  ", " ");
+    case "review_updated": return details.channelReceived ? `${titleCase(String(details.channelReceived))} feedback received.` : "Client review updated.";
+    case "suggestion_created": return `Suggestion ${entry.newValue || ""} added.`.replace("  ", " ");
+    case "suggestion_status": return `Suggestion moved from ${titleCase(entry.previousValue || "")} to ${titleCase(entry.newValue || "")}.`;
+    default: return titleCase(entry.activityType);
+  }
+};
+
+const titleCase = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, letter => letter.toUpperCase());
+
 type OrderFormService = {
   id: number;
   serviceNumber: number;
   serviceType: string;
   quantity: number;
   instructions: string;
+};
+
+type OrderReview = ClientReview & {
+  reviewForDesigner?: Pick<User, "id" | "name"> | null;
+};
+
+type OrderSuggestion = ClientSuggestion & {
+  relatedDesigner?: Pick<User, "id" | "name"> | null;
 };
 
 // Keep numbering tied to each card's creation identity: removing a card never
@@ -157,6 +187,7 @@ export default function OrdersPage() {
   const [orderToDelete, setOrderToDelete] = useState<OrderWithServices | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [complaintDialogOpen, setComplaintDialogOpen] = useState(false);
+  const [detailsTab, setDetailsTab] = useState<"overview" | "activity" | "experience">("overview");
 
   // Debounce the search input (300ms) so typing stays smooth on large order lists.
   useEffect(() => {
@@ -200,6 +231,21 @@ export default function OrdersPage() {
     queryKey: [`/api/orders/${selectedOrder?.id}/complaints`],
     enabled: Boolean(detailsSheetOpen && selectedOrder?.id),
     staleTime: 15 * 1000,
+  });
+
+  const { data: selectedOrderReviews = [] } = useQuery<OrderReview[]>({
+    queryKey: [`/api/orders/${selectedOrder?.id}/client-reviews`],
+    enabled: Boolean(detailsSheetOpen && selectedOrder?.id),
+  });
+
+  const { data: selectedOrderSuggestions = [] } = useQuery<OrderSuggestion[]>({
+    queryKey: [`/api/orders/${selectedOrder?.id}/client-suggestions`],
+    enabled: Boolean(detailsSheetOpen && selectedOrder?.id),
+  });
+
+  const { data: selectedOrderActivity = [] } = useQuery<ActivityLogWithActor[]>({
+    queryKey: [`/api/orders/${selectedOrder?.id}/activity`],
+    enabled: Boolean(detailsSheetOpen && selectedOrder?.id),
   });
 
   const activeServiceTypes = servicesCatalog.filter(s => s.isActive).map(s => s.name);
@@ -306,6 +352,7 @@ export default function OrdersPage() {
   
   const openOrderDetails = (order: OrderWithServices) => {
     setSelectedOrder(order);
+    setDetailsTab("overview");
     setDetailsSheetOpen(true);
   };
 
@@ -1125,6 +1172,15 @@ export default function OrdersPage() {
                 <p className="text-slate-400 text-sm">Created {format(new Date(selectedOrder.createdAt!), "MMMM dd, yyyy 'at' h:mm a")}</p>
               </div>
 
+              <Tabs value={detailsTab} onValueChange={value => setDetailsTab(value as typeof detailsTab)}>
+                <TabsList className="grid h-auto w-full grid-cols-3 border border-slate-800 bg-slate-950 p-1">
+                  <TabsTrigger value="overview">Overview</TabsTrigger>
+                  <TabsTrigger value="activity">Activity</TabsTrigger>
+                  <TabsTrigger value="experience">Client Experience</TabsTrigger>
+                </TabsList>
+              </Tabs>
+
+              {detailsTab === "overview" && <>
               <div className="space-y-3 p-4 bg-slate-950 rounded-lg border border-slate-800">
                 <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Client Information</h4>
                 <div className="grid grid-cols-2 gap-4">
@@ -1342,6 +1398,59 @@ export default function OrdersPage() {
                 <div className="text-xs text-slate-500 flex items-center gap-1">
                   <History className="w-3 h-3" />
                   Ready on {format(new Date(selectedOrder.readyDate), "MMM dd, yyyy")}
+                </div>
+              )}
+              </>}
+
+              {detailsTab === "activity" && (
+                <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
+                  <div className="mb-5 flex items-center gap-2">
+                    <History className="h-4 w-4 text-blue-400" />
+                    <h4 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Chronological History</h4>
+                  </div>
+                  {selectedOrderActivity.length ? (
+                    <div className="space-y-5">
+                      {selectedOrderActivity.map(entry => (
+                        <div key={entry.id} className="relative border-l border-slate-700 pl-5">
+                          <span className="absolute -left-1.5 top-1 h-3 w-3 rounded-full border-2 border-slate-950 bg-blue-500" />
+                          <p className="text-sm text-slate-200">{orderActivityLabel(entry)}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {entry.actor?.name || "System"} · {entry.createdAt ? format(new Date(entry.createdAt), "MMM dd, yyyy h:mm a") : "—"}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="py-10 text-center text-sm text-slate-500">No recorded activity is available for this order yet.</p>
+                  )}
+                </div>
+              )}
+
+              {detailsTab === "experience" && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-center"><p className="text-2xl font-bold text-white">{selectedOrderComplaints.length}</p><p className="mt-1 text-xs text-slate-500">Complaints</p></div>
+                    <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-center"><p className="text-2xl font-bold text-amber-400">{selectedOrderReviews[0]?.rating ? `${selectedOrderReviews[0].rating}/5` : "—"}</p><p className="mt-1 text-xs text-slate-500">Review</p></div>
+                    <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-center"><p className="text-2xl font-bold text-blue-400">{selectedOrderSuggestions.length}</p><p className="mt-1 text-xs text-slate-500">Suggestions</p></div>
+                  </div>
+
+                  <section className="rounded-xl border border-slate-800 bg-slate-950 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div><h4 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Complaints</h4><p className="mt-1 text-xs text-slate-600">{selectedOrderComplaints.filter(item => item.status === "valid").length} currently valid</p></div>
+                      {(isAdmin || isSupport) && <Button size="sm" variant="outline" disabled={!selectedOrder.assignedToId} onClick={() => setComplaintDialogOpen(true)}><FileWarning className="mr-2 h-4 w-4" />Raise Complaint</Button>}
+                    </div>
+                    <div className="mt-4 space-y-2">{selectedOrderComplaints.length ? selectedOrderComplaints.map(complaint => <button key={complaint.id} onClick={() => setLocation(`/complaints/${complaint.id}`)} className="flex w-full items-center justify-between rounded-lg border border-slate-800 bg-slate-900 p-3 text-left hover:border-slate-700"><div><p className="font-mono text-xs text-blue-400">{complaint.complaintNumber}</p><p className="mt-1 text-xs text-slate-500">{titleCase(complaint.category)}</p></div><ComplaintStatusBadge status={complaint.status} /></button>) : <p className="py-4 text-sm text-slate-500">No visible complaints.</p>}</div>
+                  </section>
+
+                  <section className="rounded-xl border border-slate-800 bg-slate-950 p-4">
+                    <div className="flex items-center justify-between gap-3"><div><h4 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Client Review</h4><p className="mt-1 text-xs text-slate-600">{selectedOrderReviews.length ? "Review collected" : "No review added"}</p></div><Button size="sm" variant="outline" onClick={() => setLocation(`/feedback?order=${selectedOrder.id}&action=review`)}><MessageSquareHeart className="mr-2 h-4 w-4" />{selectedOrderReviews.length ? "View / Update" : "Add Review"}</Button></div>
+                    {selectedOrderReviews[0] && <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900 p-3"><div className="flex items-center justify-between"><p className="font-mono text-xs text-blue-400">{selectedOrderReviews[0].reviewNumber}</p><span className="text-sm font-bold text-amber-400">{selectedOrderReviews[0].rating ? `${selectedOrderReviews[0].rating}/5` : "Not Rated"}</span></div><div className="mt-3 flex flex-wrap gap-2">{selectedOrderReviews[0].whatsappFeedbackReceived && <Badge variant="outline">WhatsApp</Badge>}{selectedOrderReviews[0].facebookReviewReceived && <Badge variant="outline">Facebook</Badge>}{selectedOrderReviews[0].videoReviewReceived && <Badge variant="outline">Video</Badge>}</div></div>}
+                  </section>
+
+                  <section className="rounded-xl border border-slate-800 bg-slate-950 p-4">
+                    <div className="flex items-center justify-between gap-3"><div><h4 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Suggestions</h4><p className="mt-1 text-xs text-slate-600">{selectedOrderSuggestions.length} recorded</p></div><Button size="sm" variant="outline" onClick={() => setLocation(`/feedback?order=${selectedOrder.id}&action=suggestion`)}><Lightbulb className="mr-2 h-4 w-4" />Add Suggestion</Button></div>
+                    <div className="mt-4 space-y-2">{selectedOrderSuggestions.length ? selectedOrderSuggestions.slice(0, 4).map(suggestion => <div key={suggestion.id} className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900 p-3"><div><p className="font-mono text-xs text-blue-400">{suggestion.suggestionNumber}</p><p className="mt-1 text-xs text-slate-500">{titleCase(suggestion.category)}</p></div><Badge className="bg-blue-500/10 text-blue-300">{titleCase(suggestion.status)}</Badge></div>) : <p className="py-4 text-sm text-slate-500">No suggestions recorded.</p>}</div>
+                  </section>
                 </div>
               )}
             </div>

@@ -8,6 +8,8 @@ import {
   complaintCategories,
   complaintStatuses,
   complaintResolutionOutcomes,
+  suggestionCategories,
+  suggestionStatuses,
   type ComplaintResponse,
   type ComplaintHistoryEntry,
   type ComplaintStats,
@@ -216,6 +218,18 @@ export const api = {
       responses: {
         200: z.array(z.custom<ComplaintResponse>()),
       },
+    },
+  },
+  feedback: {
+    reviews: {
+      list: { method: "GET" as const, path: "/api/feedback/reviews", responses: { 200: z.array(z.any()) } },
+      create: { method: "POST" as const, path: "/api/feedback/reviews", input: z.object({ orderId: z.number().int().positive(), rating: z.number().int().min(1).max(5).nullable(), feedbackText: z.string().trim().max(5000), whatsappFeedbackReceived: z.boolean(), facebookReviewReceived: z.boolean(), videoReviewReceived: z.boolean(), publicReviewLink: z.string().url().nullable(), marketingPermission: z.enum(["yes", "no", "not_asked"]), screenshotUrl: z.string().url().nullable() }), responses: { 201: z.any(), 400: errorSchemas.validation } },
+      update: { method: "PATCH" as const, path: "/api/feedback/reviews/:id", input: z.object({ rating: z.number().int().min(1).max(5).nullable().optional(), feedbackText: z.string().trim().max(5000).optional(), whatsappFeedbackReceived: z.boolean().optional(), facebookReviewReceived: z.boolean().optional(), videoReviewReceived: z.boolean().optional(), publicReviewLink: z.string().url().nullable().optional(), marketingPermission: z.enum(["yes", "no", "not_asked"]).optional(), screenshotUrl: z.string().url().nullable().optional() }), responses: { 200: z.any() } },
+    },
+    suggestions: {
+      list: { method: "GET" as const, path: "/api/feedback/suggestions", responses: { 200: z.array(z.any()) } },
+      create: { method: "POST" as const, path: "/api/feedback/suggestions", input: z.object({ orderId: z.number().int().positive(), category: z.enum(suggestionCategories), suggestionText: z.string().trim().min(1).max(5000), screenshotUrl: z.string().url().nullable() }), responses: { 201: z.any() } },
+      update: { method: "PATCH" as const, path: "/api/feedback/suggestions/:id", input: z.object({ status: z.enum(suggestionStatuses).optional(), adminNotes: z.string().trim().max(5000).nullable().optional() }), responses: { 200: z.any() } },
     },
   },
   stats: {
