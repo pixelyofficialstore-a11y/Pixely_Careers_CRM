@@ -1297,14 +1297,45 @@ export default function OrdersPage() {
   return (
     <div className="crm-page space-y-5">
       {deepLinkMessage && <div className="flex items-center justify-between gap-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100"><span>{deepLinkMessage}</span><Button variant="ghost" size="sm" onClick={() => { setDeepLinkMessage(null); setLocation("/orders"); }}>Clear link</Button></div>}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <PageHeader eyebrow="Client operations" title="Orders Management" description="Manage ATS CV, LinkedIn, and Cover Letter requests." />
-        
-        <div className="flex items-center gap-3 flex-wrap">
+      <div className="space-y-3">
+        <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
+          <PageHeader eyebrow="Client operations" title="Orders Management" description="Manage ATS CV, LinkedIn, and Cover Letter requests." />
+
+          <div className="flex shrink-0 items-center gap-3">
+            {isAdmin && (
+              <Button variant="outline" onClick={exportOrdersPDF} data-testid="button-export-orders">
+                <Download className="w-4 h-4 mr-2" />
+                Export PDF
+              </Button>
+            )}
+
+            {canCreateOrder && (
+              <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="bg-primary" data-testid="button-create-order">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create Order
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="bg-slate-900 border-slate-800 max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle className="text-white font-display text-xl">Create New Order</DialogTitle>
+                  </DialogHeader>
+                  <CreateOrderForm
+                    designers={availableDesigners}
+                    onSuccess={() => setCreateDialogOpen(false)}
+                  />
+                </DialogContent>
+              </Dialog>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
           <div className="relative w-full md:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-            <Input 
-              placeholder="Search Order ID or Client..." 
+            <Input
+              placeholder="Search Order ID or Client..."
               className="pl-10 bg-slate-900 border-slate-800 text-white"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -1360,33 +1391,6 @@ export default function OrdersPage() {
               </Button>
             )}
           </div>
-          
-          {isAdmin && (
-            <Button variant="outline" onClick={exportOrdersPDF} data-testid="button-export-orders">
-              <Download className="w-4 h-4 mr-2" />
-              Export PDF
-            </Button>
-          )}
-          
-          {canCreateOrder && (
-            <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="bg-primary" data-testid="button-create-order">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create Order
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="bg-slate-900 border-slate-800 max-w-2xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle className="text-white font-display text-xl">Create New Order</DialogTitle>
-                </DialogHeader>
-                <CreateOrderForm 
-                  designers={availableDesigners} 
-                  onSuccess={() => setCreateDialogOpen(false)} 
-                />
-              </DialogContent>
-            </Dialog>
-          )}
         </div>
       </div>
 

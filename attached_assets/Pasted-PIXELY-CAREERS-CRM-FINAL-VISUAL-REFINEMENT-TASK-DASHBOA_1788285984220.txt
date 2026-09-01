@@ -1,0 +1,1270 @@
+PIXELY CAREERS CRM
+FINAL VISUAL REFINEMENT TASK
+DASHBOARD CASH FLOW + ORDER TABS + DETAIL DRAWERS + ALIGNMENT CONSISTENCY
+
+==================================================
+IMPORTANT
+==================================================
+
+The CRM now has a good visual foundation.
+
+DO NOT redesign the entire CRM again.
+
+DO NOT change:
+
+- business logic
+- finance logic
+- complaint workflow
+- reviews logic
+- suggestions logic
+- permissions
+- authentication
+- Cloudinary
+- Supabase
+- IDs
+- notifications
+- activity history
+- drawer navigation
+
+This task is primarily UI/UX refinement plus ONE new Dashboard financial presentation:
+
+CASH FLOW.
+
+Use the CURRENT global Pixely CRM design system as the source of truth:
+
+- deep navy background
+- dark navy surfaces
+- subtle cool borders
+- cyan/turquoise primary accent
+- white primary text
+- muted blue-gray secondary text
+- semantic status colors
+- compact professional spacing
+
+Do not introduce another theme.
+
+==================================================
+1. ADD CASH FLOW TO ADMIN DASHBOARD
+==================================================
+
+The Dashboard currently has:
+
+Financial Overview
+
+with:
+
+Monthly Revenue
+Collected
+Remaining
+Refunded Amount
+
+This is useful, but Management also needs to immediately understand actual cash movement.
+
+Add a clean:
+
+CASH FLOW
+
+section/panel to the Admin Dashboard.
+
+==================================================
+CASH FLOW PURPOSE
+==================================================
+
+Cash Flow should answer:
+
+How much cash came in?
+
+How much cash went back out as refunds?
+
+How much cash was actually retained?
+
+Do NOT call this:
+
+Profit
+
+because operating expenses are not currently tracked in this CRM.
+
+==================================================
+CASH FLOW METRICS
+==================================================
+
+Show:
+
+Cash Inflow
+
+Refunds
+
+Net Cash Flow
+
+For the current reporting month.
+
+Example:
+
+CASH FLOW
+
+Cash Inflow
+Rs8,500
+
+Refunds
+Rs500
+
+Net Cash Flow
+Rs8,000
+
+==================================================
+VERY IMPORTANT FINANCE LOGIC
+==================================================
+
+Do NOT blindly calculate:
+
+Collected - Refunds
+
+if the current "Collected" metric already excludes refunded payments.
+
+Inspect the current finance architecture first.
+
+Create a correct single-source cash-flow calculation.
+
+Conceptually:
+
+Gross Cash Inflow
+=
+actual approved payments received during the period
+
+Cash Outflow
+=
+actual refunds recorded during the period
+
+Net Cash Flow
+=
+Gross Cash Inflow - Refunds
+
+This must NOT double-deduct refunds.
+
+==================================================
+CANCELED ORDER RULE
+==================================================
+
+Previously approved rules remain:
+
+Canceled + advance refunded:
+
+Net retained cash from that advance = 0
+
+Canceled + advance NOT refunded:
+
+Advance remains part of retained cash.
+
+Remaining canceled balance never counts as cash inflow.
+
+==================================================
+CASH FLOW VISUAL DESIGN
+==================================================
+
+Do not add three more giant metric cards to the top.
+
+Place Cash Flow inside / beside the existing Financial Overview structure.
+
+Recommended Desktop layout:
+
+OPERATIONS                    FINANCE
+Order Operations             Financial Overview
+
+                              Monthly Revenue
+                              Collected
+                              Remaining
+                              Refunded
+
+                              ----------------
+
+                              CASH FLOW
+                              Cash Inflow     RsX
+                              Refunds         RsX
+                              Net Cash Flow   RsX
+
+OR create a balanced mini Cash Flow card directly beneath Financial Overview.
+
+Use whichever layout is visually stronger with the existing Dashboard.
+
+==================================================
+CASH FLOW EMPHASIS
+==================================================
+
+Cash Inflow:
+neutral/cyan
+
+Refunds:
+red/pink semantic accent
+
+Net Cash Flow:
+green if positive
+
+Do not heavily color entire rows.
+
+Use color primarily on values/icons.
+
+==================================================
+2. FIX CLIENT EXPERIENCE BOTTOM METRICS ALIGNMENT
+==================================================
+
+Current Dashboard Client Experience section contains:
+
+Average Rating
+Reviews This Month
+Confirmed Complaints
+Implemented Suggestions
+
+Then underneath:
+
+Facebook Reviews
+Video Testimonials
+Resolved Complaints
+Refund Cases
+
+The bottom metrics are visually misaligned.
+
+Fix this completely.
+
+==================================================
+CLIENT EXPERIENCE LAYOUT
+==================================================
+
+Desktop:
+
+Top:
+4 equal Metric Cards
+
+Average Rating
+Reviews This Month
+Confirmed Complaints
+Implemented Suggestions
+
+Bottom:
+4 equal compact metrics
+
+Facebook Reviews
+Video Testimonials
+Resolved Complaints
+Refund Cases
+
+ALL FOUR bottom items must:
+
+- have exactly equal width
+- align vertically
+- have consistent padding
+- have labels starting on the same baseline
+- have values aligned consistently
+- have identical row height
+- have identical internal spacing
+
+Use CSS Grid instead of ad-hoc flex widths.
+
+Recommended:
+
+grid-template-columns: repeat(4, minmax(0, 1fr))
+
+Use the project's styling system rather than literally hardcoding this if responsive utility classes already exist.
+
+==================================================
+BOTTOM METRIC DESIGN
+==================================================
+
+Currently they look like four loose text/value pairs.
+
+Improve them slightly.
+
+They should remain more compact than full Metric Cards but feel intentional.
+
+Example:
+
+FACEBOOK REVIEWS
+2
+
+VIDEO TESTIMONIALS
+2
+
+RESOLVED COMPLAINTS
+4
+
+REFUND CASES
+1
+
+Use:
+
+same label style
+same value size
+same vertical alignment
+
+Do not make one value sit noticeably higher/lower than another.
+
+==================================================
+RESPONSIVE CLIENT EXPERIENCE
+==================================================
+
+Desktop:
+4 columns
+
+Tablet:
+2 × 2
+
+Mobile:
+1 or 2 columns depending on width
+
+No clipping.
+
+==================================================
+3. FIX TODAY'S ORDERS / MONTHLY ORDERS TAB THEME
+==================================================
+
+Current Orders Page still has the old bright-blue:
+
+Today's Orders
+Monthly Orders
+
+tab styling.
+
+It does NOT match:
+
+Analytics tabs
+Feedback tabs
+Order Detail tabs
+the new cyan Pixely theme.
+
+Replace it with the shared segmented tab component used elsewhere.
+
+==================================================
+NEW ORDER TAB DESIGN
+==================================================
+
+Container:
+
+dark secondary surface
+subtle border
+
+Selected:
+
+subtle cyan/turquoise tinted surface
+
+cyan/white text
+
+thin cyan accent/border if needed
+
+Unselected:
+
+transparent/dark
+
+muted text
+
+hover:
+slightly brighter surface/text
+
+DO NOT use saturated royal blue.
+
+==================================================
+EXAMPLE
+==================================================
+
+[ Today's Orders ] [ Monthly Orders ]
+
+Selected Today's Orders:
+
+dark cyan-tinted surface
+not bright blue.
+
+Use the same component/design language as:
+
+Reviews / Suggestions
+
+and Analytics segmented selectors.
+
+==================================================
+TAB CONSISTENCY
+==================================================
+
+Audit ALL segmented tabs:
+
+Orders:
+Today's / Monthly
+
+Feedback:
+Reviews / Suggestions
+
+Analytics:
+Selected Period / All Time
+
+Order Details:
+Overview / Activity / Client Experience
+
+Designer Details if applicable
+
+They should clearly belong to ONE tab system.
+
+There may be different sizes, but not different visual themes.
+
+==================================================
+4. IMPROVE ORDER DETAIL DRAWER THEME
+==================================================
+
+The Order Detail drawer is functional and reasonably clean.
+
+Refine it further so it perfectly matches the rest of the CRM.
+
+Current problems:
+
+- some sections feel more bordered/heavy than main-page cards
+- tab treatment differs slightly
+- typography hierarchy can be stronger
+- information cards can feel like nested boxes inside boxes
+
+==================================================
+ORDER DETAIL HEADER
+==================================================
+
+Use:
+
+Order Details
+
+PX-2609-003
+
+Status badge
+
+Created date
+
+Client Case Report
+
+Keep clean spacing.
+
+Order ID should be prominent but not neon.
+
+==================================================
+ORDER SUMMARY
+==================================================
+
+Current Order Summary card is useful.
+
+Refine:
+
+equal columns
+
+consistent labels
+
+aligned values
+
+avoid awkward text wrapping such as:
+
+Soban Masood
+(Admin)
+
+where unnecessary.
+
+Prefer:
+
+Created By
+Soban Masood
+Admin
+
+using secondary role text.
+
+==================================================
+ORDER DETAIL TABS
+==================================================
+
+Use global segmented tabs.
+
+Selected tab:
+
+subtle cyan surface.
+
+Do not use a different green/teal tab style than the main CRM.
+
+==================================================
+ORDER DRAWER SURFACES
+==================================================
+
+Use:
+
+Drawer background = surface level 1
+
+Section cards = surface level 2
+
+Nested rows = surface level 3
+
+Avoid every section having an equally strong border.
+
+==================================================
+5. IMPROVE COMPLAINT DETAIL DRAWER VISUALLY
+==================================================
+
+The Complaint drawer now has the right information structure.
+
+Do NOT change workflow.
+
+Improve presentation.
+
+==================================================
+COMPLAINT HEADER
+==================================================
+
+Current:
+
+CMP-2609-009
+Refunded
+helper text
+
+Keep this structure.
+
+Refine spacing and hierarchy.
+
+Complaint ID:
+primary.
+
+Status:
+compact semantic badge.
+
+Description:
+muted.
+
+==================================================
+COMPLAINT SUMMARY
+==================================================
+
+Use a clean 2-column information grid.
+
+Category
+
+Complaint Against
+
+Client
+
+Date Reported
+
+Reported By — Admin only
+
+Make label/value alignment consistent.
+
+==================================================
+COMPLAINT DETAILS
+==================================================
+
+The Complaint Details text should feel more important than metadata.
+
+Use:
+
+strong section heading
+
+slightly differentiated content surface
+
+comfortable line height
+
+Do NOT put a massive border around a one-line complaint.
+
+==================================================
+EVIDENCE
+==================================================
+
+"No evidence was attached to this complaint."
+
+should not float awkwardly between sections.
+
+Use a compact empty-state row.
+
+Example:
+
+COMPLAINT EVIDENCE
+
+No evidence attached.
+
+Small icon optional.
+
+==================================================
+RESOLUTION / FINAL OUTCOME
+==================================================
+
+Make final resolution visually distinct but not overly green/red.
+
+Use a section:
+
+FINAL OUTCOME
+
+Resolved / Refunded / Dismissed
+
+then:
+
+Resolution Summary
+Decision By
+Date
+Evidence
+
+==================================================
+ADMIN NOTES
+==================================================
+
+Use the previously approved note-log structure.
+
+Saved Notes
++
+Add New Note
+
+Do not put historical notes inside an editable textarea.
+
+==================================================
+CASE HISTORY
+==================================================
+
+Use exactly the shared Activity timeline.
+
+No separate visual style.
+
+==================================================
+6. IMPROVE REVIEW DETAIL DRAWER VISUALLY
+==================================================
+
+Review Detail currently has good content structure but the presentation can be cleaner.
+
+A Review is NOT a workflow.
+
+Keep:
+
+Review Summary
+Client Feedback
+Feedback Sources
+Evidence
+Related Order
+Record Details
+
+==================================================
+REVIEW HEADER
+==================================================
+
+REV-2609-003
+
+small subtitle:
+
+CLIENT REVIEW
+
+Update button
+
+Close
+
+Make spacing consistent with Complaint/Suggestion drawer headers.
+
+==================================================
+REVIEW SUMMARY
+==================================================
+
+Do not make a huge card for only a few values.
+
+Use a compact grid:
+
+Client
+
+Rating
+
+Designer
+
+Date Recorded
+
+Rating should remain visually strongest.
+
+==================================================
+CLIENT FEEDBACK
+==================================================
+
+This should be visually prominent.
+
+Example:
+
+CLIENT FEEDBACK
+
+"Buhut Achi Services Hain"
+
+Use comfortable text block.
+
+==================================================
+FEEDBACK SOURCES
+==================================================
+
+Current individual rows should match the CRM's surface system.
+
+Example:
+
+WhatsApp Feedback          Received
+Facebook Review            Received
+Video Testimonial          Received
+
+Same height.
+
+Same badge alignment.
+
+Same padding.
+
+==================================================
+7. IMPROVE SUGGESTION DETAIL DRAWER VISUALLY
+==================================================
+
+Keep existing business logic:
+
+New
+Implemented
+Rejected
+
+The current Suggestion detail is structurally better but can look more professional.
+
+==================================================
+SUGGESTION HEADER
+==================================================
+
+SUG-2609-005
+
+Rejected
+
+"Suggestion reviewed and not implemented."
+
+Same header structure as Complaint.
+
+==================================================
+SUGGESTION SUMMARY
+==================================================
+
+Use consistent info grid:
+
+Category
+Related Designer
+Client
+Date Recorded
+Recorded By
+
+Where data exists.
+
+==================================================
+CLIENT SUGGESTION
+==================================================
+
+This is the primary content.
+
+Make it visually prominent.
+
+Do not treat it like another metadata box.
+
+==================================================
+SUGGESTION EVIDENCE
+==================================================
+
+Use same evidence component as Complaint/Review.
+
+==================================================
+MANAGEMENT DECISION
+==================================================
+
+Rejected:
+
+Reason for Rejection
+Rejected By
+Date
+
+Implemented:
+
+Implementation Summary
+Implemented By
+Date
+Evidence
+
+Use readable final-decision card.
+
+==================================================
+8. CREATE SHARED DETAIL-DRAWER PRESENTATION COMPONENTS
+==================================================
+
+The detail drawers still have slightly different visual implementations.
+
+Create/reuse shared visual building blocks.
+
+For example:
+
+DetailDrawerHeader
+
+DetailSection
+
+DetailInfoGrid
+
+DetailTextBlock
+
+EvidenceSection
+
+DecisionSection
+
+InternalNotesSection
+
+ActivityTimeline
+
+Do NOT merge the actual business logic.
+
+Only consolidate PRESENTATION.
+
+==================================================
+9. DRAWER WIDTH
+==================================================
+
+Current drawer width is generally good.
+
+Standardize it across:
+
+Order
+
+Complaint
+
+Review
+
+Suggestion
+
+Designer
+
+At equivalent desktop viewport they should use the same width unless Order genuinely needs slightly more.
+
+Do not have random widths.
+
+==================================================
+10. DRAWER BACKDROP
+==================================================
+
+Current blurred/dimmed backdrop is visually strong.
+
+Keep it.
+
+Refine:
+
+consistent blur
+
+consistent opacity
+
+Do not make one drawer backdrop darker than another.
+
+==================================================
+11. DRAWER CLOSE BUTTON
+==================================================
+
+Complaint currently uses a cyan outlined X while some other drawers use a basic X.
+
+Standardize.
+
+Use one:
+
+IconButton
+
+for Close.
+
+Same size
+same hover
+same focus
+same position
+
+==================================================
+12. DRAWER BACK BUTTON
+==================================================
+
+When nested:
+
+← Back
+
+Use consistent placement and visual style.
+
+Do not alter header layout significantly when Back appears.
+
+==================================================
+13. DRAWER SCROLLING
+==================================================
+
+Header should ideally remain visible/sticky while body scrolls if current implementation safely supports it.
+
+This would improve long:
+
+Complaint
+Suggestion
+Order
+
+records.
+
+Do not introduce scroll bugs.
+
+==================================================
+14. GLOBAL SECTION LABELS
+==================================================
+
+Current section headings such as:
+
+COMPLAINT SUMMARY
+CLIENT FEEDBACK
+CLIENT SUGGESTION
+
+have good direction.
+
+Standardize:
+
+font size
+letter spacing
+cyan/muted treatment
+top/bottom spacing
+
+across all drawers.
+
+==================================================
+15. GLOBAL DETAIL LABELS
+==================================================
+
+Metadata labels:
+
+Client
+Designer
+Recorded By
+Created
+Reported By
+
+must use the same:
+
+font size
+color
+line-height
+
+Values must use same:
+
+font size
+weight
+text color.
+
+==================================================
+16. GLOBAL EMPTY EVIDENCE STYLE
+==================================================
+
+Use one component.
+
+Example:
+
+EVIDENCE
+
+No evidence attached.
+
+Avoid:
+
+"No evidence was attached to this complaint."
+
+"No review evidence attached."
+
+"No suggestion screenshot available."
+
+all having different styles.
+
+The exact wording can remain contextual, but visual structure must be identical.
+
+==================================================
+17. IMPROVE DASHBOARD FINANCIAL PRESENTATION
+==================================================
+
+Current Financial Overview is good.
+
+Add Cash Flow without making it cluttered.
+
+Potential final layout:
+
+FINANCIAL OVERVIEW
+
+Monthly Revenue                       Rs14,500
+Collected                             Rs8,500
+Remaining                             Rs6,000
+Refunded                              Rs0
+
+divider
+
+CASH FLOW
+
+Cash Inflow                           Rs8,500
+Refunds                               Rs0
+Net Cash Flow                         Rs8,500
+
+Do not use this exact duplication if Collected already equals net retained cash.
+
+Inspect actual metric meanings first.
+
+==================================================
+18. OPTIONAL CASH FLOW TOOLTIP
+==================================================
+
+Add info icon:
+
+Cash Flow
+
+Tooltip:
+
+"Tracks payments received and refunds issued during the selected month."
+
+Keep it short.
+
+==================================================
+19. CLICKABLE CASH FLOW
+==================================================
+
+If current Payments page supports useful filtering:
+
+Cash Inflow click:
+Payments → Approved/received payments
+
+Refunds click:
+Payments/Orders → refunded transactions
+
+Do this only if existing routing/filtering makes it reliable.
+
+==================================================
+20. DASHBOARD FINANCE MUST MATCH ANALYTICS/ORDERS
+==================================================
+
+Numbers must use centralized calculation logic.
+
+If:
+
+Orders page Collected = Rs8,500
+
+and Dashboard Cash Flow uses same concept:
+
+do not display inconsistent Rs values.
+
+==================================================
+21. CONSISTENT CURRENCY FORMAT
+==================================================
+
+Use everywhere:
+
+Rs14,500
+Rs8,500
+Rs0
+
+Do not mix:
+
+Rs 14,500
+PKR 14,500
+14,500 PKR
+
+unless a specific export requires it.
+
+==================================================
+22. CLIENT EXPERIENCE RESPONSIVE GRID
+==================================================
+
+Fix bottom section precisely.
+
+Use shared compact stat component.
+
+Example:
+
+<CompactMetric
+ label="Facebook Reviews"
+ value={2}
+/>
+
+All 4 must be generated with SAME component.
+
+This prevents manual alignment differences.
+
+==================================================
+23. ORDERS TAB COMPONENT
+==================================================
+
+Replace current Order-specific styling with shared:
+
+SegmentedTabs
+
+Example data:
+
+[
+ { id: "today", label: "Today's Orders" },
+ { id: "monthly", label: "Monthly Orders" }
+]
+
+Do not separately style selected Today's Orders blue.
+
+==================================================
+24. DETAIL VIEW CONSISTENCY TEST
+==================================================
+
+Open:
+
+Complaint
+
+Review
+
+Suggestion
+
+Order
+
+at same browser width.
+
+Compare:
+
+left edge
+right edge
+header height
+section spacing
+border colors
+surface colors
+labels
+close button
+scrollbar
+heading sizes
+
+They should clearly look like one system.
+
+==================================================
+25. DASHBOARD ALIGNMENT TEST
+==================================================
+
+Inspect Client Experience bottom row.
+
+Draw imaginary horizontal lines through:
+
+labels
+
+values
+
+dividers
+
+They must align.
+
+No value should be vertically offset because one label wraps differently.
+
+Reserve consistent label min-height where needed.
+
+==================================================
+26. KEEP DATA LABELS SHORT
+==================================================
+
+For bottom Client Experience metrics:
+
+Facebook Reviews
+
+Video Testimonials
+
+Resolved Complaints
+
+Refund Cases
+
+Use consistent label length handling.
+
+If needed:
+
+min-height for label row.
+
+Do not decrease font size individually.
+
+==================================================
+27. VISUAL QA
+==================================================
+
+After implementation capture/check:
+
+Dashboard
+
+Orders
+
+Order Details
+
+Complaints
+
+Complaint Details
+
+Feedback Reviews
+
+Review Details
+
+Feedback Suggestions
+
+Suggestion Details
+
+==================================================
+28. BUSINESS REGRESSION TEST
+==================================================
+
+Confirm:
+
+Order creation works
+
+Order tabs switch correctly
+
+Order details work
+
+Complaint workflow works
+
+Review update works
+
+Suggestion workflow works
+
+Evidence viewers work
+
+Nested Back navigation works
+
+Cash Flow calculations correct
+
+Finance totals unchanged except new presentation
+
+Permissions intact
+
+==================================================
+29. BUILD CHECK
+==================================================
+
+Run:
+
+TypeScript
+
+production build
+
+browser console
+
+server logs
+
+Fix errors introduced by UI changes.
+
+==================================================
+30. FINAL REPORT
+==================================================
+
+After implementation report:
+
+1. Cash Flow logic and display
+2. Dashboard alignment changes
+3. Today's/Monthly Orders tab changes
+4. Order Detail visual changes
+5. Complaint Detail visual changes
+6. Review Detail visual changes
+7. Suggestion Detail visual changes
+8. Shared UI components introduced/reused
+9. Responsive changes
+10. Tests performed
+
+Explicitly confirm:
+
+No business logic was unintentionally changed.
+
+No finance value was double-deducted.
+
+No permission behavior changed.
+
+==================================================
+FINAL DESIGN PRINCIPLE
+==================================================
+
+Do not add another theme.
+
+The current Pixely CRM theme is the base.
+
+Refine it.
+
+Everything should use:
+
+the same navy surfaces
+the same cyan/blue Pixely accent
+the same section hierarchy
+the same tabs
+the same borders
+the same metadata style
+the same drawer structure
+the same spacing system
+
+The result should feel like one carefully designed professional CRM rather than multiple modules that were styled separately.
