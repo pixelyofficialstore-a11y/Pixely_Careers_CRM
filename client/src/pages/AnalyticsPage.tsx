@@ -204,6 +204,77 @@ function FilterBar({ month, year, setMonth, setYear, count, day, setDay, maxDay 
 }
 function SectionTitle({ icon: Icon, title: heading, copy }: { icon: typeof Megaphone; title: string; copy: string }) { return <div className="border-b border-slate-800 p-5"><h2 className="flex items-center gap-2 font-semibold text-slate-200"><Icon className="h-4 w-4 text-cyan-300" />{heading}</h2><p className="mt-1 text-xs text-slate-500">{copy}</p></div>; }
 function Experience({ designer, complaints, reviews, suggestions, inPeriod, openCase }: { designer: User; complaints: Complaint[]; reviews: Review[]; suggestions: Suggestion[]; inPeriod: (v?: string | Date | null) => boolean; openCase: (type: "complaint" | "review" | "suggestion", id: number) => void }) {
-  const cs = complaints.filter(c => c.complaintAgainstUserId === designer.id && c.status === "confirmed" && inPeriod(c.createdAt)), rs = reviews.filter(r => r.reviewForDesigner?.id === designer.id && inPeriod(r.createdAt)), ss = suggestions.filter(s => s.relatedDesigner?.id === designer.id && inPeriod(s.createdAt));
-  return <div className="space-y-5">{[["Confirmed complaints", cs, "complaint"], ["Reviews", rs, "review"], ["Suggestions", ss, "suggestion"]].map(([heading, items, type]) => <section key={heading as string} className="rounded-xl border border-slate-800 bg-slate-900/50 p-4"><h3 className="text-sm font-medium text-slate-300">{heading as string}</h3>{(items as any[]).length ? <div className="mt-3 space-y-2">{(items as any[]).map(item => <button key={item.id} onClick={() => openCase(type as any, item.id)} className="w-full rounded-lg border border-slate-800 p-3 text-left hover:border-cyan-400/30"><div className="flex justify-between gap-3"><span className="font-mono text-xs text-cyan-200">{item.complaintNumber || item.reviewNumber || item.suggestionNumber}</span><span className="text-xs text-slate-600">{dateLabel(item.createdAt)}</span></div><p className="mt-1 line-clamp-2 text-sm text-slate-400">{item.description || item.feedbackText || item.suggestionText}</p></button>)}</div> : <p className="mt-3 text-xs text-slate-600">No {String(heading).toLowerCase()} in this period.</p>}</section>)}</div>;
+  const [feedbackView, setFeedbackView] = useState<"reviews" | "suggestions">("reviews");
+  const cs = complaints.filter(c => c.complaintAgainstUserId === designer.id && c.status === "confirmed" && inPeriod(c.createdAt));
+  const rs = reviews.filter(r => r.reviewForDesigner?.id === designer.id && inPeriod(r.createdAt));
+  const ss = suggestions.filter(s => s.relatedDesigner?.id === designer.id && inPeriod(s.createdAt));
+
+  const renderRecords = (items: Array<Complaint | Review | Suggestion>, type: "complaint" | "review" | "suggestion", emptyLabel: string) => (
+    items.length ? (
+      <div className="mt-3 space-y-2">
+        {items.map(item => (
+          <button
+            key={item.id}
+            onClick={() => openCase(type, item.id)}
+            className="w-full rounded-lg border border-slate-800 p-3 text-left transition-colors hover:border-cyan-400/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
+          >
+            <div className="flex justify-between gap-3">
+              <span className="font-mono text-xs text-cyan-200">
+                {"complaintNumber" in item ? item.complaintNumber : "reviewNumber" in item ? item.reviewNumber : item.suggestionNumber}
+              </span>
+              <span className="text-xs text-slate-600">{dateLabel(item.createdAt)}</span>
+            </div>
+            <p className="mt-1 line-clamp-2 text-sm text-slate-400">
+              {"description" in item ? item.description : "feedbackText" in item ? item.feedbackText : item.suggestionText}
+            </p>
+          </button>
+        ))}
+      </div>
+    ) : <p className="mt-3 text-xs text-slate-600">{emptyLabel}</p>
+  );
+
+  return (
+    <div className="space-y-5">
+      <section className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-sm font-medium text-slate-300">Client feedback</h3>
+            <p className="mt-1 text-xs text-slate-600">Choose which feedback records to review for this designer.</p>
+          </div>
+          <div className="flex rounded-lg border border-slate-700 bg-slate-950 p-1" role="group" aria-label="Client feedback type">
+            <button
+              type="button"
+              data-testid="button-designer-feedback-reviews"
+              aria-pressed={feedbackView === "reviews"}
+              onClick={() => setFeedbackView("reviews")}
+              className={cn("rounded-md px-3 py-1.5 text-sm transition-colors", feedbackView === "reviews" ? "bg-cyan-500/15 text-cyan-200" : "text-slate-500 hover:text-slate-300")}
+            >
+              Reviews ({rs.length})
+            </button>
+            <button
+              type="button"
+              data-testid="button-designer-feedback-suggestions"
+              aria-pressed={feedbackView === "suggestions"}
+              onClick={() => setFeedbackView("suggestions")}
+              className={cn("rounded-md px-3 py-1.5 text-sm transition-colors", feedbackView === "suggestions" ? "bg-cyan-500/15 text-cyan-200" : "text-slate-500 hover:text-slate-300")}
+            >
+              Suggestions ({ss.length})
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
+        <h3 className="text-sm font-medium text-slate-300">Confirmed complaints</h3>
+        {renderRecords(cs, "complaint", "No confirmed complaints in this period.")}
+      </section>
+
+      <section className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
+        <h3 className="text-sm font-medium text-slate-300">{feedbackView === "reviews" ? "Reviews" : "Suggestions"}</h3>
+        {feedbackView === "reviews"
+          ? renderRecords(rs, "review", "No reviews in this period.")
+          : renderRecords(ss, "suggestion", "No suggestions in this period.")}
+      </section>
+    </div>
+  );
 }

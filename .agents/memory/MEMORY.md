@@ -10,3 +10,4 @@
 - [Suggestion decisions and notes](suggestion-decision-records.md) — suggestions have one irreversible Implement/Reject decision; private admin notes are append-only and server-redacted.
 - [User response sanitization](user-response-sanitization.md) — full User records are server-internal; every API response must project users without password hashes.
 - [Designer analytics signals](designer-analytics-signals.md) — report real workload and client-experience facts; never invent rankings or composite scores, and count only confirmed complaints negatively.
+- [Post-merge migrations](post-merge-migrations.md) — invoke exported migrations through a CLI wrapper; importing the migration module alone does not run it.
