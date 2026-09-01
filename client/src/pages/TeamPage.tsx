@@ -47,6 +47,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { User, SupportDesignerAssignment } from "@shared/schema";
 import { useLocation } from "wouter";
+import { PageHeader } from "@/components/CRMPrimitives";
 
 function cn(...inputs: any[]) {
   return inputs.filter(Boolean).join(" ");
@@ -106,12 +107,9 @@ export default function TeamPage() {
   };
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="crm-page space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold font-display text-white mb-2">Team Management</h1>
-          <p className="text-slate-400">Manage user accounts, roles, and access permissions.</p>
-        </div>
+        <PageHeader eyebrow="Team operations" title="Team Management" description="Manage user accounts, roles, and access permissions." />
         
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
           <DialogTrigger asChild>

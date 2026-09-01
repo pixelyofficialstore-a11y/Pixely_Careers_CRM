@@ -95,17 +95,17 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   };
 
   return (
-    <aside className="flex flex-col w-64 bg-slate-950 border-r border-slate-800 h-screen">
-      <div className="p-6">
-        <div className="flex items-center gap-3 mb-8">
+    <aside className="flex flex-col w-64 bg-[hsl(222,39%,9%)] border-r border-slate-800/80 h-screen">
+      <div className="p-5">
+        <div className="flex items-center gap-3 mb-7">
           <img src={logoUrl} alt="PixelCRM" className="h-8 w-auto" />
-          <h1 className="text-xl font-bold font-display tracking-tight text-white flex-1">Pixely_CRM</h1>
+          <h1 className="text-[15px] font-bold font-display tracking-tight text-slate-100 flex-1">Pixely_CRM</h1>
           <NotificationBell align="sidebar" />
         </div>
 
         <div className="flex flex-col gap-6">
           <div className="space-y-1">
-            <p className="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Menu</p>
+            <p className="px-3 text-[10px] font-bold text-slate-600 uppercase tracking-[.16em] mb-2">Workspace</p>
             {allowedLinks.map((link) => {
               const Icon = link.icon;
               const isActive = location === link.href;
@@ -117,13 +117,13 @@ export function Sidebar({ onNavigate }: SidebarProps) {
                   href={link.href} 
                   onClick={handleLinkClick}
                   className={cn(
-                    "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 group",
+                    "flex items-center gap-3 px-3 py-2 rounded-md text-[13px] font-medium transition-colors duration-200 group",
                     isActive 
-                      ? "bg-blue-600/10 text-blue-400" 
-                      : "text-slate-400 hover:text-white hover:bg-slate-900"
+                      ? "bg-cyan-400/10 text-cyan-200 border border-cyan-400/10"
+                      : "text-slate-400 hover:text-slate-100 hover:bg-slate-900/80"
                   )}
                 >
-                  <Icon className={cn("w-5 h-5", isActive ? "text-blue-400" : "text-slate-500 group-hover:text-white")} />
+                   <Icon className={cn("w-4 h-4", isActive ? "text-cyan-300" : "text-slate-500 group-hover:text-slate-300")} />
                   <span className="flex-1">{link.label}</span>
                   {showBadge && (
                     <Badge 
@@ -140,7 +140,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
           </div>
         </div>
       </div>
-      <div className="mt-auto p-6 border-t border-slate-800">
+      <div className="mt-auto p-5 border-t border-slate-800/80">
         <input 
           type="file" 
           ref={fileInputRef}
@@ -156,7 +156,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
             data-testid="button-change-avatar"
             title="Click to change profile photo"
           >
-            <Avatar className="w-10 h-10 border border-slate-700">
+             <Avatar className="w-9 h-9 border border-slate-700">
               {user.avatar ? (
                 <AvatarImage src={user.avatar} alt={user.name} />
               ) : null}
@@ -181,7 +181,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         
         <button 
           onClick={() => logoutMutation.mutate()}
-          className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm font-medium text-red-400 hover:bg-red-950/20 transition-colors"
+           className="flex items-center gap-3 w-full px-3 py-2 rounded-md text-[13px] font-medium text-rose-300 hover:bg-rose-950/20 transition-colors"
         >
           <LogOut className="w-5 h-5" />
           Sign Out

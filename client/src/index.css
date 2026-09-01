@@ -1,44 +1,43 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  /* Slate-based dark theme (Default) */
-  --background: 222 47% 11%;      /* slate-950 */
-  --foreground: 210 40% 98%;      /* slate-50 */
+  --background: 222 47% 8%;
+  --foreground: 210 28% 94%;
   
-  --card: 222 47% 11%;            /* slate-950 */
-  --card-foreground: 210 40% 98%;
+  --card: 222 39% 11%;
+  --card-foreground: 210 28% 94%;
   
-  --popover: 222 47% 11%;
-  --popover-foreground: 210 40% 98%;
+  --popover: 222 39% 12%;
+  --popover-foreground: 210 28% 94%;
   
-  --primary: 221 83% 53%;         /* blue-600 */
-  --primary-foreground: 210 40% 98%;
+  --primary: 183 72% 45%;
+  --primary-foreground: 222 47% 8%;
   
-  --secondary: 199 89% 48%;       /* sky-500 */
-  --secondary-foreground: 210 40% 98%;
+  --secondary: 222 32% 16%;
+  --secondary-foreground: 210 28% 94%;
   
-  --muted: 217 33% 17%;           /* slate-900 */
-  --muted-foreground: 215 20% 65%; /* slate-400 */
+  --muted: 222 32% 16%;
+  --muted-foreground: 215 18% 61%;
   
-  --accent: 217 33% 17%;          /* slate-800 (hover state) */
-  --accent-foreground: 210 40% 98%;
+  --accent: 183 55% 18%;
+  --accent-foreground: 183 72% 75%;
   
-  --destructive: 0 62% 30%;
-  --destructive-foreground: 210 40% 98%;
+  --destructive: 0 58% 42%;
+  --destructive-foreground: 210 28% 94%;
 
-  --border: 217 33% 17%;          /* slate-800 */
-  --input: 217 33% 17%;
-  --ring: 221 83% 53%;
+  --border: 220 27% 19%;
+  --input: 220 27% 21%;
+  --ring: 183 72% 45%;
   
-  --radius: 0.75rem;
+  --radius: 0.5rem;
   
-  --font-sans: 'Inter', sans-serif;
-  --font-display: 'Outfit', sans-serif;
-
+  --font-sans: 'DM Sans', sans-serif;
+  --font-display: 'DM Sans', sans-serif;
+  --font-mono: 'Space Mono', monospace;
 }
 
 @layer base {
@@ -48,6 +47,7 @@
   body {
     @apply bg-background text-foreground antialiased selection:bg-primary/30 selection:text-primary-foreground;
     font-family: var(--font-sans);
+    background-image: radial-gradient(circle at 80% -20%, hsl(183 40% 14% / .18), transparent 35%);
   }
   
   h1, h2, h3, h4, h5, h6 {
@@ -61,20 +61,24 @@
     height: 8px;
   }
   ::-webkit-scrollbar-track {
-    @apply bg-slate-900;
+    background: hsl(222 39% 10%);
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-slate-700 rounded-full hover:bg-slate-600 transition-colors;
+    background: hsl(220 22% 28%);
+    border-radius: 999px;
   }
 }
 
 @layer utilities {
   .glass-panel {
-    @apply bg-slate-900/60 backdrop-blur-xl border border-slate-800/50 shadow-xl;
+    background: hsl(var(--card) / .88);
+    border: 1px solid hsl(var(--border) / .9);
+    box-shadow: 0 12px 32px hsl(222 47% 4% / .14);
   }
   
   .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-sky-300;
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(90deg, hsl(183 72% 55%), hsl(191 55% 72%));
   }
   
   /* Improved table scroll wrapper */
@@ -106,5 +110,66 @@
   input[type="number"] {
     -moz-appearance: textfield;
     appearance: textfield;
+  }
+
+  .crm-page {
+    min-height: 100%;
+    padding: 1.5rem;
+  }
+  .crm-page-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid hsl(var(--border) / .8);
+  }
+  .crm-eyebrow {
+    color: hsl(183 72% 58%);
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+  }
+  .crm-title { color: hsl(var(--foreground)); font-size: 1.65rem; font-weight: 700; }
+  .crm-description { color: hsl(var(--muted-foreground)); font-size: .82rem; margin-top: .3rem; }
+  .crm-section {
+    overflow: hidden;
+    border: 1px solid hsl(var(--border) / .9);
+    border-radius: .55rem;
+    background: hsl(var(--card) / .72);
+  }
+  .crm-section-header {
+    padding: .9rem 1.15rem;
+    border-bottom: 1px solid hsl(var(--border) / .8);
+  }
+  .crm-table thead tr { background: hsl(222 39% 13% / .7); }
+  .crm-table th {
+    height: 2.6rem;
+    color: hsl(var(--muted-foreground));
+    font-size: .66rem;
+    font-weight: 700;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+  }
+  .crm-table td { padding-top: .72rem; padding-bottom: .72rem; }
+  .crm-table tbody tr { border-color: hsl(var(--border) / .65); }
+  .crm-table tbody tr:hover { background: hsl(183 45% 18% / .12); }
+  .crm-control {
+    border-color: hsl(var(--input));
+    background: hsl(222 39% 8% / .75);
+    color: hsl(var(--foreground));
+    border-radius: .42rem;
+  }
+  .crm-control:focus-visible {
+    border-color: hsl(var(--ring));
+    box-shadow: 0 0 0 2px hsl(var(--ring) / .18);
+  }
+  @media (min-width: 1024px) {
+    .crm-page { padding: 2rem 2.25rem; }
+  }
+  @media (max-width: 640px) {
+    .crm-page { padding: 1rem; }
+    .crm-page-header { align-items: flex-start; flex-direction: column; }
   }
 }

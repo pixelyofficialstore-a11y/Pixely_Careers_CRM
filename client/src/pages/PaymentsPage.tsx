@@ -44,6 +44,7 @@ import {
 import { cn } from "@/lib/utils";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { PageHeader } from "@/components/CRMPrimitives";
 
 interface PaymentVerification {
   id: number;
@@ -254,18 +255,9 @@ export default function PaymentsPage() {
   if (isLoading) return <PaymentsSkeleton />;
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="crm-page space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold font-display text-white mb-2" data-testid="text-payments-title">
-            Payment Verification
-          </h1>
-          <p className="text-slate-400">
-            {isAdmin 
-              ? "Review and approve payment requests from the team." 
-              : "View status of your submitted payment requests."}
-          </p>
-        </div>
+        <PageHeader eyebrow="Financial operations" title="Payment Verification" testId="text-payments-title" description={isAdmin ? "Review and approve payment requests from the team." : "View status of your submitted payment requests."} />
 
         {isDesigner && ordersWithRemaining.length > 0 && (
           <Dialog open={showSubmitDialog} onOpenChange={setShowSubmitDialog}>

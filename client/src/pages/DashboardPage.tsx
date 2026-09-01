@@ -26,6 +26,7 @@ import type { OrderWithServices } from "@shared/schema";
 import { getMillisecondsUntilNextBusinessDay } from "@shared/business-time";
 import { getOrderAccounting } from "@shared/order-accounting";
 import { DashboardSkeleton } from "@/components/PageSkeleton";
+import { MetricCard as CRMMetricCard, PageHeader } from "@/components/CRMPrimitives";
 
 interface User {
   id: number;
@@ -93,42 +94,8 @@ function StatCard({
   testId?: string;
   onClick?: () => void;
 }) {
-  const colors = {
-    blue: "bg-blue-500/10 text-blue-500",
-    green: "bg-green-500/10 text-green-500",
-    purple: "bg-purple-500/10 text-purple-500",
-    orange: "bg-orange-500/10 text-orange-500",
-    red: "bg-red-500/10 text-red-500",
-  };
-
-  return (
-    <button type="button" onClick={onClick} className={`glass-panel w-full p-6 rounded-2xl relative overflow-hidden group hover:border-slate-700 transition-colors text-left ${onClick ? "cursor-pointer" : ""}`} data-testid={testId}>
-      <div className="flex justify-between items-start mb-4">
-        <div className={cn("p-3 rounded-xl", colors[color])}>
-          <Icon className="w-6 h-6" />
-        </div>
-        {trend && (
-          <div className="flex items-center gap-1 text-xs font-medium text-green-400 bg-green-400/10 px-2 py-1 rounded-lg">
-            <ArrowUpRight className="w-3 h-3" />
-            {trend}
-          </div>
-        )}
-      </div>
-      <div>
-        <p className="text-slate-400 text-sm font-medium mb-1">{title}</p>
-        <h3 className="text-2xl font-bold font-display text-white">{value}</h3>
-      </div>
-      
-      <div className={cn(
-        "absolute -right-6 -bottom-6 w-24 h-24 rounded-full blur-2xl opacity-0 group-hover:opacity-20 transition-opacity",
-        color === "blue" && "bg-blue-500",
-        color === "green" && "bg-green-500",
-        color === "purple" && "bg-purple-500",
-        color === "orange" && "bg-orange-500",
-        color === "red" && "bg-red-500",
-      )} />
-    </button>
-  );
+  const tone = color === "green" ? "success" : color === "orange" ? "warning" : color === "red" ? "danger" : "cyan";
+  return <CRMMetricCard label={title} value={value} icon={Icon} tone={tone} onClick={onClick} testId={testId} note={trend} />;
 }
 
 function CashFlowCard({
@@ -370,11 +337,8 @@ export default function DashboardPage() {
   // Designer Dashboard
   if (isDesigner) {
     return (
-      <div className="p-8 space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold font-display text-white mb-2">My Dashboard</h1>
-          <p className="text-slate-400">Welcome back, {user?.name}. Here are your assigned orders.</p>
-        </div>
+      <div className="crm-page space-y-6">
+        <PageHeader eyebrow="Operations overview" title="My Dashboard" description={`Welcome back, ${user?.name}. Here are your assigned orders.`} />
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <StatCard 
@@ -447,11 +411,8 @@ export default function DashboardPage() {
   // Support Dashboard
   if (isSupport) {
     return (
-      <div className="p-8 space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold font-display text-white mb-2">Support Dashboard</h1>
-          <p className="text-slate-400">Welcome back, {user?.name}. Here's an overview of your orders.</p>
-        </div>
+      <div className="crm-page space-y-6">
+        <PageHeader eyebrow="Operations overview" title="Support Dashboard" description={`Welcome back, ${user?.name}. Here's an overview of your orders.`} />
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <StatCard 
@@ -536,11 +497,8 @@ export default function DashboardPage() {
 
   // Admin Dashboard (Full access)
   return (
-    <div className="p-8 space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold font-display text-white mb-2">Admin Dashboard</h1>
-        <p className="text-slate-400">Welcome back, {user?.name}. Here's your complete business overview.</p>
-      </div>
+    <div className="crm-page space-y-6">
+      <PageHeader eyebrow="Operations overview" title="Admin Dashboard" description={`Welcome back, ${user?.name}. Here's your complete business overview.`} />
 
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <StatCard 

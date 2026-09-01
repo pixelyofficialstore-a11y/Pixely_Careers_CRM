@@ -54,7 +54,7 @@ export default function AuthPage() {
               <label className="text-sm font-medium text-slate-300">Username</label>
               <input
                 {...form.register("username")}
-                className="w-full px-4 py-3 rounded-xl bg-slate-950/50 border border-slate-800 text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                className="w-full px-4 py-3 rounded-lg bg-slate-950/50 border border-slate-800 text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-colors"
                 placeholder="Enter your username"
               />
               {form.formState.errors.username && (
@@ -68,7 +68,7 @@ export default function AuthPage() {
                 <input
                   type={showPassword ? "text" : "password"}
                   {...form.register("password")}
-                  className="w-full px-4 py-3 pr-12 rounded-xl bg-slate-950/50 border border-slate-800 text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                  className="w-full px-4 py-3 pr-12 rounded-lg bg-slate-950/50 border border-slate-800 text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-colors"
                   placeholder="Enter your password"
                   data-testid="input-password"
                 />
@@ -89,7 +89,7 @@ export default function AuthPage() {
             <button
               type="submit"
               disabled={loginMutation.isPending}
-              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-900/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-3 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-lg shadow-cyan-950/20 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loginMutation.isPending ? (
                 <>

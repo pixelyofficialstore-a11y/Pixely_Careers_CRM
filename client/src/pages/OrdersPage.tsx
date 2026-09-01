@@ -92,6 +92,7 @@ import { ComplaintStatusBadge } from "@/components/StatusBadge";
 import { ComplaintDetails } from "@/pages/ComplaintsPage";
 import { ReviewForm, ReviewDetails, SuggestionDetails, type Review } from "@/pages/FeedbackPage";
 import { getOrderAccounting } from "@shared/order-accounting";
+import { PageHeader } from "@/components/CRMPrimitives";
 
 const FALLBACK_SERVICE_TYPES = [
   "ATS CV",
@@ -1294,13 +1295,10 @@ export default function OrdersPage() {
   );
 
   return (
-    <div className="p-4 md:p-8 space-y-4 md:space-y-8">
+    <div className="crm-page space-y-5">
       {deepLinkMessage && <div className="flex items-center justify-between gap-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100"><span>{deepLinkMessage}</span><Button variant="ghost" size="sm" onClick={() => { setDeepLinkMessage(null); setLocation("/orders"); }}>Clear link</Button></div>}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold font-display text-white mb-2">Orders Management</h1>
-          <p className="text-slate-400">Manage ATS CV, LinkedIn, and Cover Letter requests.</p>
-        </div>
+        <PageHeader eyebrow="Client operations" title="Orders Management" description="Manage ATS CV, LinkedIn, and Cover Letter requests." />
         
         <div className="flex items-center gap-3 flex-wrap">
           <div className="relative w-full md:w-64">

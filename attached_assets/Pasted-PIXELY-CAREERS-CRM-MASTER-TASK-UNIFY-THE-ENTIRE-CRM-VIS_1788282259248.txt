@@ -1,0 +1,1769 @@
+PIXELY CAREERS CRM
+MASTER TASK:
+UNIFY THE ENTIRE CRM VISUAL DESIGN USING THE CURRENT ANALYTICS PAGE AS THE PRIMARY DESIGN REFERENCE
+
+==================================================
+CORE OBJECTIVE
+==================================================
+
+The CRM currently has a visual consistency problem.
+
+The newer Analytics page uses a noticeably different and better visual language than:
+
+- Dashboard
+- Orders
+- Complaints
+- Feedback
+- Payments
+- Team
+- Settings
+- Detail drawers
+- Forms
+- Tables
+- Metric cards
+
+We want to adopt the CURRENT ANALYTICS PAGE as the MAIN VISUAL REFERENCE for the entire Pixely CRM.
+
+IMPORTANT:
+
+Do NOT literally clone every Analytics layout.
+
+Different pages have different purposes.
+
+Instead, use the Analytics page to define the CRM's:
+
+- visual theme
+- spacing system
+- typography hierarchy
+- card style
+- border treatment
+- background tones
+- accent colors
+- tabs
+- buttons
+- tables
+- filters
+- section headings
+- status presentation
+- drawers
+- empty states
+- hover states
+
+The final CRM should feel like ONE professionally designed application.
+
+==================================================
+CRITICAL SAFETY RULE
+==================================================
+
+THIS IS A UI / DESIGN SYSTEM REFINEMENT TASK.
+
+DO NOT:
+
+- rebuild business logic
+- change database schemas unless truly necessary
+- change finance formulas
+- change complaint workflows
+- change permissions
+- change authentication
+- change Cloudinary
+- change Supabase connections
+- change notification logic unnecessarily
+- change Order IDs
+- change Review IDs
+- change Suggestion IDs
+- change Complaint IDs
+- remove existing functionality
+- rewrite working APIs
+
+Preserve all current functionality.
+
+==================================================
+FIRST STEP — FULL DESIGN AUDIT
+==================================================
+
+Before changing UI:
+
+Inspect these existing pages/components:
+
+1. Analytics
+2. Dashboard
+3. Orders
+4. Complaints
+5. Feedback — Reviews
+6. Feedback — Suggestions
+7. Payments
+8. Team
+9. Settings
+10. Order Details drawer
+11. Complaint Details drawer
+12. Review Details drawer
+13. Suggestion Details drawer
+14. Modal forms
+15. Notifications
+16. Search inputs
+17. Filters
+18. Metric cards
+19. Tables
+20. Status badges
+21. Sidebar
+22. Page headers
+
+Identify which shared styles/components already exist.
+
+DO NOT create another unrelated styling system if one already exists.
+
+==================================================
+PART 1 — ANALYTICS PAGE IS THE DESIGN REFERENCE
+==================================================
+
+Use the CURRENT Analytics page visual direction as the source of truth.
+
+Important characteristics to retain:
+
+- Deep navy application background
+- Slightly lighter navy section/card surfaces
+- Subtle card borders
+- Restrained cyan/teal accent
+- Professional white primary text
+- Muted blue/gray secondary text
+- Compact typography
+- Small uppercase eyebrow labels where appropriate
+- Cleaner metric cards
+- Subtle icons instead of oversized colorful blocks
+- Tight but readable spacing
+- Clear section boundaries
+- Professional tab design
+- Less excessive rounded styling
+- Less bright saturated blue everywhere
+- Better information density
+- Better vertical rhythm
+
+The CRM should feel:
+
+Professional
+Modern
+Operational
+Premium
+Clean
+Data-focused
+Calm
+
+NOT:
+
+Gaming dashboard
+Generic template
+Overly colorful
+Overly rounded
+Visually noisy
+
+==================================================
+PART 2 — CREATE A SINGLE GLOBAL DESIGN SYSTEM
+==================================================
+
+Do NOT manually hard-code slightly different colors across pages.
+
+Create or refine centralized design tokens.
+
+Use the project's current styling architecture.
+
+Examples may include:
+
+CSS variables
+Tailwind theme tokens
+theme constants
+shared component variants
+
+Use whichever architecture already exists.
+
+==================================================
+GLOBAL COLOR TOKENS
+==================================================
+
+Create ONE consistent palette based on the Analytics page.
+
+Conceptually define:
+
+App Background
+
+Sidebar Background
+
+Primary Surface
+
+Secondary Surface
+
+Elevated Surface
+
+Border Default
+
+Border Strong
+
+Text Primary
+
+Text Secondary
+
+Text Muted
+
+Accent Primary — cyan/teal direction from Analytics
+
+Accent Blue — only where required
+
+Success
+
+Warning
+
+Danger
+
+Info
+
+Do not scatter literal colors throughout dozens of files.
+
+==================================================
+IMPORTANT COLOR RULE
+==================================================
+
+The cyan/teal Analytics accent should become the main interface accent.
+
+Do NOT turn the whole CRM cyan.
+
+Use accent strategically for:
+
+- active navigation
+- selected tabs
+- primary focus
+- metric highlights
+- links
+- icons
+- interactive emphasis
+
+Status colors remain semantic:
+
+Green = positive/completed/resolved
+
+Amber = warning/pending/confirmed where appropriate
+
+Red = canceled/refunded/destructive
+
+Blue/Cyan = neutral informational/action
+
+Gray = dismissed/inactive
+
+==================================================
+PART 3 — GLOBAL TYPOGRAPHY
+==================================================
+
+Match Analytics typography across the CRM.
+
+Define consistent hierarchy:
+
+PAGE EYEBROW
+Small uppercase muted/accent text.
+
+PAGE TITLE
+Strong professional heading.
+
+PAGE DESCRIPTION
+Muted compact supporting text.
+
+SECTION TITLE
+Medium weight.
+
+CARD LABEL
+Small uppercase/muted.
+
+PRIMARY VALUE
+Prominent number/text.
+
+SECONDARY META
+Muted smaller text.
+
+TABLE HEADER
+Compact muted label.
+
+BODY
+Readable regular text.
+
+Do not let each page invent its own font sizes.
+
+==================================================
+PART 4 — PAGE HEADER STANDARD
+==================================================
+
+Every main page should use a consistent header structure.
+
+Example:
+
+OPERATIONS
+Orders Management
+
+Manage client orders, assignments and delivery progress.
+
+or use page-appropriate eyebrow text.
+
+Recommended page eyebrows:
+
+Dashboard
+OPERATIONS OVERVIEW
+
+Orders
+CLIENT OPERATIONS
+
+Complaints
+CLIENT EXPERIENCE
+
+Feedback
+CLIENT EXPERIENCE
+
+Payments
+FINANCE OPERATIONS
+
+Team
+TEAM MANAGEMENT
+
+Analytics
+OPERATIONS COCKPIT
+
+Settings
+SYSTEM SETTINGS
+
+Do not force an eyebrow if it creates clutter.
+
+But keep the hierarchy consistent.
+
+==================================================
+PAGE HEADER ALIGNMENT
+==================================================
+
+Use same:
+
+left edge
+top spacing
+title spacing
+subtitle spacing
+right-side action alignment
+
+across all pages.
+
+==================================================
+PART 5 — SIDEBAR
+==================================================
+
+Keep current sidebar structure.
+
+Refine styling to match Analytics.
+
+Use:
+
+subtle navy background
+
+clear active state
+
+cyan/blue accent for selected navigation
+
+consistent icon size
+
+consistent spacing
+
+clean hover state
+
+Do NOT redesign navigation architecture.
+
+==================================================
+PART 6 — METRIC CARDS
+==================================================
+
+The Analytics metric cards are much closer to the desired style.
+
+Use that as the standard.
+
+All metric cards across CRM should share:
+
+same border radius
+
+same border color
+
+same padding
+
+same title styling
+
+same value typography
+
+same icon size
+
+same hover behavior
+
+same surface color
+
+same responsive behavior
+
+==================================================
+REMOVE OLD CARD STYLE
+==================================================
+
+The older Dashboard/Orders cards currently use larger icon blocks and visually heavier styling.
+
+Refine them to match Analytics.
+
+Do not have:
+
+Analytics card style A
+
+Dashboard card style B
+
+Orders card style C
+
+Create one reusable:
+
+MetricCard
+
+component or shared variant.
+
+==================================================
+METRIC CARD INFORMATION HIERARCHY
+==================================================
+
+Example:
+
+MONTHLY REVENUE
+
+Rs14,500
+
+Revenue recorded for September
+
+Icon placed subtly.
+
+Do not make the icon more visually important than the metric.
+
+==================================================
+PART 7 — SECTION CONTAINERS
+==================================================
+
+Use consistent section containers.
+
+Example:
+
+Designer workload and experience
+
+Table/content inside.
+
+Same style should apply to:
+
+Today's Orders
+
+Monthly Orders
+
+Complaints list
+
+Reviews list
+
+Suggestions list
+
+Payment requests
+
+Team list
+
+Recent activity
+
+Use same:
+
+surface
+
+border
+
+heading padding
+
+body padding
+
+table divider
+
+==================================================
+PART 8 — TABLE DESIGN
+==================================================
+
+Create ONE global table visual style.
+
+Apply to:
+
+Orders
+
+Complaints
+
+Reviews
+
+Suggestions
+
+Payments
+
+Team
+
+Analytics
+
+Table requirements:
+
+Clean muted headers
+
+Readable row height
+
+Subtle separators
+
+Hover feedback
+
+Consistent clickable ID style
+
+Consistent status badges
+
+Consistent avatar treatment
+
+Consistent numeric alignment
+
+No unnecessary heavy borders.
+
+==================================================
+CLICKABLE IDS
+==================================================
+
+Use one consistent link style for:
+
+PX-
+
+CMP-
+
+REV-
+
+SUG-
+
+Use cyan/blue accent, but subtle.
+
+Hover:
+clear underline or emphasis.
+
+==================================================
+PART 9 — FILTER BAR
+==================================================
+
+Search and filters currently look different across pages.
+
+Standardize.
+
+Create/reuse shared:
+
+SearchInput
+
+FilterSelect
+
+DateSelect
+
+FilterBar
+
+==================================================
+FILTER BAR STYLE
+==================================================
+
+Use Analytics-style controls:
+
+compact height
+
+dark surface
+
+subtle border
+
+clear focus ring
+
+consistent dropdown arrow
+
+consistent spacing
+
+Do not use a bright blue border unless focused.
+
+==================================================
+PART 10 — BUTTON SYSTEM
+==================================================
+
+Create clear button hierarchy.
+
+PRIMARY
+
+Use for:
+
+Create Order
+
+New Complaint
+
+New Review
+
+New Suggestion
+
+Important confirm actions
+
+Use the main accent.
+
+SECONDARY
+
+Use for:
+
+Export PDF
+
+View details
+
+Update
+
+Cancel form
+
+OUTLINE
+
+Use sparingly.
+
+DANGER
+
+Cancel Order
+
+Refund
+
+Destructive confirmation
+
+==================================================
+BUTTON CONSISTENCY
+==================================================
+
+Same:
+
+height
+
+border radius
+
+font
+
+icon spacing
+
+hover
+
+disabled state
+
+loading state
+
+==================================================
+PART 11 — TABS
+==================================================
+
+Use the newer Analytics tab style as reference.
+
+Apply consistently to:
+
+Analytics tabs
+
+Orders Today's / Monthly
+
+Feedback Reviews / Suggestions
+
+Order Details tabs
+
+Designer Details tabs
+
+Any other segmented navigation
+
+==================================================
+TAB DESIGN
+==================================================
+
+Selected:
+
+clear accent/surface.
+
+Unselected:
+
+muted.
+
+No giant bright-blue tab unless appropriate.
+
+==================================================
+PART 12 — DASHBOARD REDESIGN USING ANALYTICS THEME
+==================================================
+
+Do NOT rebuild Dashboard functionality.
+
+Restyle Dashboard to feel like Analytics.
+
+Suggested structure:
+
+Header
+
+Quick Attention
+
+Business Overview
+
+Client Experience
+
+Finance
+
+Recent Activity
+
+Use consistent Analytics cards and section containers.
+
+==================================================
+DASHBOARD HEADER
+==================================================
+
+Example:
+
+OPERATIONS OVERVIEW
+
+Admin Dashboard
+
+A clear overview of orders, client experience and business activity.
+
+Do not use overly casual copy if Analytics feels more professional.
+
+==================================================
+DASHBOARD CURRENT CARDS
+==================================================
+
+Current cards include:
+
+Today's Orders
+
+Monthly Orders
+
+Ready This Month
+
+Canceled This Month
+
+Pending Orders
+
+Active Orders
+
+Keep useful metrics.
+
+Restyle using Analytics card system.
+
+==================================================
+DASHBOARD CLIENT EXPERIENCE
+==================================================
+
+Current:
+
+Reviews This Month
+
+Average Client Rating
+
+Suggestions This Month
+
+Implemented Suggestions
+
+Add where useful:
+
+Confirmed Complaints
+
+Refund Cases
+
+But do not overcrowd.
+
+==================================================
+DASHBOARD SECTION WIDTH
+==================================================
+
+Cards should align to a consistent grid.
+
+Avoid random card widths.
+
+==================================================
+PART 13 — ORDERS PAGE REDESIGN
+==================================================
+
+The Orders page currently still has the older visual theme.
+
+Restyle it using Analytics design language.
+
+Keep all functionality.
+
+==================================================
+ORDERS HEADER
+==================================================
+
+Use consistent page header.
+
+Search/filters/actions align cleanly.
+
+Example:
+
+CLIENT OPERATIONS
+
+Orders Management
+
+Track client orders, payments, assignments and delivery status.
+
+==================================================
+ORDERS METRIC CARDS
+==================================================
+
+Restyle:
+
+Total Monthly
+
+Delivered
+
+Monthly Revenue
+
+Collected
+
+Remaining
+
+Today's Revenue
+
+using global MetricCard.
+
+==================================================
+ORDERS TABLE
+==================================================
+
+Restyle to match Analytics table.
+
+Keep existing data.
+
+Improve:
+
+service pills
+
+designer display
+
+status
+
+payment state
+
+row hover
+
+==================================================
+PART 14 — COMPLAINTS PAGE
+==================================================
+
+Use same global theme.
+
+Top cards should use MetricCard.
+
+Main complaints table should use global DataTable.
+
+Filters should use global FilterBar.
+
+Complaint Details drawer should use global Drawer styles.
+
+Do NOT change Complaint workflow.
+
+==================================================
+PART 15 — FEEDBACK PAGE
+==================================================
+
+Reviews and Suggestions should visually match Analytics.
+
+Use:
+
+same tabs
+
+same cards
+
+same table
+
+same search
+
+same date filters
+
+same drawers
+
+==================================================
+PART 16 — PAYMENTS PAGE
+==================================================
+
+Payments page should no longer look like a separate module.
+
+Use:
+
+Analytics header style
+
+Analytics filter system
+
+shared table
+
+shared cards if metrics exist
+
+same status chips
+
+same empty states
+
+==================================================
+PART 17 — TEAM PAGE
+==================================================
+
+Apply same design language.
+
+Team member cards/table should look operational, not social-media style.
+
+Use:
+
+Avatar
+
+Name
+
+Role
+
+Status
+
+Relevant performance metadata
+
+Clean hierarchy.
+
+Do not overcrowd.
+
+==================================================
+PART 18 — SETTINGS PAGE
+==================================================
+
+Settings should use same sections/cards.
+
+Use clear headings.
+
+Keep forms readable.
+
+Do not create giant floating white-style forms inside dark UI.
+
+==================================================
+PART 19 — ALL DETAIL DRAWERS
+==================================================
+
+Order Details
+
+Complaint Details
+
+Review Details
+
+Suggestion Details
+
+Designer Details
+
+must use one consistent drawer shell.
+
+==================================================
+DRAWER STANDARD
+==================================================
+
+Same:
+
+width
+
+background
+
+border
+
+header
+
+Back button
+
+Close button
+
+section title
+
+card style
+
+scrolling
+
+mobile behavior
+
+==================================================
+DRAWER SECTION CARDS
+==================================================
+
+Use slightly darker/lighter surfaces consistently.
+
+Avoid the current situation where every drawer section has a random border/background.
+
+==================================================
+PART 20 — MODALS
+==================================================
+
+Apply the same visual system to:
+
+Create Order
+
+Raise Complaint
+
+Review
+
+Suggestion
+
+Cancel Order
+
+Confirm Complaint
+
+Dismiss Complaint
+
+Implement Suggestion
+
+Reject Suggestion
+
+Refund
+
+Use same:
+
+overlay
+
+modal background
+
+label
+
+input
+
+textarea
+
+buttons
+
+error state
+
+==================================================
+PART 21 — INPUTS
+==================================================
+
+Create consistent:
+
+Text input
+
+Textarea
+
+Select
+
+Upload control
+
+Search box
+
+Checkbox
+
+Radio selection
+
+Use subtle dark surface.
+
+Clear focus state.
+
+Do not use inconsistent blue outlines.
+
+==================================================
+PART 22 — STATUS BADGES
+==================================================
+
+Create one canonical status badge component.
+
+Examples:
+
+Order:
+
+New
+
+In Progress
+
+Ready
+
+Delivered
+
+Canceled
+
+Complaint:
+
+New
+
+Confirmed
+
+Dismissed
+
+Resolved
+
+Refunded
+
+Suggestion:
+
+New
+
+Implemented
+
+Rejected
+
+Payment:
+
+Pending
+
+Approved
+
+Rejected
+
+Refunded
+
+==================================================
+STATUS BADGE STYLE
+==================================================
+
+Compact.
+
+Soft tinted background.
+
+Readable text.
+
+Subtle border where appropriate.
+
+Do not make badges look like large buttons.
+
+==================================================
+PART 23 — EMPTY STATES
+==================================================
+
+Standardize.
+
+Example:
+
+No complaints found
+
+No reviews recorded
+
+No suggestions recorded
+
+No payment requests found
+
+Use:
+
+small icon
+
+short message
+
+optional action
+
+Do not leave giant empty boxes.
+
+==================================================
+PART 24 — LOADING STATES
+==================================================
+
+Use shared skeletons.
+
+Do not show cards temporarily as 0 while loading.
+
+Zero should mean genuine zero.
+
+==================================================
+PART 25 — HOVER STATES
+==================================================
+
+Use subtle hover.
+
+Cards:
+
+slight border/surface change.
+
+Rows:
+
+slight surface highlight.
+
+Clickable IDs:
+
+accent increase.
+
+Do not use dramatic animations.
+
+==================================================
+PART 26 — SPACING SYSTEM
+==================================================
+
+This is important.
+
+Define standard spacing scale.
+
+Use consistently for:
+
+Page top
+
+Between page header and controls
+
+Between metric cards
+
+Between sections
+
+Inside cards
+
+Inside tables
+
+Inside drawers
+
+Current pages use noticeably different spacing.
+
+Fix globally.
+
+==================================================
+PART 27 — BORDER RADIUS
+==================================================
+
+Analytics uses a cleaner, more controlled radius.
+
+Standardize:
+
+Small radius:
+inputs/buttons/badges
+
+Medium radius:
+cards/tables
+
+Larger radius:
+major containers only
+
+Do not make every component extremely rounded.
+
+==================================================
+PART 28 — CONTENT DENSITY
+==================================================
+
+Analytics is better because it uses information space more efficiently.
+
+Apply that principle globally.
+
+Avoid:
+
+giant cards for two lines
+
+huge empty areas
+
+oversized headers
+
+oversized icons
+
+excessive vertical gaps
+
+But do not make screens cramped.
+
+==================================================
+PART 29 — GLOBAL PAGE WIDTH
+==================================================
+
+Use one consistent content width / page container strategy.
+
+The sidebar-to-content starting position should be consistent.
+
+Pages should not appear to have different horizontal layout systems.
+
+==================================================
+PART 30 — DATA PRESENTATION
+==================================================
+
+Each section should clearly present data.
+
+Example on Dashboard:
+
+CLIENT EXPERIENCE
+
+Average Rating        3.5/5
+Reviews               2
+Confirmed Complaints  0
+Implemented Suggestions 1
+
+Do not decorate data unnecessarily.
+
+==================================================
+PART 31 — SECTION EYEBROW LABELS
+==================================================
+
+Analytics uses:
+
+OPERATIONS COCKPIT
+
+This is visually strong.
+
+Use this design sparingly.
+
+Suggested:
+
+Dashboard:
+OPERATIONS OVERVIEW
+
+Orders:
+CLIENT OPERATIONS
+
+Complaints:
+SERVICE QUALITY
+
+Feedback:
+CLIENT EXPERIENCE
+
+Payments:
+FINANCIAL OPERATIONS
+
+Team:
+TEAM OPERATIONS
+
+Analytics:
+OPERATIONS COCKPIT
+
+Settings:
+SYSTEM CONFIGURATION
+
+Do not make these too bright or large.
+
+==================================================
+PART 32 — ICON SYSTEM
+==================================================
+
+Use one icon library already in the project.
+
+Standardize icon stroke/size.
+
+Do not mix:
+
+filled icons
+
+outline icons
+
+random emoji
+
+different icon families
+
+==================================================
+PART 33 — ADMIN DASHBOARD
+==================================================
+
+Restyle existing Dashboard into same theme.
+
+Do not make it feel separate from Analytics.
+
+Analytics and Dashboard should look like siblings.
+
+==================================================
+PART 34 — DESIGNER DASHBOARD
+==================================================
+
+Use same theme.
+
+Role-specific data remains different.
+
+But visual system must be identical.
+
+==================================================
+PART 35 — SUPPORT DASHBOARD
+==================================================
+
+Same theme.
+
+Do not maintain role-specific design themes.
+
+Only content changes by role.
+
+==================================================
+PART 36 — ANALYTICS PAGE ITSELF
+==================================================
+
+Do NOT significantly change the current Analytics design.
+
+It is the reference.
+
+Only refine obvious inconsistencies or improve reuse of global components.
+
+The final Analytics page should still look very close to its current visual direction.
+
+==================================================
+PART 37 — DO NOT COPY ANALYTICS CONTENT STRUCTURE EVERYWHERE
+==================================================
+
+Important:
+
+Orders is still Orders.
+
+Complaints is still Complaints.
+
+Feedback is still Feedback.
+
+Do not make every page look like the exact Analytics dashboard.
+
+We are adopting the VISUAL LANGUAGE, not cloning its page structure.
+
+==================================================
+PART 38 — SHARED COMPONENTS
+==================================================
+
+Where safe, consolidate repeated UI into reusable components such as:
+
+PageHeader
+
+MetricCard
+
+SectionCard
+
+DataTable
+
+StatusBadge
+
+FilterBar
+
+SearchInput
+
+AppTabs
+
+DrawerShell
+
+FormField
+
+EmptyState
+
+LoadingSkeleton
+
+IconButton
+
+Do not over-engineer.
+
+==================================================
+PART 39 — REMOVE DUPLICATE STYLES
+==================================================
+
+Audit existing CSS/classes/components.
+
+If there are:
+
+OrdersMetricCard
+
+AnalyticsMetricCard
+
+DashboardMetricCard
+
+with only visual differences:
+
+consolidate them carefully.
+
+Do not delete business-specific wrappers if they contain logic.
+
+Extract only shared presentation.
+
+==================================================
+PART 40 — GLOBAL THEME MIGRATION STRATEGY
+==================================================
+
+Do NOT rewrite every page in one uncontrolled step.
+
+Implement in safe sequence:
+
+STEP 1
+Create/refine global tokens.
+
+STEP 2
+Create/refine shared base components.
+
+STEP 3
+Apply to Dashboard.
+
+STEP 4
+Apply to Orders.
+
+STEP 5
+Apply to Complaints.
+
+STEP 6
+Apply to Feedback.
+
+STEP 7
+Apply to Payments.
+
+STEP 8
+Apply to Team/Settings.
+
+STEP 9
+Apply to drawers/forms.
+
+STEP 10
+Perform visual consistency audit.
+
+==================================================
+PART 41 — DO NOT BREAK FUNCTIONAL COMPONENTS
+==================================================
+
+When restyling:
+
+preserve callbacks
+
+preserve API calls
+
+preserve form state
+
+preserve permissions
+
+preserve routes
+
+preserve deep links
+
+preserve drawer stack
+
+preserve filters
+
+preserve pagination
+
+preserve exports
+
+Do not replace working components with visually similar but functionally incomplete versions.
+
+==================================================
+PART 42 — PAGE-BY-PAGE CONSISTENCY TEST
+==================================================
+
+Compare:
+
+Dashboard
+
+Orders
+
+Complaints
+
+Feedback
+
+Payments
+
+Team
+
+Analytics
+
+Settings
+
+Ask:
+
+Do page headers align?
+
+Do cards look from same system?
+
+Do tables match?
+
+Do tabs match?
+
+Do buttons match?
+
+Do filters match?
+
+Do drawers match?
+
+Do status badges match?
+
+Do text colors match?
+
+Do surfaces match?
+
+==================================================
+PART 43 — SCREENSHOT COMPARISON
+==================================================
+
+Use the CURRENT Analytics page as design benchmark.
+
+The final Orders/Dashboard pages should no longer look like the older theme shown currently.
+
+They should visually feel like they belong beside Analytics without looking copied.
+
+==================================================
+PART 44 — RESPONSIVENESS
+==================================================
+
+Desktop:
+clean dense layout.
+
+Tablet:
+cards wrap naturally.
+
+Mobile:
+single/two-column metrics.
+
+Tables:
+horizontal scroll or existing mobile card system.
+
+Drawers:
+full width on smaller devices.
+
+Do not break responsive behavior.
+
+==================================================
+PART 45 — ACCESSIBILITY
+==================================================
+
+Maintain sufficient contrast.
+
+Do not make muted text unreadably dark.
+
+Focus states must remain visible.
+
+Buttons/status should not rely only on color.
+
+==================================================
+PART 46 — PERFORMANCE
+==================================================
+
+This is primarily styling.
+
+Do not introduce huge new libraries.
+
+Avoid unnecessary animation packages.
+
+Reuse existing CSS/Tailwind/component system.
+
+==================================================
+PART 47 — FINAL VISUAL CHARACTER
+==================================================
+
+The final CRM should visually communicate:
+
+Pixely Careers is an organized professional agency.
+
+It should feel like:
+
+an internal operations platform
+
+not:
+
+a template dashboard
+
+not:
+
+a gaming UI
+
+not:
+
+a generic admin panel
+
+not:
+
+a collection of independently designed pages.
+
+==================================================
+PART 48 — REQUIRED TESTS
+==================================================
+
+After design migration test:
+
+Dashboard
+
+Orders
+
+Order Detail drawer
+
+Complaints
+
+Complaint drawer
+
+Feedback Reviews
+
+Review drawer
+
+Feedback Suggestions
+
+Suggestion drawer
+
+Payments
+
+Team
+
+Analytics
+
+Designer Detail drawer
+
+Settings
+
+Notifications
+
+Create Order
+
+Raise Complaint
+
+Add Review
+
+Add Suggestion
+
+Cancel Order
+
+Payment approval
+
+Exports
+
+Filters
+
+Search
+
+Responsive layout
+
+Role permissions
+
+==================================================
+PART 49 — BUILD CHECK
+==================================================
+
+Run:
+
+TypeScript checks
+
+Lint where available
+
+Production build
+
+Browser console check
+
+Server logs
+
+Fix all UI-related errors introduced by this task.
+
+==================================================
+PART 50 — FINAL DESIGN REPORT
+==================================================
+
+After implementation provide:
+
+1. Global theme tokens added/changed
+2. Shared UI components created/refined
+3. Dashboard changes
+4. Orders changes
+5. Complaints changes
+6. Feedback changes
+7. Payments changes
+8. Team changes
+9. Settings changes
+10. Drawer changes
+11. Form changes
+12. Responsive changes
+13. Files modified
+14. Regression tests completed
+
+Also explicitly confirm:
+
+No business logic was intentionally changed.
+
+No existing data was modified.
+
+Existing role permissions were preserved.
+
+Existing financial logic was preserved.
+
+Existing Cloudinary/Supabase integrations were preserved.
+
+==================================================
+FINAL INSTRUCTION
+==================================================
+
+THE CURRENT ANALYTICS PAGE IS THE VISUAL SOURCE OF TRUTH.
+
+Do not try to make the old theme and new theme coexist.
+
+Evolve the entire CRM onto ONE design system inspired by the current Analytics page.
+
+The finished product should have:
+
+one background system
+
+one surface system
+
+one border system
+
+one typography hierarchy
+
+one metric card language
+
+one table language
+
+one tab language
+
+one button language
+
+one drawer language
+
+one form language
+
+one status language
+
+while preserving different page functions.
+
+Make it clean, professional, coherent, information-focused and visually premium.

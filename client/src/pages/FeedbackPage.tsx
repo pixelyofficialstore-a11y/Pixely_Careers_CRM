@@ -34,6 +34,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import type { OrderWithServices, User } from "@shared/schema";
+import { MetricCard as CRMMetricCard, PageHeader } from "@/components/CRMPrimitives";
 
 export type Review = {
   id: number;
@@ -118,22 +119,8 @@ const errorText = (error: Error) => error.message.match(/"message":"([^"]+)"/)?.
 const marketingPermissionLabel = (value?: string | null) => value === "yes" ? "Permission Granted" : value === "no" ? "Permission Not Granted" : "Not Asked";
 
 function MetricCard({ title, value, icon: Icon, color = "blue", testId }: { title: string; value: string | number; icon: typeof Star; color?: string; testId?: string }) {
-  const colors: Record<string, string> = {
-    blue: "bg-blue-500/10 text-blue-500",
-    green: "bg-emerald-500/10 text-emerald-400",
-    purple: "bg-violet-500/10 text-violet-400",
-    orange: "bg-amber-500/10 text-amber-400",
-    red: "bg-rose-500/10 text-rose-400",
-  };
-  return (
-    <div className="glass-panel flex items-center gap-3 rounded-xl border border-slate-800 p-4" data-testid={testId}>
-      <div className={`rounded-lg p-2 ${colors[color] || colors.blue}`}><Icon className="h-5 w-5" /></div>
-      <div className="min-w-0">
-        <p className="text-xs text-slate-500">{title}</p>
-        <p className="font-bold text-white">{value}</p>
-      </div>
-    </div>
-  );
+  const tone = color === "green" ? "success" : color === "orange" ? "warning" : color === "red" ? "danger" : "cyan";
+  return <CRMMetricCard label={title} value={value} icon={Icon} tone={tone} testId={testId} />;
 }
 
 function ChannelBadges({ review }: { review: Review }) {
@@ -404,12 +391,9 @@ export default function FeedbackPage() {
   }, [linkedSuggestionNumber, suggestions, suggestionsLoading, tab]);
   const resetFilters = () => { setSearch(""); setDesignerId("all"); setSuggestionStatus("all"); setMonth(String(now.getMonth() + 1)); setYear(String(now.getFullYear())); };
   const reportMonth = format(new Date(Number(year), Number(month) - 1, 1), "MMMM yyyy");
-  return <div className="space-y-4 p-4 md:space-y-8 md:p-8">
+  return <div className="crm-page space-y-5">
+    <PageHeader eyebrow="Client experience" title="Client Feedback" description={`Review order-linked client feedback for ${reportMonth}.`} />
     <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-      <div className="max-w-md">
-        <h1 className="text-2xl font-bold leading-tight text-white md:text-3xl">Client Feedback</h1>
-        <p className="mt-2 text-slate-400">Review order-linked client feedback for {reportMonth}.</p>
-      </div>
       <div className="flex w-full flex-col gap-3 xl:w-auto xl:min-w-[680px]">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative min-w-0 flex-1 sm:min-w-[280px]">

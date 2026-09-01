@@ -1,19 +1,19 @@
 import { cn } from "@/lib/utils";
 
 const orderStatusConfig: Record<string, { color: string; label: string }> = {
-  pending_payment: { color: "bg-orange-500/10 text-orange-500 border-orange-500/20", label: "Pending Payment" },
-  pending: { color: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20", label: "Pending" },
-  new: { color: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20", label: "New" },
-  working: { color: "bg-blue-500/10 text-blue-500 border-blue-500/20", label: "Working" },
-  ready: { color: "bg-green-500/10 text-green-500 border-green-500/20", label: "Ready" },
+  pending_payment: { color: "bg-amber-500/10 text-amber-300 border-amber-500/20", label: "Pending Payment" },
+  pending: { color: "bg-amber-500/10 text-amber-300 border-amber-500/20", label: "Pending" },
+  new: { color: "bg-cyan-500/10 text-cyan-200 border-cyan-500/20", label: "New" },
+  working: { color: "bg-sky-500/10 text-sky-300 border-sky-500/20", label: "Working" },
+  ready: { color: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20", label: "Ready" },
   delivered: { color: "bg-slate-500/10 text-slate-400 border-slate-500/20", label: "Delivered" },
 };
 
 const chatStatusConfig: Record<string, { color: string; label: string }> = {
-  new: { color: "bg-purple-500/10 text-purple-500 border-purple-500/20", label: "New" },
-  changes: { color: "bg-orange-500/10 text-orange-500 border-orange-500/20", label: "Changes" },
-  satisfied: { color: "bg-green-500/10 text-green-500 border-green-500/20", label: "Satisfied" },
-  issues: { color: "bg-red-500/10 text-red-500 border-red-500/20", label: "Issues" },
+  new: { color: "bg-cyan-500/10 text-cyan-200 border-cyan-500/20", label: "New" },
+  changes: { color: "bg-amber-500/10 text-amber-300 border-amber-500/20", label: "Changes" },
+  satisfied: { color: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20", label: "Satisfied" },
+  issues: { color: "bg-rose-500/10 text-rose-300 border-rose-500/20", label: "Issues" },
 };
 
 const complaintStatusConfig: Record<string, { color: string; label: string }> = {
@@ -27,7 +27,7 @@ const complaintStatusConfig: Record<string, { color: string; label: string }> = 
 export function OrderStatusBadge({ status }: { status: string }) {
   const config = orderStatusConfig[status] || orderStatusConfig.pending;
   return (
-    <span className={cn("px-2.5 py-0.5 rounded-full text-xs font-medium border", config.color)}>
+    <span className={cn("px-2 py-0.5 rounded text-[11px] font-medium border", config.color)}>
       {config.label}
     </span>
   );
@@ -36,7 +36,7 @@ export function OrderStatusBadge({ status }: { status: string }) {
 export function ChatStatusBadge({ status }: { status: string }) {
   const config = chatStatusConfig[status] || chatStatusConfig.new;
   return (
-    <span className={cn("px-2.5 py-0.5 rounded-full text-xs font-medium border", config.color)}>
+    <span className={cn("px-2 py-0.5 rounded text-[11px] font-medium border", config.color)}>
       {config.label}
     </span>
   );
@@ -45,7 +45,7 @@ export function ChatStatusBadge({ status }: { status: string }) {
 export function ComplaintStatusBadge({ status }: { status: string }) {
   const config = complaintStatusConfig[status] || complaintStatusConfig.new;
   return (
-    <span className={cn("px-2.5 py-0.5 rounded-full text-xs font-medium border", config.color)}>
+    <span className={cn("px-2 py-0.5 rounded text-[11px] font-medium border", config.color)}>
       {config.label}
     </span>
   );

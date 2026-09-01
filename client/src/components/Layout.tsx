@@ -25,7 +25,7 @@ export function Layout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="h-screen bg-background text-foreground flex overflow-hidden">
+      <div className="min-h-[100dvh] bg-background text-foreground flex overflow-hidden">
       {/* Mobile Navigation Bar */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 h-14 bg-slate-950 border-b border-slate-800 flex items-center justify-between px-4">
         <div className="flex items-center gap-3">
@@ -62,7 +62,7 @@ export function Layout({ children }: { children: ReactNode }) {
       </div>
 
       {/* Main Content - scrollable with padding for mobile nav */}
-      <main className="flex-1 lg:pl-64 h-screen flex flex-col overflow-y-auto pt-14 lg:pt-0">
+      <main className="flex-1 lg:pl-64 min-h-[100dvh] flex flex-col overflow-y-auto pt-14 lg:pt-0">
         {children}
       </main>
     </div>

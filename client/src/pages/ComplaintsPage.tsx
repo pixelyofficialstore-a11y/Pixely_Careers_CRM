@@ -22,6 +22,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { getOrderAccounting } from "@shared/order-accounting";
+import { PageHeader, MetricCard as CRMMetricCard, EmptyState } from "@/components/CRMPrimitives";
 
 const errorText = (error: Error) => error.message.match(/"message":"([^"]+)"/)?.[1] || "The request could not be completed.";
 const titleCase = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, c => c.toUpperCase());
@@ -292,10 +293,10 @@ export default function ComplaintsPage() {
       </TableCell>
     </TableRow>
   );
-  return <div className="space-y-4 p-4 md:space-y-8 md:p-8">
+  return <div className="crm-page space-y-5">
     <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
       <div className="max-w-md">
-        <div><h1 className="text-2xl font-bold leading-tight text-white md:text-3xl">{isAdmin ? "Complaints Management" : user?.role === "designer" ? "Complaints About My Work" : "Complaints I Filed"}</h1><p className="mt-2 text-slate-400">Review order-linked complaints for {format(new Date(Number(year), Number(month) - 1, 1), "MMMM yyyy")}.</p></div>
+        <PageHeader eyebrow="Service quality" title={isAdmin ? "Complaints Management" : user?.role === "designer" ? "Complaints About My Work" : "Complaints I Filed"} description={`Review order-linked complaints for ${format(new Date(Number(year), Number(month) - 1, 1), "MMMM yyyy")}.`} />
       </div>
       <div className="flex w-full flex-col gap-3 xl:w-auto xl:min-w-[680px]">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -328,8 +329,8 @@ export default function ComplaintsPage() {
       </div>
     </div>
     {deepLinkMessage && <div className="flex items-center justify-between gap-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100"><span>{deepLinkMessage}</span><Button variant="ghost" size="sm" onClick={() => { setDeepLinkMessage(null); setLocation("/complaints"); }}>Clear link</Button></div>}
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5">{cards.map(card => { const Icon = card.icon; return <div key={card.key} className="glass-panel flex items-center gap-3 rounded-xl border border-slate-800 p-4" data-testid={card.testId}><div className={`rounded-lg p-2 ${card.iconClass}`}><Icon className="h-5 w-5" /></div><div><p className="text-xs text-slate-500">{card.label}</p><p className="font-bold text-white">{card.value}</p></div></div>; })}</div>
-    {isLoading ? <div className="glass-panel p-16 text-center"><Loader2 className="mx-auto animate-spin text-blue-400" /></div> : isError ? <div className="glass-panel p-12 text-center"><AlertTriangle className="mx-auto mb-3 text-rose-400" /><p className="text-white">Could not load complaints</p><Button variant="outline" className="mt-4" onClick={() => refetch()}>Try Again</Button></div> : !filteredComplaints.length ? <div className="glass-panel p-12 text-center"><ClipboardCheck className="mx-auto mb-4 h-12 w-12 text-slate-600" /><p className="font-semibold text-white">No complaints found</p><p className="mt-2 text-sm text-slate-500">Try another month or filter.</p></div> : <div className="glass-panel overflow-hidden rounded-2xl border border-slate-800">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">{cards.map(card => <CRMMetricCard key={card.key} label={card.label} value={card.value} icon={card.icon} testId={card.testId} tone={card.key === "confirmed" ? "warning" : card.key === "resolved" ? "success" : card.key === "refund" ? "danger" : "cyan"} />)}</div>
+     {isLoading ? <div className="glass-panel p-16 text-center"><Loader2 className="mx-auto animate-spin text-cyan-300" /></div> : isError ? <div className="glass-panel p-12 text-center"><AlertTriangle className="mx-auto mb-3 text-rose-400" /><p className="text-white">Could not load complaints</p><Button variant="outline" className="mt-4" onClick={() => refetch()}>Try Again</Button></div> : !filteredComplaints.length ? <div className="crm-section"><EmptyState title="No complaints found" description="Try another month or filter." icon={ClipboardCheck} /></div> : <div className="crm-section">
       <div className="flex flex-col items-start justify-between gap-4 border-b border-slate-800 p-6 sm:flex-row sm:items-center">
         <div><h3 className="text-lg font-bold text-white">Complaints</h3><p className="text-sm text-slate-500">{filteredComplaints.length} complaint{filteredComplaints.length === 1 ? "" : "s"} for {format(new Date(Number(year), Number(month) - 1, 1), "MMMM yyyy")}</p></div>
         <div className="flex flex-wrap gap-2">

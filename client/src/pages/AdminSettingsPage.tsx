@@ -28,7 +28,6 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Settings,
   Plus,
   Pencil,
   Trash2,
@@ -40,6 +39,7 @@ import {
   FileWarning,
 } from "lucide-react";
 import type { ServiceCatalogItem, PackageConfig, PlatformCatalogItem, ComplaintCategoryConfig } from "@shared/schema";
+import { PageHeader } from "@/components/CRMPrimitives";
 
 export default function AdminSettingsPage() {
   const { user } = useAuth();
@@ -52,14 +52,8 @@ export default function AdminSettingsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center gap-3">
-        <Settings className="w-7 h-7 text-blue-400" />
-        <div>
-          <h1 className="text-2xl font-bold text-white">Admin Settings</h1>
-          <p className="text-sm text-slate-400">Manage services, packages, marketing platforms, and complaint categories</p>
-        </div>
-      </div>
+    <div className="crm-page space-y-6">
+      <PageHeader eyebrow="System configuration" title="Admin Settings" description="Manage services, packages, marketing platforms, and complaint categories." />
 
       <Tabs defaultValue="services" className="space-y-4">
         <TabsList className="bg-slate-900 border border-slate-800">
