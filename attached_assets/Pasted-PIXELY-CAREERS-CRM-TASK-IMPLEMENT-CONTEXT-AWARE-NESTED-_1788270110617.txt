@@ -1,0 +1,1212 @@
+PIXELY CAREERS CRM
+TASK: IMPLEMENT CONTEXT-AWARE NESTED DRAWER NAVIGATION
+
+==================================================
+MAIN PROBLEM
+==================================================
+
+The CRM currently has cross-module navigation between:
+
+Orders
+Complaints
+Reviews
+Suggestions
+
+but the current behavior is not ideal.
+
+Example current behavior:
+
+1. User is on Orders Page.
+2. Opens Order PX-2609-002 in right-side Order Details drawer.
+3. Goes to Client Experience.
+4. Clicks Complaint CMP-2609-004.
+5. CRM navigates to the Complaints Page.
+6. Complaint drawer opens there.
+7. To return to the Order, user must close Complaint, return to Orders, find the Order again and reopen its details.
+
+THIS IS BAD UX.
+
+It destroys context and makes navigation unnecessarily complicated.
+
+==================================================
+NEW REQUIRED BEHAVIOR
+==================================================
+
+The BACKGROUND PAGE MUST NEVER CHANGE when opening a related record from an Order.
+
+Example:
+
+User starts here:
+
+ORDERS PAGE
+↓
+Order PX-2609-002 drawer opened
+↓
+Client Experience tab
+↓
+Clicks CMP-2609-004
+
+NEW BEHAVIOR:
+
+Orders Page REMAINS in the background.
+
+The current right-side drawer changes from:
+
+ORDER DETAILS
+
+to:
+
+COMPLAINT DETAILS
+
+The Complaint drawer should show a BACK button at the top.
+
+Clicking BACK:
+
+returns to the previous:
+
+ORDER DETAILS
+
+drawer.
+
+It must return to:
+
+PX-2609-002
+Client Experience tab
+same scroll/context if practical.
+
+The user must NOT be navigated to the Complaints Page.
+
+==================================================
+EXPECTED EXPERIENCE
+==================================================
+
+Conceptually:
+
+ORDERS PAGE
+
+[ORDER DRAWER]
+PX-2609-002
+Overview | Activity | Client Experience
+
+Client Experience:
+Complaint CMP-2609-004
+Review REV-2609-002
+Suggestion SUG-2609-003
+
+
+User clicks complaint:
+
+ORDERS PAGE REMAINS
+
+[COMPLAINT DRAWER]
+← Back
+CMP-2609-004
+Complete Complaint Details
+
+
+User clicks Back:
+
+ORDERS PAGE REMAINS
+
+[ORDER DRAWER]
+PX-2609-002
+Client Experience
+
+==================================================
+THE SAME RULE APPLIES TO REVIEWS
+==================================================
+
+From:
+
+Order → Client Experience → Review
+
+DO NOT navigate to:
+
+/feedback
+
+Instead:
+
+Keep Orders Page in background.
+
+Replace current drawer content with:
+
+REVIEW DETAILS
+
+At the top show:
+
+← Back
+
+Clicking Back returns to:
+
+Order Details
+same Order
+same Client Experience tab.
+
+==================================================
+THE SAME RULE APPLIES TO SUGGESTIONS
+==================================================
+
+From:
+
+Order → Client Experience → Suggestion
+
+Keep Orders Page in background.
+
+Drawer changes to:
+
+SUGGESTION DETAILS
+
+Show:
+
+← Back
+
+Back returns to:
+
+Order Details → Client Experience.
+
+==================================================
+IMPORTANT CONCEPT: DRAWER STACK
+==================================================
+
+Implement a reusable contextual drawer stack.
+
+Do NOT treat every related entity click as full-page navigation.
+
+Conceptually:
+
+Drawer Stack:
+
+[
+  Order Details PX-2609-002,
+  Complaint CMP-2609-004
+]
+
+Back removes the latest drawer state:
+
+[
+  Order Details PX-2609-002
+]
+
+Then the Order drawer becomes visible again.
+
+If no previous drawer exists:
+
+Close button simply closes the drawer.
+
+==================================================
+DRAWER TYPES
+==================================================
+
+The drawer system should support:
+
+order
+complaint
+review
+suggestion
+
+Potential future support:
+
+payment
+team member
+other related entities
+
+Do not hard-code the architecture only for Complaints.
+
+Build it cleanly enough that other entity drawers can use the same navigation pattern.
+
+==================================================
+DRAWER HEADER DESIGN
+==================================================
+
+When a drawer is opened directly:
+
+Show only:
+
+X Close
+
+Example:
+
+Complaint opened directly from Complaints Page:
+
+CMP-2609-004                         X
+
+No Back button is required if there is no parent drawer.
+
+--------------------------------------------------
+
+When opened FROM another drawer:
+
+Show:
+
+← Back                             X
+
+Example:
+
+← Back
+CMP-2609-004                       X
+
+Back:
+Return to previous drawer.
+
+X:
+Close the complete drawer experience and return to the background page.
+
+==================================================
+IMPORTANT DIFFERENCE BETWEEN BACK AND CLOSE
+==================================================
+
+BACK:
+
+Return one level within the drawer navigation.
+
+Example:
+
+Complaint
+→ Back
+→ Order Details
+
+CLOSE:
+
+Close the entire drawer.
+
+Example:
+
+Complaint
+→ X
+→ Orders Page with no drawer open.
+
+Do not make Back and Close behave the same.
+
+==================================================
+ORDER CONTEXT MUST BE PRESERVED
+==================================================
+
+If user had:
+
+Order:
+PX-2609-002
+
+Selected tab:
+Client Experience
+
+Scroll position:
+Client Experience section
+
+and then opens a Complaint:
+
+When Back is pressed, restore:
+
+PX-2609-002
+
+Client Experience tab selected.
+
+Do NOT return to Overview.
+
+Do NOT reset the Order drawer.
+
+==================================================
+PRESERVE BACKGROUND PAGE STATE
+==================================================
+
+If user was on Orders Page with:
+
+Today's Orders
+Search term
+Status filter
+Designer filter
+Month/year
+scroll position
+
+opening:
+
+Order
+Complaint
+Review
+Suggestion
+
+must NOT reset those page-level filters.
+
+When drawers close:
+
+The Orders Page should still be exactly where the user left it.
+
+==================================================
+DO NOT CHANGE PAGE ROUTE FOR NESTED RECORDS
+==================================================
+
+When Complaint is opened FROM an Order:
+
+DO NOT navigate to:
+
+/complaints
+
+When Review is opened FROM Order:
+
+DO NOT navigate to:
+
+/feedback
+
+When Suggestion is opened FROM Order:
+
+DO NOT navigate to:
+
+/feedback
+
+The parent page remains:
+
+/orders
+
+Drawer navigation happens inside the current page/context.
+
+==================================================
+OPTIONAL SAFE URL STATE
+==================================================
+
+If URL state is already important to the architecture, it may safely remain:
+
+/orders?order=PX-2609-002&view=complaint&CMP=CMP-2609-004
+
+or an equivalent query-state approach.
+
+BUT:
+
+The rendered page beneath the drawer MUST remain Orders.
+
+Do NOT use:
+
+/complaints/3
+
+when the Complaint was opened from an Order.
+
+The UI context matters more than forcing module routes.
+
+==================================================
+DIRECT MODULE NAVIGATION STILL WORKS
+==================================================
+
+Do NOT remove existing Complaints Page.
+
+If user intentionally goes to:
+
+Complaints
+
+and clicks:
+
+CMP-2609-004
+
+then:
+
+Complaints Page stays in background.
+
+Complaint drawer opens.
+
+There may be no Back button because Complaint is the root drawer.
+
+X closes the Complaint drawer and remains on Complaints Page.
+
+==================================================
+DIRECT REVIEW NAVIGATION
+==================================================
+
+If user intentionally goes:
+
+Feedback → Reviews
+
+and opens:
+
+REV-2609-002
+
+Feedback Page stays in background.
+
+Review drawer opens.
+
+X closes it.
+
+No unnecessary Back button if there is no parent drawer.
+
+==================================================
+DIRECT SUGGESTION NAVIGATION
+==================================================
+
+Same rule.
+
+Feedback → Suggestions
+
+Suggestion drawer opens.
+
+Feedback Page remains behind.
+
+==================================================
+CROSS-NAVIGATION FROM COMPLAINT DRAWER
+==================================================
+
+Inside Complaint Details there is a Related Order.
+
+Example:
+
+PX-2609-002
+
+If user is ALREADY viewing Complaint from the Order drawer:
+
+Do NOT add another duplicate Order state unnecessarily.
+
+The Back button already returns to that Order.
+
+However:
+
+If Complaint was opened directly from Complaints Page and user clicks Related Order:
+
+Keep Complaints Page in background if possible and push:
+
+Order Details
+
+on top of the Complaint drawer context.
+
+Then:
+
+← Back
+
+returns to Complaint.
+
+This allows contextual navigation without forcing full-page changes.
+
+==================================================
+GENERAL NAVIGATION PRINCIPLE
+==================================================
+
+PAGE = WORKSPACE
+
+DRAWER = RECORD VIEW
+
+Changing which record the user is viewing should normally change the DRAWER, not the entire PAGE.
+
+Examples:
+
+Orders Page = Order workspace.
+Complaints Page = Complaint workspace.
+Feedback = Client feedback workspace.
+
+If related records are opened from within another record:
+
+Use nested drawer navigation.
+
+==================================================
+DO NOT CREATE MULTIPLE DRAWERS SIDE-BY-SIDE
+==================================================
+
+Do NOT open:
+
+Order Drawer
++
+Complaint Drawer
++
+Review Drawer
+
+as three overlapping panels.
+
+There should only be ONE visible right-side drawer shell.
+
+The CONTENT changes.
+
+Example:
+
+Order Content
+↓
+Complaint Content
+↓
+Back
+↓
+Order Content
+
+This keeps the UI clean.
+
+==================================================
+REUSE DRAWER SHELL
+==================================================
+
+Prefer a shared drawer component:
+
+EntityDrawer
+or
+ContextDrawer
+or
+RecordDrawer
+
+Conceptually:
+
+<DrawerShell>
+  Header
+  BackButton
+  CloseButton
+  CurrentRecordContent
+</DrawerShell>
+
+Content can render:
+
+<OrderDetails />
+<ComplaintDetails />
+<ReviewDetails />
+<SuggestionDetails />
+
+Use the actual application architecture.
+
+Do not rewrite existing working drawer components unnecessarily.
+
+==================================================
+DRAWER NAVIGATION STATE
+==================================================
+
+Maintain something conceptually like:
+
+drawerStack = [
+  {
+    type: "order",
+    id: "PX-2609-002",
+    state: {
+      tab: "client-experience"
+    }
+  },
+  {
+    type: "complaint",
+    id: "CMP-2609-004"
+  }
+]
+
+On Back:
+
+pop final element.
+
+Render previous element.
+
+==================================================
+PRESERVE ORDER TAB
+==================================================
+
+Order drawer currently has:
+
+Overview
+Activity
+Client Experience
+
+Store currently selected tab inside drawer state.
+
+Example:
+
+{
+  type: "order",
+  id: "PX-2609-002",
+  tab: "client-experience"
+}
+
+When returning from Complaint:
+
+restore:
+
+Client Experience.
+
+==================================================
+PRESERVE ORDER SCROLL POSITION
+==================================================
+
+If technically practical:
+
+Save scrollTop of the Order drawer before opening a child record.
+
+When Back is pressed:
+
+restore same scroll position.
+
+If this adds unnecessary complexity, preserving correct tab and Order is mandatory; exact scroll restoration is secondary.
+
+==================================================
+COMPLAINT FULL DETAILS MUST REMAIN AVAILABLE
+==================================================
+
+Do not simplify Complaint Details just because it is now rendered inside Orders.
+
+Complaint view should continue showing:
+
+Complaint ID
+Status
+Category
+Complaint Against
+Description
+Evidence Screenshot
+Related Order
+Services
+Payment Information
+Filed By — Admin only
+Resolution
+Outcome
+Internal Notes — Admin only
+Complaint History
+Decision Controls — authorized Admin only
+
+Same permissions as existing Complaint page.
+
+==================================================
+REVIEW FULL DETAILS
+==================================================
+
+When Review is opened as nested drawer:
+
+Show exactly the full Review information currently available:
+
+Review ID
+Order
+Client
+Designer
+Review Progress
+Rating
+Feedback
+WhatsApp
+Facebook
+Video
+Public Review Link
+Marketing Permission
+Evidence
+Recorded By
+Date
+History where applicable
+Edit controls where permitted
+
+Do not show only a summary.
+
+==================================================
+SUGGESTION FULL DETAILS
+==================================================
+
+Nested Suggestion view must show:
+
+Suggestion ID
+Order
+Client
+Designer
+Category
+Suggestion
+Status
+Evidence
+Recorded By
+Admin Notes where permitted
+Status controls where permitted
+History
+
+==================================================
+PERMISSIONS MUST REMAIN IDENTICAL
+==================================================
+
+Opening a Complaint from Orders must NOT accidentally change permissions.
+
+Admin:
+Full allowed Complaint information.
+
+Designer:
+No Filed By identity.
+No private Admin notes.
+No complaint management controls.
+
+Support:
+Existing permitted information.
+
+Same for Reviews and Suggestions.
+
+==================================================
+API SECURITY
+==================================================
+
+Do not load Admin-only fields just because Order page itself is accessible.
+
+Entity detail APIs must continue to perform role-based authorization.
+
+A nested drawer is only a UX improvement.
+
+It is NOT permission escalation.
+
+==================================================
+ACTIVITY NAVIGATION
+==================================================
+
+Order Activity contains events such as:
+
+Complaint CMP-2609-004 resolved.
+
+Review REV-2609-002 received.
+
+Suggestion SUG-2609-003 added.
+
+Make entity IDs clickable where practical.
+
+Example:
+
+Activity:
+Complaint CMP-2609-004 Resolved
+
+Click CMP-2609-004:
+
+Keep Orders background.
+Push Complaint onto drawer stack.
+
+Back:
+Returns to Order Activity tab.
+
+IMPORTANT:
+
+Remember whether user came from:
+
+Overview
+Activity
+Client Experience.
+
+Return them to exactly that tab.
+
+==================================================
+CLIENT CASE REPORT LINKS
+==================================================
+
+Do NOT alter PDF report behavior in this task unless needed.
+
+The focus is interactive CRM navigation.
+
+==================================================
+BROWSER BACK BUTTON
+==================================================
+
+Where technically safe, browser Back should also respect drawer state.
+
+Example:
+
+Orders
+→ Order drawer
+→ Complaint drawer
+
+Browser Back:
+
+Complaint → Order
+
+Browser Back again:
+
+Order → Orders page
+
+However:
+
+Do NOT destabilize the application just to support this if the router architecture makes it risky.
+
+Priority:
+
+1. In-drawer Back button
+2. Context preservation
+3. Browser history integration
+
+==================================================
+FORWARD BUTTON OPTIONAL
+==================================================
+
+Browser Forward support is beneficial if query/history state is used properly.
+
+Do not build a custom Forward UI.
+
+==================================================
+DRAWER LOADING STATE
+==================================================
+
+When switching:
+
+Order → Complaint
+
+Do not instantly blank the full UI.
+
+Show a clean loading state inside drawer shell.
+
+Background Orders page stays untouched.
+
+==================================================
+DRAWER ERROR STATE
+==================================================
+
+If related Complaint cannot be loaded:
+
+Show:
+
+"Unable to load this complaint."
+
+Include:
+
+← Back
+
+so user can return immediately to Order.
+
+Do not close entire Order context due to child-loading failure.
+
+==================================================
+RECORD NOT FOUND
+==================================================
+
+If related record no longer exists:
+
+Show:
+
+"Complaint not found."
+
+Back remains available.
+
+Same for:
+
+Review
+Suggestion.
+
+==================================================
+DRAWER CLOSE STATE
+==================================================
+
+When user clicks X:
+
+Clear entire drawer stack.
+
+Remain on current background page.
+
+Example:
+
+Orders
+Order
+Complaint
+X
+
+Result:
+
+Orders Page.
+
+Not:
+
+Complaints Page.
+
+==================================================
+IMPORTANT EXAMPLE 1
+==================================================
+
+START:
+
+/orders
+
+Open:
+PX-2609-002
+
+Order drawer:
+Client Experience
+
+Click:
+CMP-2609-004
+
+EXPECTED:
+
+URL remains based on Orders context.
+Orders table remains behind.
+Complaint detail appears in same right drawer.
+Back button appears.
+
+Click Back:
+
+PX-2609-002 drawer returns.
+Client Experience is still selected.
+
+==================================================
+IMPORTANT EXAMPLE 2
+==================================================
+
+START:
+
+/orders
+
+Open PX-2609-002.
+
+Activity tab selected.
+
+Click Complaint CMP-2609-004 from timeline.
+
+Complaint drawer opens.
+
+Back:
+
+Order PX-2609-002
+Activity tab selected.
+
+==================================================
+IMPORTANT EXAMPLE 3
+==================================================
+
+START:
+
+/orders
+
+Open PX-2609-002.
+
+Client Experience.
+
+Click REV-2609-002.
+
+Review drawer opens.
+
+Back:
+
+PX-2609-002 → Client Experience.
+
+==================================================
+IMPORTANT EXAMPLE 4
+==================================================
+
+START:
+
+/orders
+
+Open PX-2609-002.
+
+Client Experience.
+
+Click SUG-2609-003.
+
+Suggestion drawer opens.
+
+Back:
+
+PX-2609-002 → Client Experience.
+
+==================================================
+IMPORTANT EXAMPLE 5
+==================================================
+
+START:
+
+/complaints
+
+Open CMP-2609-004 directly.
+
+Complaints Page remains behind.
+
+No Back button necessary because this is root drawer.
+
+X:
+
+Return to Complaints list.
+
+==================================================
+IMPORTANT EXAMPLE 6
+==================================================
+
+START:
+
+/feedback?tab=reviews
+
+Open REV-2609-002.
+
+Feedback Reviews remains behind.
+
+X:
+
+Return to same Reviews tab/filter.
+
+==================================================
+DO NOT BREAK EXISTING CROSS-LINKS
+==================================================
+
+Existing clickable:
+
+Order IDs
+Complaint IDs
+Review IDs
+Suggestion IDs
+
+should still work.
+
+Change the behavior based on CONTEXT.
+
+If clicked FROM an open Order:
+
+Nested drawer.
+
+If clicked from module listing:
+
+Root drawer.
+
+==================================================
+DO NOT DUPLICATE RECORD COMPONENTS
+==================================================
+
+Do not create:
+
+ComplaintDetailsForOrders
+ComplaintDetailsForComplaints
+ComplaintDetailsV2
+
+Reuse a single Complaint Details component.
+
+Same:
+
+Review Details
+Suggestion Details
+Order Details.
+
+The content should be reusable inside contextual drawer shell.
+
+==================================================
+AVOID MASSIVE REFACTOR
+==================================================
+
+This should be implemented carefully.
+
+Do not rewrite the entire Orders Page.
+
+Do not rewrite Complaints.
+
+Do not rewrite Feedback.
+
+Focus on drawer navigation/state.
+
+==================================================
+REGRESSION TESTS
+==================================================
+
+After implementation test ALL:
+
+TEST 1
+
+Orders → Order → Complaint → Back.
+
+Expected:
+Return to same Order Client Experience.
+
+TEST 2
+
+Orders → Order → Review → Back.
+
+Expected:
+Same Order.
+
+TEST 3
+
+Orders → Order → Suggestion → Back.
+
+Expected:
+Same Order.
+
+TEST 4
+
+Orders → Activity → Complaint → Back.
+
+Expected:
+Order Activity selected.
+
+TEST 5
+
+Complaint opened directly from Complaints Page.
+
+Expected:
+Complaints remains in background.
+
+TEST 6
+
+Review opened directly from Feedback.
+
+Expected:
+Feedback remains.
+
+TEST 7
+
+Suggestion opened directly.
+
+Expected:
+Feedback remains.
+
+TEST 8
+
+Nested Complaint → X.
+
+Expected:
+Close entire drawer and remain Orders page.
+
+TEST 9
+
+Nested Review → X.
+
+Expected:
+Remain Orders.
+
+TEST 10
+
+Nested Suggestion → X.
+
+Expected:
+Remain Orders.
+
+TEST 11
+
+Open child record that fails API request.
+
+Expected:
+Error inside drawer + Back available.
+
+TEST 12
+
+Designer opens Complaint from Order.
+
+Expected:
+Complaint filer remains hidden.
+
+TEST 13
+
+Admin opens same Complaint.
+
+Expected:
+Filed By visible.
+
+TEST 14
+
+Support role.
+
+Expected:
+Existing permissions preserved.
+
+TEST 15
+
+Search/filter Orders.
+
+Open Order → Complaint → Back → Close.
+
+Expected:
+Order filters/search remain unchanged.
+
+TEST 16
+
+Existing direct module deep links still work.
+
+TEST 17
+
+Build succeeds.
+
+TEST 18
+
+No console errors.
+
+TEST 19
+
+No duplicate API fetching loops.
+
+TEST 20
+
+No duplicate drawer overlays.
+
+==================================================
+FINAL UX RULE
+==================================================
+
+DO NOT CHANGE THE USER'S WORKSPACE JUST BECAUSE THEY OPENED A RELATED RECORD.
+
+The background page is the user's workspace.
+
+The right-side drawer is the record explorer.
+
+Related records should open INSIDE that explorer.
+
+Use Back to return through related records.
+
+Use X to exit the record explorer completely.
+
+This should make Pixely CRM feel fast, connected and professional.

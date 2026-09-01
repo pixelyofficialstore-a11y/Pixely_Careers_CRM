@@ -60,7 +60,8 @@ import {
   Pencil,
   FileWarning,
   MessageSquareHeart,
-  Lightbulb
+  Lightbulb,
+  ArrowLeft
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -84,7 +85,7 @@ import {
 } from "@/components/ui/tooltip";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { OrderWithServices, User, SupportDesignerAssignment, ServiceCatalogItem, PackageConfig, PlatformCatalogItem, PaymentVerification, ComplaintResponse, ActivityLogWithActor, ClientReview, ClientSuggestion } from "@shared/schema";
+import type { OrderWithServices, User, SupportDesignerAssignment, ServiceCatalogItem, PackageConfig, PlatformCatalogItem, PaymentVerification, ComplaintResponse, ComplaintHistoryEntry, ActivityLogWithActor, ClientReview, ClientSuggestion } from "@shared/schema";
 import { ComplaintDialog } from "@/components/ComplaintDialog";
 import { ComplaintStatusBadge } from "@/components/StatusBadge";
 
@@ -148,11 +149,21 @@ type OrderFormService = {
 
 type OrderReview = ClientReview & {
   reviewForDesigner?: Pick<User, "id" | "name"> | null;
+  createdBy?: Pick<User, "id" | "name" | "role"> | null;
 };
 
 type OrderSuggestion = ClientSuggestion & {
   relatedDesigner?: Pick<User, "id" | "name"> | null;
+  createdBy?: Pick<User, "id" | "name" | "role"> | null;
+  reviewedBy?: Pick<User, "id" | "name" | "role"> | null;
 };
+
+type OrderDrawerTab = "overview" | "activity" | "experience";
+type OrderDrawerFrame =
+  | { kind: "order"; tab: OrderDrawerTab }
+  | { kind: "complaint"; id: number }
+  | { kind: "review"; id: number }
+  | { kind: "suggestion"; id: number };
 
 // Keep numbering tied to each card's creation identity: removing a card never
 // renumbers or reuses a label, while every new card is inserted first.
@@ -180,16 +191,23 @@ export default function OrdersPage() {
   const [selectedDesignerFilter, setSelectedDesignerFilter] = useState("all");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<OrderWithServices | null>(null);
-  const [detailsSheetOpen, setDetailsSheetOpen] = useState(false);
+  const [drawerStack, setDrawerStack] = useState<OrderDrawerFrame[]>([]);
   const [copiedPhone, setCopiedPhone] = useState<number | null>(null);
   const [orderToEdit, setOrderToEdit] = useState<OrderWithServices | null>(null);
   const [editSheetOpen, setEditSheetOpen] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<OrderWithServices | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [complaintDialogOpen, setComplaintDialogOpen] = useState(false);
-  const [detailsTab, setDetailsTab] = useState<"overview" | "activity" | "experience">("overview");
+  const [detailsTab, setDetailsTab] = useState<OrderDrawerTab>("overview");
+  const [complaintNotes, setComplaintNotes] = useState("");
+  const [complaintResolution, setComplaintResolution] = useState("");
+  const [complaintOutcome, setComplaintOutcome] = useState("");
+  const [suggestionNotes, setSuggestionNotes] = useState("");
   const [deepLinkMessage, setDeepLinkMessage] = useState<string | null>(null);
   const requestedOrderNumber = new URLSearchParams(window.location.search).get("order");
+  const activeDrawer = drawerStack[drawerStack.length - 1];
+  const detailsSheetOpen = drawerStack.length > 0;
+  const nestedComplaintId = activeDrawer?.kind === "complaint" ? activeDrawer.id : null;
 
   // Debounce the search input (300ms) so typing stays smooth on large order lists.
   useEffect(() => {
@@ -209,7 +227,7 @@ export default function OrdersPage() {
     if (order) {
       setSelectedOrder(order);
       setDetailsTab("overview");
-      setDetailsSheetOpen(true);
+      setDrawerStack([{ kind: "order", tab: "overview" }]);
       setDeepLinkMessage(null);
     } else {
       setDeepLinkMessage(`Order ${requestedOrderNumber} was not found, or you do not have permission to view it.`);
@@ -248,12 +266,12 @@ export default function OrdersPage() {
     staleTime: 15 * 1000,
   });
 
-  const { data: selectedOrderReviews = [] } = useQuery<OrderReview[]>({
+  const { data: selectedOrderReviews = [], isLoading: reviewsLoading, isError: reviewsError } = useQuery<OrderReview[]>({
     queryKey: [`/api/orders/${selectedOrder?.id}/client-reviews`],
     enabled: Boolean(detailsSheetOpen && selectedOrder?.id),
   });
 
-  const { data: selectedOrderSuggestions = [] } = useQuery<OrderSuggestion[]>({
+  const { data: selectedOrderSuggestions = [], isLoading: suggestionsLoading, isError: suggestionsError } = useQuery<OrderSuggestion[]>({
     queryKey: [`/api/orders/${selectedOrder?.id}/client-suggestions`],
     enabled: Boolean(detailsSheetOpen && selectedOrder?.id),
   });
@@ -261,6 +279,39 @@ export default function OrdersPage() {
   const { data: selectedOrderActivity = [] } = useQuery<ActivityLogWithActor[]>({
     queryKey: [`/api/orders/${selectedOrder?.id}/activity`],
     enabled: Boolean(detailsSheetOpen && selectedOrder?.id),
+  });
+
+  // Complaints have a dedicated, authorization-aware detail endpoint. Do not
+  // infer protected fields from the order-level response.
+  const nestedComplaint = useQuery<ComplaintResponse>({
+    queryKey: [`/api/complaints/${nestedComplaintId}`],
+    enabled: Boolean(nestedComplaintId),
+  });
+  const { data: nestedComplaintHistory = [] } = useQuery<ComplaintHistoryEntry[]>({
+    queryKey: [`/api/complaints/${nestedComplaintId}/history`],
+    enabled: Boolean(nestedComplaintId && user?.role === "admin"),
+  });
+  const updateNestedComplaint = useMutation({
+    mutationFn: async (payload: Record<string, unknown>) => (await apiRequest("PATCH", `/api/complaints/${nestedComplaintId}`, payload)).json() as Promise<ComplaintResponse>,
+    onSuccess: (complaint) => {
+      queryClient.setQueryData([`/api/complaints/${nestedComplaintId}`], complaint);
+      queryClient.invalidateQueries({ queryKey: ["/api/complaints"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/orders/${selectedOrder?.id}/complaints`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/orders/${selectedOrder?.id}/activity`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/complaints/${nestedComplaintId}/history`] });
+      setComplaintNotes(""); toast({ title: "Complaint updated" });
+    },
+    onError: () => toast({ title: "Could not update complaint", variant: "destructive" }),
+  });
+  const updateNestedSuggestion = useMutation({
+    mutationFn: async ({ id, payload }: { id: number; payload: Record<string, unknown> }) => (await apiRequest("PATCH", `/api/feedback/suggestions/${id}`, payload)).json() as Promise<OrderSuggestion>,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/orders/${selectedOrder?.id}/client-suggestions`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/orders/${selectedOrder?.id}/activity`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/feedback"] });
+      setSuggestionNotes(""); toast({ title: "Suggestion updated" });
+    },
+    onError: () => toast({ title: "Could not update suggestion", variant: "destructive" }),
   });
 
   const activeServiceTypes = servicesCatalog.filter(s => s.isActive).map(s => s.name);
@@ -398,7 +449,20 @@ export default function OrdersPage() {
   const openOrderDetails = (order: OrderWithServices) => {
     setSelectedOrder(order);
     setDetailsTab("overview");
-    setDetailsSheetOpen(true);
+    setDrawerStack([{ kind: "order", tab: "overview" }]);
+  };
+  const closeDrawer = () => {
+    setDrawerStack([]);
+    setSelectedOrder(null);
+  };
+  const goBackInDrawer = () => setDrawerStack(stack => stack.slice(0, -1));
+  const openNestedDrawer = (frame: Exclude<OrderDrawerFrame, { kind: "order" }>) =>
+    setDrawerStack(stack => [...stack, frame]);
+  const setOrderDrawerTab = (tab: OrderDrawerTab) => {
+    setDetailsTab(tab);
+    setDrawerStack(stack => stack.map((frame, index) =>
+      index === 0 && frame.kind === "order" ? { ...frame, tab } : frame,
+    ));
   };
 
   // All roles only see approved orders in the Orders Page
@@ -1200,15 +1264,16 @@ export default function OrdersPage() {
       </Tabs>
       )}
 
-      <Sheet open={detailsSheetOpen} onOpenChange={setDetailsSheetOpen}>
+      <Sheet open={detailsSheetOpen} onOpenChange={open => { if (!open) closeDrawer(); }}>
         <SheetContent className="bg-slate-900 border-slate-800 w-full sm:max-w-xl overflow-y-auto">
           <SheetHeader>
             <SheetTitle className="text-white font-display flex items-center gap-2">
+              {activeDrawer?.kind !== "order" && <Button variant="ghost" size="icon" className="h-8 w-8 -ml-2" onClick={goBackInDrawer} aria-label="Back to order details"><ArrowLeft className="h-4 w-4" /></Button>}
               <FileText className="w-5 h-5" />
-              Order Details
+              {activeDrawer?.kind === "complaint" ? "Complaint Details" : activeDrawer?.kind === "review" ? "Review Details" : activeDrawer?.kind === "suggestion" ? "Suggestion Details" : "Order Details"}
             </SheetTitle>
           </SheetHeader>
-          {selectedOrder && (
+          {selectedOrder && activeDrawer?.kind === "order" && (
             <div className="mt-6 space-y-6">
               <div className="space-y-4">
                 <div className="flex items-center justify-between flex-wrap gap-2">
@@ -1219,7 +1284,7 @@ export default function OrdersPage() {
                 <Button size="sm" variant="outline" disabled={clientCaseReportMutation.isPending} onClick={() => clientCaseReportMutation.mutate(selectedOrder.id)}><Download className="mr-2 h-4 w-4" />{clientCaseReportMutation.isPending ? "Preparing report…" : "Client Case Report"}</Button>
               </div>
 
-              <Tabs value={detailsTab} onValueChange={value => setDetailsTab(value as typeof detailsTab)}>
+              <Tabs value={detailsTab} onValueChange={value => setOrderDrawerTab(value as OrderDrawerTab)}>
                 <TabsList className="grid h-auto w-full grid-cols-3 border border-slate-800 bg-slate-950 p-1">
                   <TabsTrigger value="overview">Overview</TabsTrigger>
                   <TabsTrigger value="activity">Activity</TabsTrigger>
@@ -1299,7 +1364,7 @@ export default function OrdersPage() {
                     {selectedOrderComplaints.slice(0, 3).map(complaint => (
                       <button
                         key={complaint.id}
-                        onClick={() => setLocation(`/complaints/${complaint.id}`)}
+                         onClick={() => openNestedDrawer({ kind: "complaint", id: complaint.id })}
                         className="w-full flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-900 p-3 text-left hover:border-slate-700"
                       >
                         <div className="min-w-0">
@@ -1309,11 +1374,6 @@ export default function OrdersPage() {
                         <ComplaintStatusBadge status={complaint.status} />
                       </button>
                     ))}
-                    {selectedOrderComplaints.length > 3 && (
-                      <Button variant="ghost" size="sm" className="w-full" onClick={() => setLocation("/complaints")}>
-                        View all related complaints
-                      </Button>
-                    )}
                   </div>
                 ) : (
                   <p className="text-sm text-slate-500">No complaints are visible for this order.</p>
@@ -1457,15 +1517,18 @@ export default function OrdersPage() {
                   </div>
                   {selectedOrderActivity.length ? (
                     <div className="space-y-5">
-                      {selectedOrderActivity.map(entry => (
-                        <div key={entry.id} className="relative border-l border-slate-700 pl-5">
+                      {selectedOrderActivity.map(entry => {
+                        const details = (entry.details || {}) as Record<string, unknown>;
+                        const related = entry.activityType.startsWith("complaint") ? { kind: "complaint" as const, id: Number(details.complaintId) } : entry.activityType.startsWith("review") ? { kind: "review" as const, id: Number(details.reviewId) } : entry.activityType.startsWith("suggestion") ? { kind: "suggestion" as const, id: Number(details.suggestionId) } : null;
+                        return <div key={entry.id} className="relative border-l border-slate-700 pl-5">
                           <span className="absolute -left-1.5 top-1 h-3 w-3 rounded-full border-2 border-slate-950 bg-blue-500" />
                           <p className="text-sm text-slate-200">{orderActivityLabel(entry)}</p>
+                          {related && Number.isInteger(related.id) && related.id > 0 && <button onClick={() => openNestedDrawer(related)} className="mt-1 font-mono text-xs text-blue-400 hover:underline">Open {String(details.complaintNumber || details.reviewNumber || details.suggestionNumber || "related record")}</button>}
                           <p className="mt-1 text-xs text-slate-500">
                             {entry.actor?.name || "System"} · {entry.createdAt ? format(new Date(entry.createdAt), "MMM dd, yyyy h:mm a") : "—"}
                           </p>
                         </div>
-                      ))}
+                      })}
                     </div>
                   ) : (
                     <p className="py-10 text-center text-sm text-slate-500">No recorded activity is available for this order yet.</p>
@@ -1486,22 +1549,47 @@ export default function OrdersPage() {
                       <div><h4 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Complaints</h4><p className="mt-1 text-xs text-slate-600">{selectedOrderComplaints.filter(item => item.status === "valid").length} currently valid</p></div>
                       {(isAdmin || isSupport) && <Button size="sm" variant="outline" disabled={!selectedOrder.assignedToId} onClick={() => setComplaintDialogOpen(true)}><FileWarning className="mr-2 h-4 w-4" />Raise Complaint</Button>}
                     </div>
-                    <div className="mt-4 space-y-2">{selectedOrderComplaints.length ? selectedOrderComplaints.map(complaint => <button key={complaint.id} onClick={() => setLocation(`/complaints/${complaint.id}`)} className="flex w-full items-center justify-between rounded-lg border border-slate-800 bg-slate-900 p-3 text-left hover:border-slate-700"><div><p className="font-mono text-xs text-blue-400">{complaint.complaintNumber}</p><p className="mt-1 text-xs text-slate-500">{titleCase(complaint.category)}</p></div><ComplaintStatusBadge status={complaint.status} /></button>) : <p className="py-4 text-sm text-slate-500">No visible complaints.</p>}</div>
+                    <div className="mt-4 space-y-2">{selectedOrderComplaints.length ? selectedOrderComplaints.map(complaint => <button key={complaint.id} onClick={() => openNestedDrawer({ kind: "complaint", id: complaint.id })} className="flex w-full items-center justify-between rounded-lg border border-slate-800 bg-slate-900 p-3 text-left hover:border-slate-700"><div><p className="font-mono text-xs text-blue-400">{complaint.complaintNumber}</p><p className="mt-1 text-xs text-slate-500">{titleCase(complaint.category)}</p></div><ComplaintStatusBadge status={complaint.status} /></button>) : <p className="py-4 text-sm text-slate-500">No visible complaints.</p>}</div>
                   </section>
 
                   <section className="rounded-xl border border-slate-800 bg-slate-950 p-4">
-                    <div className="flex items-center justify-between gap-3"><div><h4 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Client Review</h4><p className="mt-1 text-xs text-slate-600">{selectedOrderReviews.length ? "Review collected" : "No review added"}</p></div><Button size="sm" variant="outline" onClick={() => setLocation(selectedOrderReviews[0] ? `/feedback?tab=reviews&review=${encodeURIComponent(selectedOrderReviews[0].reviewNumber)}` : `/feedback?order=${selectedOrder.id}&action=review`)}><MessageSquareHeart className="mr-2 h-4 w-4" />{selectedOrderReviews.length ? "View / Update" : "Add Review"}</Button></div>
-                    {selectedOrderReviews[0] && <button onClick={() => setLocation(`/feedback?tab=reviews&review=${encodeURIComponent(selectedOrderReviews[0].reviewNumber)}`)} className="mt-4 w-full rounded-lg border border-slate-800 bg-slate-900 p-3 text-left hover:border-slate-700"><div className="flex items-center justify-between"><p className="font-mono text-xs text-blue-400">{selectedOrderReviews[0].reviewNumber}</p><span className="text-sm font-bold text-amber-400">{selectedOrderReviews[0].rating ? `${selectedOrderReviews[0].rating}/5` : "Not Rated"}</span></div><div className="mt-3 flex flex-wrap gap-2">{selectedOrderReviews[0].whatsappFeedbackReceived && <Badge variant="outline">WhatsApp</Badge>}{selectedOrderReviews[0].facebookReviewReceived && <Badge variant="outline">Facebook</Badge>}{selectedOrderReviews[0].videoReviewReceived && <Badge variant="outline">Video</Badge>}</div></button>}
+                    <div className="flex items-center justify-between gap-3"><div><h4 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Client Review</h4><p className="mt-1 text-xs text-slate-600">{selectedOrderReviews.length ? "Review collected" : "No review added"}</p></div><Button size="sm" variant="outline" onClick={() => selectedOrderReviews[0] ? openNestedDrawer({ kind: "review", id: selectedOrderReviews[0].id }) : setLocation(`/feedback?order=${selectedOrder.id}&action=review`)}><MessageSquareHeart className="mr-2 h-4 w-4" />{selectedOrderReviews.length ? "View / Update" : "Add Review"}</Button></div>
+                    {selectedOrderReviews[0] && <button onClick={() => openNestedDrawer({ kind: "review", id: selectedOrderReviews[0].id })} className="mt-4 w-full rounded-lg border border-slate-800 bg-slate-900 p-3 text-left hover:border-slate-700"><div className="flex items-center justify-between"><p className="font-mono text-xs text-blue-400">{selectedOrderReviews[0].reviewNumber}</p><span className="text-sm font-bold text-amber-400">{selectedOrderReviews[0].rating ? `${selectedOrderReviews[0].rating}/5` : "Not Rated"}</span></div><div className="mt-3 flex flex-wrap gap-2">{selectedOrderReviews[0].whatsappFeedbackReceived && <Badge variant="outline">WhatsApp</Badge>}{selectedOrderReviews[0].facebookReviewReceived && <Badge variant="outline">Facebook</Badge>}{selectedOrderReviews[0].videoReviewReceived && <Badge variant="outline">Video</Badge>}</div></button>}
                   </section>
 
                   <section className="rounded-xl border border-slate-800 bg-slate-950 p-4">
                     <div className="flex items-center justify-between gap-3"><div><h4 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Suggestions</h4><p className="mt-1 text-xs text-slate-600">{selectedOrderSuggestions.length} recorded</p></div><Button size="sm" variant="outline" onClick={() => setLocation(`/feedback?order=${selectedOrder.id}&action=suggestion`)}><Lightbulb className="mr-2 h-4 w-4" />Add Suggestion</Button></div>
-                    <div className="mt-4 space-y-2">{selectedOrderSuggestions.length ? selectedOrderSuggestions.slice(0, 4).map(suggestion => <button key={suggestion.id} onClick={() => setLocation(`/feedback?tab=suggestions&suggestion=${encodeURIComponent(suggestion.suggestionNumber)}`)} className="flex w-full items-center justify-between rounded-lg border border-slate-800 bg-slate-900 p-3 text-left hover:border-slate-700"><div><p className="font-mono text-xs text-blue-400">{suggestion.suggestionNumber}</p><p className="mt-1 text-xs text-slate-500">{titleCase(suggestion.category)}</p></div><Badge className="bg-blue-500/10 text-blue-300">{titleCase(suggestion.status)}</Badge></button>) : <p className="py-4 text-sm text-slate-500">No suggestions recorded.</p>}</div>
+                    <div className="mt-4 space-y-2">{selectedOrderSuggestions.length ? selectedOrderSuggestions.slice(0, 4).map(suggestion => <button key={suggestion.id} onClick={() => openNestedDrawer({ kind: "suggestion", id: suggestion.id })} className="flex w-full items-center justify-between rounded-lg border border-slate-800 bg-slate-900 p-3 text-left hover:border-slate-700"><div><p className="font-mono text-xs text-blue-400">{suggestion.suggestionNumber}</p><p className="mt-1 text-xs text-slate-500">{titleCase(suggestion.category)}</p></div><Badge className="bg-blue-500/10 text-blue-300">{titleCase(suggestion.status)}</Badge></button>) : <p className="py-4 text-sm text-slate-500">No suggestions recorded.</p>}</div>
                   </section>
                 </div>
               )}
             </div>
           )}
+          {activeDrawer?.kind === "complaint" && (
+            <div className="mt-6 space-y-5">
+              {nestedComplaint.isLoading ? <div className="py-24 text-center"><Loader2 className="mx-auto animate-spin text-blue-400" /><p className="mt-3 text-sm text-slate-500">Loading complaint…</p></div>
+                : nestedComplaint.isError || !nestedComplaint.data ? <div className="py-20 text-center text-slate-400"><AlertCircle className="mx-auto mb-3 text-rose-400" /><p>{nestedComplaint.isError ? "Could not load this complaint." : "This complaint was not found or is no longer available."}</p><Button variant="outline" className="mt-4" onClick={goBackInDrawer}><ArrowLeft className="mr-2 h-4 w-4" />Back to order</Button></div>
+                : <><section className="rounded-xl border border-slate-800 bg-slate-950 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-mono text-lg text-blue-400">{nestedComplaint.data.complaintNumber}</p><p className="mt-2 text-xs uppercase tracking-wider text-slate-500">{titleCase(nestedComplaint.data.category)}</p></div><ComplaintStatusBadge status={nestedComplaint.data.status} /></div><p className="mt-5 whitespace-pre-wrap text-sm leading-relaxed text-slate-300">{nestedComplaint.data.description}</p></section>
+                  <section className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm"><p className="text-xs uppercase tracking-wider text-slate-500">Complaint against</p><p className="mt-2 text-white">{nestedComplaint.data.complaintAgainst?.name || "—"}</p></section>
+                  {nestedComplaint.data.order && <section className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm"><p className="text-xs uppercase tracking-wider text-slate-500">Related order</p><p className="mt-2 font-mono text-blue-300">{nestedComplaint.data.order.orderNumber || selectedOrder.orderNumber} · {nestedComplaint.data.order.clientName}</p><p className="mt-3 text-xs text-slate-500">Services</p><p className="mt-1 text-slate-300">{nestedComplaint.data.order.services.map(service => `${service.serviceType} ×${service.quantity || 1}`).join(", ") || "No services recorded."}</p>{canSeeAmounts && <div className="mt-4 grid grid-cols-2 gap-3 text-xs"><p><span className="text-slate-500">Total:</span> {formatRs(nestedComplaint.data.order.totalPrice)}</p><p><span className="text-slate-500">Advance:</span> {formatRs(nestedComplaint.data.order.advanceAmount)}</p><p><span className="text-slate-500">Remaining:</span> {formatRs(nestedComplaint.data.order.remainingAmount)}</p><p><span className="text-slate-500">Discount:</span> {formatRs(nestedComplaint.data.order.discountAmount)}</p></div>}</section>}
+                  {nestedComplaint.data.screenshotUrl && <section className="rounded-xl border border-slate-800 bg-slate-950 p-4"><p className="mb-3 text-xs uppercase tracking-wider text-slate-500">Evidence</p><a href={nestedComplaint.data.screenshotUrl} target="_blank" rel="noreferrer"><img src={nestedComplaint.data.screenshotUrl} alt="Complaint evidence" className="max-h-64 w-full rounded-lg object-contain" /></a></section>}
+                  {(nestedComplaint.data.resolution || nestedComplaint.data.resolutionOutcome) && <section className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4"><p className="text-xs uppercase tracking-wider text-emerald-300">Resolution</p><p className="mt-2 whitespace-pre-wrap text-sm text-slate-300">{nestedComplaint.data.resolution || "—"}</p>{nestedComplaint.data.resolutionOutcome && <p className="mt-2 text-xs text-emerald-300">{titleCase(nestedComplaint.data.resolutionOutcome)}</p>}</section>}
+                  {isAdmin && <section className="space-y-4 rounded-xl border border-slate-800 bg-slate-950 p-4"><div><p className="text-xs uppercase tracking-wider text-slate-500">Admin review</p><p className="mt-1 text-sm">{nestedComplaint.data.filedBy?.name || "Not specified"} <span className="text-slate-500">· Filed by</span></p></div>{nestedComplaint.data.status === "new" && <div className="grid grid-cols-2 gap-2"><Button disabled={updateNestedComplaint.isPending} onClick={() => updateNestedComplaint.mutate({ status: "valid", confirmDecision: true })}>Mark valid</Button><Button variant="outline" disabled={updateNestedComplaint.isPending} onClick={() => updateNestedComplaint.mutate({ status: "invalid", confirmDecision: true })}>Mark invalid</Button></div>}{nestedComplaint.data.status === "valid" && <><Textarea value={complaintResolution} onChange={event => setComplaintResolution(event.target.value)} placeholder="Resolution text" className="bg-slate-900" /><Select value={complaintOutcome} onValueChange={setComplaintOutcome}><SelectTrigger><SelectValue placeholder="Resolution outcome" /></SelectTrigger><SelectContent><SelectItem value="correction_revision">Correction / Revision</SelectItem><SelectItem value="refund">Refund</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent></Select><div className="grid grid-cols-2 gap-2"><Button disabled={!complaintResolution.trim() || !complaintOutcome || updateNestedComplaint.isPending} onClick={() => updateNestedComplaint.mutate({ status: "resolved", confirmDecision: true, resolution: complaintResolution.trim(), resolutionOutcome: complaintOutcome })}>Resolve</Button><Button variant="outline" disabled={!complaintResolution.trim() || !complaintOutcome || updateNestedComplaint.isPending} onClick={() => updateNestedComplaint.mutate({ status: "order_canceled", confirmDecision: true, resolution: complaintResolution.trim(), resolutionOutcome: complaintOutcome })}>Cancel order</Button></div></>}<div className="border-t border-slate-800 pt-4"><Label>Internal notes</Label><Textarea value={complaintNotes} onChange={event => setComplaintNotes(event.target.value)} placeholder={nestedComplaint.data.adminNotes || "Visible only to admins"} className="mt-2 bg-slate-900" /><Button className="mt-2" variant="outline" disabled={!complaintNotes.trim() || updateNestedComplaint.isPending} onClick={() => updateNestedComplaint.mutate({ adminNotes: complaintNotes.trim() })}>Save note</Button></div></section>}
+                  {isAdmin && <section className="rounded-xl border border-slate-800 bg-slate-950 p-4"><p className="text-xs uppercase tracking-wider text-slate-500">History</p><div className="mt-3 space-y-3">{nestedComplaintHistory.length ? nestedComplaintHistory.map(item => <div key={item.id} className="border-l border-slate-700 pl-3"><p className="text-sm">{titleCase(item.action)}</p><p className="text-xs text-slate-500">{item.actor?.name || "System"} · {item.createdAt ? format(new Date(item.createdAt), "MMM dd, yyyy h:mm a") : "—"}</p></div>) : <p className="text-sm text-slate-500">No history entries yet.</p>}</div></section>}
+                  </>}
+            </div>
+          )}
+          {activeDrawer?.kind === "review" && (() => {
+            const review = selectedOrderReviews.find(item => item.id === activeDrawer.id);
+            const steps = ["requested", "received", "public_review_received", "closed"];
+            const current = Math.max(0, steps.indexOf(review?.reviewProgress || "requested"));
+            return reviewsLoading ? <div className="py-24 text-center"><Loader2 className="mx-auto animate-spin text-blue-400" /></div> : !review ? <div className="py-20 text-center text-slate-400"><AlertCircle className="mx-auto mb-3 text-rose-400" />{reviewsError ? "Could not load this review." : "This review was not found or is no longer available."}<Button variant="outline" className="mt-4" onClick={goBackInDrawer}><ArrowLeft className="mr-2 h-4 w-4" />Back to order</Button></div> : <div className="mt-6 space-y-5"><section className="rounded-xl border border-slate-800 bg-slate-950 p-4"><div className="flex justify-between"><div><p className="font-mono text-lg text-blue-400">{review.reviewNumber}</p><p className="mt-2 text-sm text-slate-400">{review.reviewForDesigner?.name || "Unassigned designer"}</p></div><p className="text-xl font-bold text-amber-400">{review.rating ? `${review.rating}/5` : "Not rated"}</p></div><p className="mt-5 whitespace-pre-wrap text-sm text-slate-300">{review.feedbackText || "No written feedback recorded."}</p></section><section className="grid grid-cols-2 gap-3 rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm"><div><p className="text-xs text-slate-500">Recorded by</p><p className="mt-1">{review.createdBy?.name || "—"}</p></div><div><p className="text-xs text-slate-500">Recorded</p><p className="mt-1">{review.createdAt ? format(new Date(review.createdAt), "MMM dd, yyyy h:mm a") : "—"}</p></div></section><section className="rounded-xl border border-slate-800 bg-slate-950 p-4"><p className="text-xs uppercase tracking-wider text-slate-500">Review progress</p><div className="mt-3 grid grid-cols-4 gap-1">{steps.map((step, index) => <div key={step}><span className={`block h-1.5 rounded-full ${index <= current ? "bg-blue-500" : "bg-slate-700"}`} /><span className="mt-1 block text-[10px] text-slate-400">{titleCase(step)}</span></div>)}</div><div className="mt-4 flex flex-wrap gap-2">{review.whatsappFeedbackReceived && <Badge variant="outline">WhatsApp received</Badge>}{review.facebookReviewReceived && <Badge variant="outline">Facebook received</Badge>}{review.videoReviewReceived && <Badge variant="outline">Video received</Badge>}<Badge variant="outline">Marketing: {titleCase(review.marketingPermission)}</Badge></div></section>{review.publicReviewLink && <a href={review.publicReviewLink} target="_blank" rel="noreferrer" className="block rounded-xl border border-blue-500/20 p-4 text-sm text-blue-300 underline">Open public review link</a>}{review.screenshotUrl && <a href={review.screenshotUrl} target="_blank" rel="noreferrer"><img src={review.screenshotUrl} alt="Review evidence" className="max-h-64 w-full rounded-lg object-contain" /></a>}<Button variant="outline" onClick={() => setLocation(`/feedback?tab=reviews&review=${encodeURIComponent(review.reviewNumber)}`)}><Pencil className="mr-2 h-4 w-4" />Edit review</Button></div>;
+          })()}
+          {activeDrawer?.kind === "suggestion" && (() => {
+            const suggestion = selectedOrderSuggestions.find(item => item.id === activeDrawer.id);
+            const history = selectedOrderActivity.filter(entry => Number((entry.details || {}).suggestionId) === suggestion?.id);
+            return suggestionsLoading ? <div className="py-24 text-center"><Loader2 className="mx-auto animate-spin text-blue-400" /></div> : !suggestion ? <div className="py-20 text-center text-slate-400"><AlertCircle className="mx-auto mb-3 text-rose-400" />{suggestionsError ? "Could not load this suggestion." : "This suggestion was not found or is no longer available."}<Button variant="outline" className="mt-4" onClick={goBackInDrawer}><ArrowLeft className="mr-2 h-4 w-4" />Back to order</Button></div> : <div className="mt-6 space-y-5"><section className="rounded-xl border border-slate-800 bg-slate-950 p-4"><div className="flex justify-between gap-3"><div><p className="font-mono text-lg text-blue-400">{suggestion.suggestionNumber}</p><p className="mt-2 text-xs uppercase tracking-wider text-slate-500">{titleCase(suggestion.category)}</p></div><Badge className="bg-blue-500/10 text-blue-300">{titleCase(suggestion.status)}</Badge></div><p className="mt-5 whitespace-pre-wrap text-sm leading-relaxed text-slate-300">{suggestion.suggestionText}</p></section><section className="grid grid-cols-2 gap-3 rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm"><div><p className="text-xs text-slate-500">Related designer</p><p className="mt-1">{suggestion.relatedDesigner?.name || "Unassigned"}</p></div><div><p className="text-xs text-slate-500">Recorded by</p><p className="mt-1">{suggestion.createdBy?.name || "—"}</p></div><div><p className="text-xs text-slate-500">Recorded</p><p className="mt-1">{suggestion.createdAt ? format(new Date(suggestion.createdAt), "MMM dd, yyyy h:mm a") : "—"}</p></div><div><p className="text-xs text-slate-500">Reviewed by</p><p className="mt-1">{suggestion.reviewedBy?.name || "Not reviewed"}</p></div></section>{isAdmin && <section className="space-y-3 rounded-xl border border-slate-800 bg-slate-950 p-4"><Label>Suggestion status</Label><Select value={suggestion.status} onValueChange={status => updateNestedSuggestion.mutate({ id: suggestion.id, payload: { status } })} disabled={updateNestedSuggestion.isPending}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["new", "under_review", "accepted", "implemented", "rejected"].map(status => <SelectItem key={status} value={status}>{titleCase(status)}</SelectItem>)}</SelectContent></Select><Label>Admin notes</Label><Textarea value={suggestionNotes} onChange={event => setSuggestionNotes(event.target.value)} placeholder={suggestion.adminNotes || "Visible only to admins"} className="bg-slate-900" /><Button variant="outline" disabled={!suggestionNotes.trim() || updateNestedSuggestion.isPending} onClick={() => updateNestedSuggestion.mutate({ id: suggestion.id, payload: { adminNotes: suggestionNotes.trim() } })}>Save note</Button></section>}{isAdmin && <section className="rounded-xl border border-slate-800 bg-slate-950 p-4"><p className="text-xs uppercase tracking-wider text-slate-500">History</p><div className="mt-3 space-y-3">{history.length ? history.map(entry => <div key={entry.id} className="border-l border-slate-700 pl-3"><p className="text-sm">{orderActivityLabel(entry)}</p><p className="text-xs text-slate-500">{entry.actor?.name || "System"} · {entry.createdAt ? format(new Date(entry.createdAt), "MMM dd, yyyy h:mm a") : "—"}</p></div>) : <p className="text-sm text-slate-500">No history entries yet.</p>}</div></section>}{suggestion.screenshotUrl && <a href={suggestion.screenshotUrl} target="_blank" rel="noreferrer"><img src={suggestion.screenshotUrl} alt="Suggestion evidence" className="max-h-64 w-full rounded-lg object-contain" /></a>}</div>;
+          })()}
         </SheetContent>
       </Sheet>
 
