@@ -19,7 +19,7 @@ import { ObjectStorageService, registerObjectStorageRoutes, objectStorageService
 import sharp from "sharp";
 import { isCloudinaryConfigured, uploadToCloudinary } from "./cloudinary";
 import webpush from "web-push";
-import { addSseClient, removeSseClient, emitNotification, emitRealtime } from "./sse";
+import { addSseClient, removeSseClient, emitNotification, emitRealtime, hasSseClient } from "./sse";
 import { getPaymentApprovalConflict } from "@shared/order-accounting";
 
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
@@ -61,15 +61,54 @@ function isCloudinaryUrl(value: string): boolean {
   }
 }
 
-async function sendWebPushToUser(userId: number, title: string, body: string, priority: string) {
+const NOTIFIABLE_EVENTS = [
+  "complaint_created_by_support",
+  "complaint_created_by_admin",
+  "complaint_confirmed",
+  "order_created_by_admin",
+  "payment_verification_requested",
+  "order_approved",
+  "order_disapproved",
+  "review_created",
+  "suggestion_created",
+] as const;
+
+type NotificationEvent = typeof NOTIFIABLE_EVENTS[number];
+
+const EVENT_SCOPES: Record<NotificationEvent, string[]> = {
+  complaint_created_by_support: ["notifications", "complaints", "stats"],
+  complaint_created_by_admin: ["notifications", "complaints", "stats"],
+  complaint_confirmed: ["notifications", "complaints", "stats"],
+  order_created_by_admin: ["notifications", "orders", "stats"],
+  payment_verification_requested: ["notifications", "payments", "orders", "stats"],
+  order_approved: ["notifications", "payments", "orders", "stats"],
+  order_disapproved: ["notifications", "payments", "orders", "stats"],
+  review_created: ["notifications", "feedback"],
+  suggestion_created: ["notifications", "feedback"],
+};
+
+const SOUND_EVENTS = new Set<NotificationEvent>([
+  "complaint_created_by_support",
+  "complaint_created_by_admin",
+  "payment_verification_requested",
+  "review_created",
+]);
+
+function notificationTag(event: NotificationEvent, relatedType: string | undefined, relatedId: number | undefined, sourceEventId: string | number): string {
+  return ["pixelcrm", event, relatedType || "record", relatedId ?? "none", sourceEventId].join("-");
+}
+
+async function sendWebPushToUser(
+  userId: number,
+  payload: { title: string; body: string; priority: string; url: string; tag: string },
+) {
   try {
     const subs = await storage.getPushSubscriptionsForUser(userId);
-    const payload = JSON.stringify({ title, body, priority });
     for (const sub of subs) {
       try {
         await webpush.sendNotification(
           { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          payload
+          JSON.stringify(payload)
         );
       } catch (err: any) {
         if (err.statusCode === 410 || err.statusCode === 404) {
@@ -80,50 +119,95 @@ async function sendWebPushToUser(userId: number, title: string, body: string, pr
   } catch (_) {}
 }
 
-async function notifyUser(
-  userId: number, type: string, title: string, message: string,
-  priority: string, relatedId?: number, relatedType?: string,
-  allowedRoles?: string[]
-) {
-  if (allowedRoles?.length) {
-    const recipient = await storage.getUser(userId);
-    if (!recipient || !allowedRoles.includes(recipient.role)) return null;
-  }
+type DispatchNotificationInput = {
+  event: NotificationEvent;
+  recipientId: number;
+  recipientRole?: string;
+  type: string;
+  title: string;
+  message: string;
+  priority: string;
+  relatedId?: number;
+  relatedType?: string;
+  sourceEventId: string | number;
+};
 
-  const result = await storage.createNotification(userId, type, title, message, priority, relatedId, relatedType);
-  const scopes = type === "complaint"
-    ? ["notifications", "complaints", "stats"]
-    : ["notifications"];
+async function dispatchNotification(input: DispatchNotificationInput) {
+  if (!NOTIFIABLE_EVENTS.includes(input.event)) return null;
+  const recipient = await storage.getUser(input.recipientId);
+  if (!recipient || !recipient.isActive || (input.recipientRole && recipient.role !== input.recipientRole)) return null;
+
+  const scopes = EVENT_SCOPES[input.event];
+  const tag = notificationTag(input.event, input.relatedType, input.relatedId, input.sourceEventId);
+  const dedupeKey = [input.event, input.relatedType || "", input.relatedId ?? "", input.sourceEventId].join("::");
+  const result = await storage.createNotification(
+    input.recipientId,
+    input.type,
+    input.title,
+    input.message,
+    input.priority,
+    input.relatedId,
+    input.relatedType,
+    dedupeKey,
+  );
   if (result.created) {
-    sendWebPushToUser(userId, title, message, priority).catch(() => {});
-    emitNotification(userId, { event: "notification", id: result.notification.id, count: 1, scopes });
+    const url = input.relatedType === "complaint" && input.relatedId
+      ? `/complaints/${input.relatedId}`
+      : input.relatedType === "order" && input.relatedId
+        ? `/orders?order=${input.relatedId}`
+        : input.relatedType === "review" && input.relatedId
+          ? `/feedback?review=${input.relatedId}`
+          : input.relatedType === "suggestion" && input.relatedId
+            ? `/feedback?suggestion=${input.relatedId}`
+            : input.relatedType === "payment_verification" && input.relatedId
+              ? `/payments?payment=${input.relatedId}`
+              : "/orders";
+    const eventPayload = {
+      event: "notification",
+      id: result.notification.id,
+      count: 1,
+      eventType: input.event,
+      type: input.type,
+      title: input.title,
+      message: input.message,
+      priority: input.priority,
+      relatedId: input.relatedId ?? null,
+      relatedType: input.relatedType ?? null,
+      url,
+      tag,
+      scopes,
+      sound: SOUND_EVENTS.has(input.event),
+    };
+    // An active CRM session receives the event over SSE and owns its
+    // foreground browser alert. Fall back to Web Push for non-connected
+    // sessions so the same event is not shown twice.
+    if (!hasSseClient(input.recipientId)) {
+      sendWebPushToUser(input.recipientId, {
+        title: input.title,
+        body: input.message,
+        priority: input.priority,
+        url,
+        tag,
+      }).catch(() => {});
+    }
+    emitNotification(input.recipientId, eventPayload);
   } else {
-    emitRealtime(userId, scopes);
+    emitRealtime(input.recipientId, scopes);
   }
   return result.notification;
 }
 
-// Notify several unique recipients at once (skips falsy/duplicate ids and any excluded ids).
-async function notifyMany(
-  userIds: (number | null | undefined)[], type: string, title: string, message: string,
-  priority: string, relatedId?: number, relatedType?: string,
-  exclude: (number | null | undefined)[] = [], allowedRoles: string[] = []
+async function dispatchNotifications(
+  userIds: (number | null | undefined)[],
+  input: Omit<DispatchNotificationInput, "recipientId">,
+  exclude: (number | null | undefined)[] = [],
 ) {
   const excludeSet = new Set(exclude.filter((id): id is number => typeof id === "number"));
   const candidateRecipients = Array.from(
     new Set(userIds.filter((id): id is number => typeof id === "number" && !excludeSet.has(id)))
   );
-  const allowedRecipientIds = allowedRoles.length
-    ? new Set(
-        (await storage.getUsers())
-          .filter(user => allowedRoles.includes(user.role))
-          .map(user => user.id)
-      )
-    : null;
-
   for (const id of candidateRecipients) {
-    if (allowedRecipientIds && !allowedRecipientIds.has(id)) continue;
-    await notifyUser(id, type, title, message, priority, relatedId, relatedType, allowedRoles);
+    await dispatchNotification({ ...input, recipientId: id });
   }
 }
 
@@ -344,38 +428,6 @@ export async function registerRoutes(
       
       const updatedUser = await storage.updateUser(userId, updates);
 
-      // Notify other admins when a team member's access is enabled/disabled.
-      if (
-        existingUser &&
-        typeof updates.isActive === "boolean" &&
-        updates.isActive !== existingUser.isActive
-      ) {
-        const targetName = updatedUser.name || "A team member";
-        const actorName = actor.name || "an admin";
-        const admins = await storage.getAdmins();
-        if (updates.isActive) {
-          await notifyMany(
-            admins.map(a => a.id), "user",
-            "User Account Enabled",
-            `${targetName}'s CRM access was enabled by ${actorName}.`,
-            "update",
-            userId, "user",
-            [actor.id],
-            ["admin"]
-          );
-        } else {
-          await notifyMany(
-            admins.map(a => a.id), "user",
-            "User Account Disabled",
-            `${targetName}'s CRM access was disabled by ${actorName}.`,
-            "action_required",
-            userId, "user",
-            [actor.id],
-            ["admin"]
-          );
-        }
-      }
-
       res.json(safeUser(updatedUser));
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -566,28 +618,34 @@ export async function registerRoutes(
           });
         }
 
-        // Notify all OTHER admins (not the one who placed it)
         const admins = await storage.getAdmins();
-        await notifyMany(
-          admins.map(a => a.id), "order",
-          "New Order Created",
-          `New order of ${fmtRs(totalPrice)} placed by ${user.name} for ${orderData.clientName}. Order ${orderRef({ orderNumber })}.`,
-          "update",
-          order.id, "order",
-           [user.id],
-           ["admin"]
+        await dispatchNotifications(
+          admins.map(a => a.id),
+          {
+            event: "order_created_by_admin",
+            type: "order",
+            title: "New Order",
+            message: `Order ${orderNumber} was created and assigned to ${intendedDesignerId ? (await storage.getUser(intendedDesignerId))?.name || "a designer" : "a designer"}.`,
+            priority: "update",
+            relatedId: order.id,
+            relatedType: "order",
+            sourceEventId: order.id,
+          },
+          [user.id],
         );
-
-        // Notify assigned designer (never notify the actor about their own assignment)
-        if (intendedDesignerId && intendedDesignerId !== user.id) {
-          await notifyUser(
-            intendedDesignerId, "assignment",
-            "Order Assigned",
-            `${orderRef({ orderNumber })} for ${orderData.clientName} has been assigned to you. You can start working on it.`,
-            "action_required",
-            order.id, "order",
-            ["designer"]
-          );
+        if (intendedDesignerId) {
+          await dispatchNotification({
+            event: "order_created_by_admin",
+            recipientId: intendedDesignerId,
+            recipientRole: "designer",
+            type: "order",
+            title: "New Order Assigned",
+            message: `Order ${orderNumber} has been assigned to you.`,
+            priority: "update",
+            relatedId: order.id,
+            relatedType: "order",
+            sourceEventId: order.id,
+          });
         }
 
         return res.status(201).json(order);
@@ -609,16 +667,19 @@ export async function registerRoutes(
       }, services || []);
       await storage.createActivityLog({ orderId: order.id, actorId: user.id, activityType: "order_created", newValue: "pending_payment" });
 
-      // Notify admins of a new payment request (not "order placed" — no order exists yet)
       const admins = await storage.getAdmins();
-      await notifyMany(
-        admins.map(a => a.id), "payment",
-        "Payment Verification Required",
-        `${fmtRs(totalPrice)} order placed by ${user.name} for ${orderData.clientName}. Verify the payment before approval.`,
-        "action_required",
-         order.id, "order",
-         [],
-         ["admin"]
+      await dispatchNotifications(
+        admins.map(a => a.id),
+        {
+          event: "payment_verification_requested",
+          type: "payment",
+          title: "Payment Verification Required",
+          message: `Order ${order.orderNumber || order.id} requires payment verification.`,
+          priority: "action_required",
+          relatedId: order.id,
+          relatedType: "order",
+          sourceEventId: order.id,
+        },
       );
 
       res.status(201).json(order);
@@ -806,16 +867,18 @@ export async function registerRoutes(
        const review = await storage.createClientReview({ ...input, reviewForDesignerId: order.assignedToId ?? null, createdById: user.id });
        await storage.createActivityLog({ orderId: input.orderId, actorId: user.id, activityType: "review_created", newValue: review.reviewNumber, details: { reviewId: review.id, reviewNumber: review.reviewNumber } });
         const reviewAdmins = await storage.getAdmins();
-        await notifyMany(
-          [...reviewAdmins.map(admin => admin.id), order.assignedToId],
-          "review",
-          "New Client Review",
-          `${review.reviewNumber} was recorded for ${orderRef(order)} (${order.clientName}).`,
-          "update",
-          review.id,
-          "review",
-          [user.id],
-          ["admin", "designer"],
+        await dispatchNotifications(
+          reviewAdmins.map(admin => admin.id),
+          {
+            event: "review_created",
+            type: "review",
+            title: "New Client Review",
+            message: `Review ${review.reviewNumber} was recorded for Order ${order.orderNumber || order.id}.`,
+            priority: "update",
+            relatedId: review.id,
+            relatedType: "review",
+            sourceEventId: review.id,
+          },
         );
       res.status(201).json((await feedbackProjection([review], "review", user.role))[0]);
     } catch (err) { if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message || "Invalid review." }); return res.status(500).json({ message: "Unable to create client review." }); }
@@ -880,16 +943,18 @@ export async function registerRoutes(
       const suggestion = await storage.createClientSuggestion({ ...input, category: "other", relatedDesignerId: order.assignedToId ?? null, createdById: user.id, reviewedByUserId: null, reviewedAt: null, adminNotes: null });
       await storage.createActivityLog({ orderId: input.orderId, actorId: user.id, activityType: "suggestion_created", newValue: suggestion.suggestionNumber, details: { suggestionId: suggestion.id } });
        const suggestionAdmins = await storage.getAdmins();
-       await notifyMany(
-         [...suggestionAdmins.map(admin => admin.id), order.assignedToId],
-         "suggestion",
-         "New Client Suggestion",
-         `${suggestion.suggestionNumber} was submitted for ${orderRef(order)} (${order.clientName}).`,
-         "action_required",
-         suggestion.id,
-         "suggestion",
-         [user.id],
-         ["admin", "designer"],
+       await dispatchNotifications(
+         suggestionAdmins.map(admin => admin.id),
+         {
+           event: "suggestion_created",
+           type: "suggestion",
+           title: "New Suggestion",
+           message: `Suggestion ${suggestion.suggestionNumber} was recorded.`,
+           priority: "update",
+           relatedId: suggestion.id,
+           relatedType: "suggestion",
+           sourceEventId: suggestion.id,
+         },
        );
       res.status(201).json((await feedbackProjection([suggestion], "suggestion", user.role))[0]);
     } catch (err) { if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid suggestion." }); return res.status(500).json({ message: "Unable to create client suggestion." }); }
@@ -927,19 +992,6 @@ export async function registerRoutes(
             ...(input.status === "implemented" ? { implementationDetails: input.implementationDetails } : { rejectionReason: input.rejectionReason }),
           },
         });
-        const decisionLabel = input.status === "implemented" ? "implemented" : "rejected";
-        const decisionMessage = input.status === "implemented"
-          ? `${existing.suggestionNumber} for ${orderRef(order)} was implemented by ${user.name}.`
-          : `${existing.suggestionNumber} for ${orderRef(order)} was rejected by ${user.name}.`;
-        await notifyUser(
-          existing.createdById,
-          "suggestion",
-          `Suggestion ${decisionLabel === "implemented" ? "Implemented" : "Rejected"}`,
-          decisionMessage,
-          input.status === "implemented" ? "confirmation" : "update",
-          existing.id,
-          "suggestion",
-        );
       }
       if (adminNote) {
         await storage.addSuggestionNote(id, adminNote, user.id);
@@ -1065,30 +1117,25 @@ export async function registerRoutes(
       }, user.id);
 
       const admins = await storage.getAdmins();
-      await notifyMany(
+      const event = user.role === "support"
+        ? "complaint_created_by_support"
+        : "complaint_created_by_admin";
+      await dispatchNotifications(
         admins.map(admin => admin.id),
-        "complaint",
-        "New Complaint Filed",
-        `${complaint.complaintNumber} related to ${orderRef(order)} requires review.`,
-        "action_required",
-        complaint.id,
-        "complaint",
-        [user.id],
-        ["admin"],
+        {
+          event,
+          type: "complaint",
+          title: "New Complaint",
+          message: user.role === "support"
+            ? `New complaint ${complaint.complaintNumber} requires review.`
+            : `Complaint ${complaint.complaintNumber} was recorded.`,
+          priority: "action_required",
+          relatedId: complaint.id,
+          relatedType: "complaint",
+          sourceEventId: complaint.id,
+        },
+        user.role === "admin" ? [user.id] : [],
       );
-      if (targetId) {
-        // Deliberately neutral: the target must not learn who filed the complaint.
-        await notifyUser(
-          targetId,
-          "complaint",
-          "Complaint Requires Review",
-          `A complaint related to ${orderRef(order)} has been filed about an assigned order. Please review it in Complaints.`,
-          "action_required",
-          complaint.id,
-          "complaint",
-          ["designer"],
-        );
-      }
       emitRealtime(user.id, ["complaints", "stats"]);
 
       const response = await storage.getComplaintForUser(complaint.id, user.role, user.id);
@@ -1239,17 +1286,24 @@ export async function registerRoutes(
       if (status !== undefined && status !== existing.status) {
 
         const targetOrder = await storage.getOrder(existing.orderId);
-        if (existing.complaintTargetType === "designer" && existing.complaintAgainstUserId) {
-          await notifyUser(
-            existing.complaintAgainstUserId,
-            "complaint",
-            `Complaint ${statusLabel(status)}`,
-            `Complaint ${existing.complaintNumber} related to ${targetOrder ? orderRef(targetOrder) : "an assigned order"} is now ${statusLabel(status)}.`,
-            status === "resolved" ? "confirmation" : "update",
-            existing.id,
-            "complaint",
-            ["designer"],
-          );
+        if (
+          existing.status === "new" &&
+          status === "confirmed" &&
+          existing.complaintTargetType === "designer" &&
+          existing.complaintAgainstUserId
+        ) {
+          await dispatchNotification({
+            event: "complaint_confirmed",
+            recipientId: existing.complaintAgainstUserId,
+            recipientRole: "designer",
+            type: "complaint",
+            title: "Complaint Confirmed",
+            message: `Complaint ${existing.complaintNumber} for Order ${targetOrder?.orderNumber || existing.orderId} was confirmed.`,
+            priority: "update",
+            relatedId: existing.id,
+            relatedType: "complaint",
+            sourceEventId: `${existing.id}:new-confirmed`,
+          });
         }
         emitRealtime(existing.filedByUserId, ["complaints", "stats"]);
         if (existing.complaintTargetType === "designer" && existing.complaintAgainstUserId) {

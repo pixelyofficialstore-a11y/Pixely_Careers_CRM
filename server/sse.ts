@@ -17,6 +17,11 @@ export function removeSseClient(userId: number, res: Response) {
   }
 }
 
+export function hasSseClient(userId: number): boolean {
+  const set = clients.get(userId);
+  return Boolean(set && set.size > 0);
+}
+
 export function emitNotification(userId: number, data: Record<string, unknown>) {
   const set = clients.get(userId);
   if (!set || set.size === 0) return;

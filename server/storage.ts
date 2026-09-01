@@ -59,7 +59,7 @@ export interface IStorage {
 
   getNotifications(userId: number): Promise<Notification[]>;
   markNotificationRead(id: number, userId: number): Promise<Notification | undefined>;
-  createNotification(userId: number, type: string, title: string, message: string, priority: string, relatedId?: number, relatedType?: string): Promise<{ notification: Notification; created: boolean }>;
+  createNotification(userId: number, type: string, title: string, message: string, priority: string, relatedId?: number, relatedType?: string, dedupeKey?: string): Promise<{ notification: Notification; created: boolean }>;
 
   getStats(role: string, userId: number, complaintFilters?: ComplaintListFilters): Promise<any>;
 
@@ -334,8 +334,8 @@ export class DatabaseStorage implements IStorage {
     return notification;
   }
 
-  async createNotification(userId: number, type: string, title: string, message: string, priority: string, relatedId?: number, relatedType?: string): Promise<{ notification: Notification; created: boolean }> {
-    const dedupeKey = [type, title, message, relatedType || "", relatedId ?? ""].join("::");
+  async createNotification(userId: number, type: string, title: string, message: string, priority: string, relatedId?: number, relatedType?: string, dedupeKeyOverride?: string): Promise<{ notification: Notification; created: boolean }> {
+    const dedupeKey = dedupeKeyOverride || [type, title, message, relatedType || "", relatedId ?? ""].join("::");
     const [existing] = await db.select().from(notifications)
       .where(and(eq(notifications.userId, userId), eq(notifications.dedupeKey, dedupeKey)))
       .limit(1);
@@ -1079,7 +1079,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAdmins(): Promise<User[]> {
-    return await db.select().from(users).where(eq(users.role, "admin"));
+    return await db.select().from(users).where(and(eq(users.role, "admin"), eq(users.isActive, true)));
   }
 
   async getUnreadNotificationCount(userId: number): Promise<number> {
