@@ -1,0 +1,1281 @@
+PIXELY CAREERS CRM
+FINAL NOTIFICATION MATRIX
+BROWSER NOTIFICATIONS + IN-APP NOTIFICATIONS + ADMIN ALERT SOUND
+
+==================================================
+CRITICAL OBJECTIVE
+==================================================
+
+The CRM notification system must now follow a STRICT ALLOWLIST.
+
+ONLY the events explicitly listed in this specification are allowed to generate notifications.
+
+ON EVERY OTHER EVENT:
+
+NO notification must be created.
+
+This includes both:
+
+1. CRM/in-app notification
+2. Browser desktop notification
+
+Do not create extra notifications because an event "seems useful."
+
+==================================================
+IMPORTANT SAFETY
+==================================================
+
+Supabase is already connected and working.
+
+DO NOT:
+
+- replace Supabase
+- reset Supabase
+- delete notification history
+- recreate database tables unnecessarily
+- change credentials
+- change Supabase URL
+- create a second independent notification system
+- use Firebase
+- use OneSignal
+- add unnecessary third-party push providers
+
+Inspect the existing:
+
+notifications
+Supabase Realtime
+payment alert sound
+notification bell
+notification badges
+
+and reuse the current architecture.
+
+If new columns are genuinely required:
+
+add ONLY minimum additive columns.
+
+==================================================
+NOTIFICATION TYPES
+==================================================
+
+For an allowed event:
+
+Create the existing CRM notification record.
+
+If recipient currently has an active CRM browser session and browser notification permission is granted:
+
+also show a browser desktop notification.
+
+Use Supabase Realtime so the browser notification appears immediately.
+
+==================================================
+BROWSER NOTIFICATION
+==================================================
+
+These are normal browser/desktop notifications.
+
+Use the browser Notification API and existing application architecture.
+
+If a Service Worker notification implementation already exists:
+
+reuse it.
+
+Do NOT build an unnecessary external push infrastructure.
+
+At minimum, when the CRM is open in a browser tab/background tab and the user is logged in, browser notifications should work reliably.
+
+==================================================
+NOTIFICATION CONTENT
+==================================================
+
+Keep notification wording VERY SIMPLE.
+
+Every notification should answer:
+
+What happened?
+
+Which record?
+
+No long paragraphs.
+
+Examples:
+
+"New complaint CMP-2609-015 requires review."
+
+"Order PX-2609-684 was approved."
+
+"New review REV-2609-020 was recorded."
+
+==================================================
+IMPORTANT ACTOR RULE
+==================================================
+
+When specification says:
+
+OTHER ADMINS
+
+notify every ACTIVE Admin except the Admin who performed the action.
+
+When specification says:
+
+ALL ADMINS
+
+notify all ACTIVE Admin accounts.
+
+Do not notify disabled Admin users.
+
+==================================================
+==================================================
+ALLOWED NOTIFICATION MATRIX
+==================================================
+==================================================
+
+
+==================================================
+EVENT 1 — COMPLAINT CREATED BY SUPPORT
+==================================================
+
+TRIGGER:
+
+Any Support member creates a Complaint.
+
+RECIPIENT:
+
+ALL ACTIVE ADMINS.
+
+Do not notify unrelated Designers unless the Complaint is specifically against a Designer as covered separately below.
+
+Admin notification:
+
+Title:
+New Complaint
+
+Message:
+
+"New complaint CMP-XXXX-XXX requires review."
+
+Optional context:
+
+"Order PX-XXXX-XXX"
+
+Click:
+
+Open canonical Complaint Details drawer.
+
+BROWSER NOTIFICATION:
+YES.
+
+ADMIN ALERT SOUND:
+YES.
+
+==================================================
+EVENT 2 — COMPLAINT CREATED BY ADMIN
+==================================================
+
+TRIGGER:
+
+An Admin creates a Complaint.
+
+RECIPIENT:
+
+ALL OTHER ACTIVE ADMINS.
+
+DO NOT notify the Admin who created it.
+
+Notification:
+
+Title:
+New Complaint
+
+Message:
+
+"Complaint CMP-XXXX-XXX was recorded."
+
+Click:
+
+Complaint Details.
+
+BROWSER NOTIFICATION:
+YES.
+
+ADMIN ALERT SOUND:
+YES for receiving Admin sessions.
+
+==================================================
+EVENT 3 — COMPLAINT CREATED AGAINST DESIGNER
+==================================================
+
+IMPORTANT:
+
+A Designer should NOT be notified merely because a Complaint was initially filed against them.
+
+The approved rule is:
+
+Designer is notified ONLY after Admin confirms the Complaint as genuine.
+
+Therefore initial Complaint creation notification goes to Admin according to the rules above.
+
+Do not notify target Designer yet.
+
+==================================================
+EVENT 4 — COMPLAINT MARKED VALID / CONFIRMED
+==================================================
+
+CURRENT CRM TERMINOLOGY:
+
+Valid = Confirmed.
+
+TRIGGER:
+
+Admin changes Complaint:
+
+New → Confirmed
+
+RECIPIENT:
+
+THE DESIGNER THE COMPLAINT IS AGAINST.
+
+Notification:
+
+Title:
+Complaint Confirmed
+
+Message:
+
+"Complaint CMP-XXXX-XXX for Order PX-XXXX-XXX was confirmed."
+
+Keep it neutral and professional.
+
+DO NOT reveal:
+
+- who filed Complaint
+- Support name
+- Admin name
+- reporter identity
+
+Click:
+
+Open canonical Complaint Details drawer.
+
+BROWSER NOTIFICATION:
+YES.
+
+ADMIN SOUND:
+NO.
+
+Designer may receive normal browser notification if permission is enabled.
+
+==================================================
+EVENT 5 — COMPLAINT MARKED INVALID / DISMISSED
+==================================================
+
+CURRENT CRM TERMINOLOGY:
+
+Invalid = Dismissed.
+
+TRIGGER:
+
+Admin changes Complaint:
+
+New → Dismissed
+
+RECIPIENT:
+
+NO ONE.
+
+NO CRM notification.
+
+NO browser notification.
+
+NO sound.
+
+Only Activity/History should record the decision.
+
+==================================================
+EVENT 6 — COMPLAINT RESOLVED
+==================================================
+
+NO NOTIFICATION.
+
+==================================================
+EVENT 7 — COMPLAINT REFUNDED
+==================================================
+
+NO NOTIFICATION.
+
+Unless some separate approved Order/Payment event below independently qualifies.
+
+Do not generate a Complaint notification.
+
+==================================================
+==================================================
+ORDER & PAYMENT NOTIFICATIONS
+==================================================
+
+
+==================================================
+EVENT 8 — ORDER CREATED BY ADMIN
+==================================================
+
+TRIGGER:
+
+Admin creates an Order.
+
+RECIPIENTS:
+
+1. Assigned Designer
+2. ALL OTHER ACTIVE ADMINS
+
+Do NOT notify the Admin who created the Order.
+
+Assigned Designer notification:
+
+Title:
+New Order Assigned
+
+Message:
+
+"Order PX-XXXX-XXX has been assigned to you."
+
+Admin notification:
+
+Title:
+New Order
+
+Message:
+
+"Order PX-XXXX-XXX was created and assigned to [Designer Name]."
+
+Click:
+
+Open Order Details.
+
+BROWSER NOTIFICATION:
+YES.
+
+ADMIN SOUND:
+NO.
+
+This is an Order event, not a Payment Request alert.
+
+==================================================
+EVENT 9 — ORDER CREATED BY SUPPORT FOR PAYMENT VERIFICATION
+==================================================
+
+TRIGGER:
+
+Support member places an Order that requires Admin payment verification.
+
+RECIPIENT:
+
+ALL ACTIVE ADMINS.
+
+Notification:
+
+Title:
+Payment Verification Required
+
+Message:
+
+"Order PX-XXXX-XXX requires payment verification."
+
+Optional:
+
+"Submitted by [Support Name]."
+
+Admin is allowed to see this.
+
+Click:
+
+Open relevant Payment/Order context.
+
+BROWSER NOTIFICATION:
+YES.
+
+ADMIN ALERT SOUND:
+YES.
+
+IMPORTANT:
+
+This should create ONE Admin notification per Admin.
+
+Do not separately create:
+
+Order Created
++
+Payment Request
++
+Payment Pending
+
+notifications for the same Support-created Order unless explicitly required elsewhere.
+
+The approved notification for this event is:
+
+Payment Verification Required.
+
+==================================================
+EVENT 10 — ORDER APPROVED BY ADMIN
+==================================================
+
+TRIGGER:
+
+Admin approves the Order/payment verification.
+
+RECIPIENTS:
+
+1. ALL OTHER ACTIVE ADMINS
+2. Support member who originally placed the Order
+3. Assigned Designer
+
+Do NOT notify approving Admin.
+
+--------------------------------------------------
+OTHER ADMIN MESSAGE
+--------------------------------------------------
+
+Title:
+Order Approved
+
+Message:
+
+"Order PX-XXXX-XXX was approved."
+
+--------------------------------------------------
+SUPPORT MESSAGE
+--------------------------------------------------
+
+Title:
+Order Approved
+
+Message:
+
+"Your order PX-XXXX-XXX was approved."
+
+--------------------------------------------------
+DESIGNER MESSAGE
+--------------------------------------------------
+
+Title:
+Order Approved
+
+Message:
+
+"Order PX-XXXX-XXX has been approved and assigned to you."
+
+If Designer was already informed previously through another valid workflow, ensure this event still follows the requested matrix but DO NOT accidentally duplicate the same approval notification.
+
+Click:
+
+Order Details.
+
+BROWSER NOTIFICATION:
+YES.
+
+ADMIN SOUND:
+NO.
+
+==================================================
+EVENT 11 — ORDER DISAPPROVED BY ADMIN
+==================================================
+
+TRIGGER:
+
+Admin rejects/disapproves Support-created Order/payment verification.
+
+RECIPIENT:
+
+ONLY the Support member who originally placed the Order.
+
+Do NOT notify:
+
+Designer
+Other Admins
+
+Notification:
+
+Title:
+Order Not Approved
+
+Message:
+
+"Order PX-XXXX-XXX was not approved."
+
+Click:
+
+Order Details / relevant record.
+
+BROWSER NOTIFICATION:
+YES.
+
+ADMIN SOUND:
+NO.
+
+==================================================
+==================================================
+REVIEWS & SUGGESTIONS
+==================================================
+
+
+==================================================
+EVENT 12 — REVIEW RECORDED
+==================================================
+
+TRIGGER:
+
+A new Client Review is recorded by any authorized user.
+
+RECIPIENT:
+
+ALL ACTIVE ADMINS.
+
+Notification:
+
+Title:
+New Client Review
+
+Message:
+
+"Review REV-XXXX-XXX was recorded for Order PX-XXXX-XXX."
+
+Keep it simple.
+
+Do not include full Review text in browser notification.
+
+Click:
+
+Open canonical Review Details drawer.
+
+BROWSER NOTIFICATION:
+YES.
+
+ADMIN ALERT SOUND:
+YES.
+
+==================================================
+EVENT 13 — REVIEW UPDATED
+==================================================
+
+NO NOTIFICATION.
+
+==================================================
+EVENT 14 — SUGGESTION RECORDED
+==================================================
+
+TRIGGER:
+
+A new Suggestion is recorded by any authorized user.
+
+RECIPIENT:
+
+ALL ACTIVE ADMINS.
+
+Notification:
+
+Title:
+New Suggestion
+
+Message:
+
+"Suggestion SUG-XXXX-XXX was recorded."
+
+Optional:
+
+"Order PX-XXXX-XXX"
+
+Click:
+
+Open canonical Suggestion Details drawer.
+
+BROWSER NOTIFICATION:
+YES.
+
+ADMIN SOUND:
+NO.
+
+==================================================
+EVENT 15 — SUGGESTION STATUS CHANGED
+==================================================
+
+Examples:
+
+New → Implemented
+
+New → Rejected
+
+RECIPIENT:
+
+NO ONE.
+
+NO CRM notification.
+
+NO browser notification.
+
+NO sound.
+
+Activity/History may still record it.
+
+==================================================
+==================================================
+EVERY OTHER EVENT
+==================================================
+==================================================
+
+THIS IS VERY IMPORTANT.
+
+ON ANY EVENT NOT EXPLICITLY LISTED ABOVE:
+
+NO NOTIFICATION.
+
+Examples that should remain silent:
+
+- Order status changed to Ready
+- Order status changed to Delivered
+- Order canceled
+- Complaint resolved
+- Complaint dismissed
+- Complaint refunded
+- Suggestion implemented
+- Suggestion rejected
+- Review updated
+- Admin Note added
+- Screenshot uploaded
+- Client Case Report exported
+- Order viewed
+- Complaint viewed
+- Designer reassigned unless explicitly added later
+- Payment already approved and edited
+- User profile updated
+- Dashboard changed
+- Analytics viewed
+- Client Experience opened
+- Any normal CRM navigation
+- Any other Activity event
+
+DO NOT create notifications for them.
+
+==================================================
+CENTRAL NOTIFICATION ALLOWLIST
+==================================================
+
+Do not spread this logic randomly across 15 frontend components.
+
+Create/reuse one central notification event dispatcher/configuration.
+
+Conceptually:
+
+NOTIFIABLE_EVENTS =
+
+complaint_created_by_support
+complaint_created_by_admin
+complaint_confirmed
+order_created_by_admin
+payment_verification_requested
+order_approved
+order_disapproved
+review_created
+suggestion_created
+
+ONLY these event types may dispatch notifications.
+
+If an event is not in this allowlist:
+
+return without creating a notification.
+
+==================================================
+DO NOT GENERATE NOTIFICATIONS FROM GENERIC ACTIVITY
+==================================================
+
+Order Activity is NOT Notification logic.
+
+Do not say:
+
+"every activity event creates a notification."
+
+Activity and Notifications are separate systems.
+
+==================================================
+==================================================
+ADMIN SOUND ALERT SYSTEM
+==================================================
+==================================================
+
+The CRM already has a sound for Payment Requests.
+
+Reuse the SAME sound/alert infrastructure.
+
+Do not create multiple audio systems.
+
+Admin CRM should play the alert sound when a NEW:
+
+1. Complaint
+2. Payment Verification Request
+3. Review
+
+arrives.
+
+NO sound for Suggestion.
+
+NO sound for ordinary Order creation.
+
+NO sound for Complaint status changes.
+
+NO sound for Order approval.
+
+==================================================
+SOUND RECIPIENT
+==================================================
+
+Sound is for ADMIN sessions only.
+
+Example:
+
+Support submits Complaint.
+
+All currently online Admin CRM sessions:
+
+receive notification
++
+play alert sound once.
+
+==================================================
+SOUND MUST PLAY ONCE
+==================================================
+
+ONE event = ONE sound.
+
+Do NOT play twice because:
+
+notification INSERT arrives
+
+and complaint realtime INSERT also arrives.
+
+Centralize the event handling.
+
+==================================================
+SOUND DEDUPLICATION
+==================================================
+
+Use notification/event ID to ensure the same Admin browser session plays a sound only once per event.
+
+Refresh/reconnect must NOT replay old sounds.
+
+Only newly received notification events should trigger audio.
+
+==================================================
+BROWSER AUTOPLAY RESTRICTIONS
+==================================================
+
+Browsers may block audio until user interacts with the page.
+
+Handle this professionally.
+
+Reuse the existing Payment Request sound mechanism that already works.
+
+Do not create hacks that repeatedly attempt blocked autoplay.
+
+If needed, initialize sound after first authenticated user interaction.
+
+==================================================
+SOUND SETTING
+==================================================
+
+If the CRM already has notification/sound settings:
+
+reuse them.
+
+If not, do NOT build a large Settings feature in this task.
+
+Keep existing payment sound behavior.
+
+==================================================
+==================================================
+REAL-TIME REQUIREMENTS
+==================================================
+==================================================
+
+Notifications must feel immediate.
+
+Use existing Supabase Realtime.
+
+Do not require refresh.
+
+Examples:
+
+Support submits Payment Request.
+
+Admin open in another browser:
+
+browser notification appears quickly.
+
+bell count updates.
+
+payment actionable badge updates.
+
+sound plays once.
+
+==================================================
+REALTIME SINGLE SOURCE
+==================================================
+
+Prefer notification INSERT events as the client-side trigger for:
+
+browser notification
+sound
+bell update
+
+Do not independently listen to:
+
+complaints INSERT
+payments INSERT
+reviews INSERT
+
+and also generate another notification client-side.
+
+The server/business action should create ONE notification record.
+
+The recipient browser receives that notification through Realtime.
+
+This helps prevent duplicates.
+
+==================================================
+IMPORTANT
+==================================================
+
+Notification records should be CREATED server-side / trusted backend logic where possible.
+
+Do not depend on the initiating user's browser to notify other users.
+
+==================================================
+==================================================
+BROWSER NOTIFICATION PERMISSION
+==================================================
+==================================================
+
+Use browser Notification permission professionally.
+
+If permission = granted:
+
+show browser notification.
+
+If permission = denied:
+
+do not repeatedly ask.
+
+The in-app notification must still work.
+
+If permission = default:
+
+ask at an appropriate authenticated CRM interaction.
+
+Do not show annoying permission requests repeatedly.
+
+==================================================
+CLICK BROWSER NOTIFICATION
+==================================================
+
+Clicking browser notification should:
+
+focus/open CRM
+
+then open appropriate record where technically supported:
+
+Complaint → Complaint Details
+
+Order → Order Details
+
+Review → Review Details
+
+Suggestion → Suggestion Details
+
+Payment → Payment/Order context
+
+==================================================
+==================================================
+COUNTERS
+==================================================
+==================================================
+
+Do not mix notification counts with actionable counts.
+
+--------------------------------------------------
+BELL RED NUMBER
+--------------------------------------------------
+
+Unread CRM notifications.
+
+--------------------------------------------------
+COMPLAINTS RED NUMBER
+--------------------------------------------------
+
+New Complaints requiring Admin decision.
+
+Not unread notifications.
+
+--------------------------------------------------
+PAYMENTS RED NUMBER
+--------------------------------------------------
+
+Pending payment verification requests requiring Admin action.
+
+Not unread notifications.
+
+==================================================
+EXAMPLE
+==================================================
+
+Admin has:
+
+Bell = 7
+
+Complaints = 2
+
+Payments = 3
+
+Admin reads all 7 notifications.
+
+Bell becomes:
+
+0
+
+But:
+
+Complaints remains 2
+
+Payments remains 3
+
+until those cases are actually handled.
+
+==================================================
+==================================================
+DUPLICATE PREVENTION
+==================================================
+==================================================
+
+Audit existing code carefully.
+
+Previous CRM versions may already contain notification triggers.
+
+Remove/disable duplicate trigger paths ONLY after confirming which one is canonical.
+
+For one recipient + one business event:
+
+create ONE notification.
+
+Recommended dedupe concept:
+
+recipient_user_id
+event_type
+entity_type
+entity_id
+source_event_id
+
+Reuse current schema if it already supports equivalent logic.
+
+==================================================
+MULTIPLE ADMINS
+==================================================
+
+Each Admin recipient needs their own notification/read state.
+
+Example:
+
+3 Admins.
+
+Support creates Complaint.
+
+Create notification for:
+
+Admin A
+Admin B
+Admin C
+
+Each user independently reads their notification.
+
+Do not create one global notification row if the existing notification model requires user-specific read state.
+
+==================================================
+==================================================
+SECURITY / PRIVACY
+==================================================
+
+Complaint notification to target Designer must NEVER expose reporter identity.
+
+Server payload should not include it.
+
+Do not merely hide it visually.
+
+==================================================
+ACTIVE USERS
+==================================================
+
+Notify ACTIVE user accounts only.
+
+Disabled users should not receive newly created notifications.
+
+==================================================
+==================================================
+TEST MATRIX
+==================================================
+
+TEST 1 — SUPPORT CREATES COMPLAINT
+
+Expected:
+
+All active Admins:
+CRM notification YES
+Browser notification YES
+Sound YES
+
+Designer:
+NO notification yet.
+
+==================================================
+TEST 2 — ADMIN CREATES COMPLAINT
+
+Expected:
+
+Other Admins:
+Notification YES
+Browser YES
+Sound YES
+
+Creating Admin:
+NO notification.
+
+==================================================
+TEST 3 — ADMIN CONFIRMS COMPLAINT
+
+Expected:
+
+Target Designer:
+Notification YES
+Browser YES
+
+Admins:
+NO new notification.
+
+Reporter identity:
+NOT exposed.
+
+Sound:
+NO.
+
+==================================================
+TEST 4 — ADMIN DISMISSES COMPLAINT
+
+Expected:
+
+NO ONE notified.
+
+==================================================
+TEST 5 — ADMIN CREATES ORDER
+
+Expected:
+
+Assigned Designer:
+notification.
+
+Other Admins:
+notification.
+
+Creating Admin:
+no notification.
+
+Sound:
+NO.
+
+==================================================
+TEST 6 — SUPPORT CREATES ORDER / PAYMENT REQUEST
+
+Expected:
+
+All Admins:
+Payment Verification Required notification.
+
+Browser notification.
+
+Sound ONCE.
+
+==================================================
+TEST 7 — ADMIN APPROVES ORDER
+
+Expected:
+
+Other Admins:
+notification.
+
+Original Support creator:
+notification.
+
+Assigned Designer:
+notification.
+
+Approving Admin:
+no notification.
+
+Sound:
+NO.
+
+==================================================
+TEST 8 — ADMIN DISAPPROVES ORDER
+
+Expected:
+
+Original Support creator:
+notification.
+
+Everyone else:
+NO notification.
+
+==================================================
+TEST 9 — REVIEW CREATED
+
+Expected:
+
+All active Admins:
+notification.
+
+Browser notification.
+
+Sound ONCE.
+
+==================================================
+TEST 10 — REVIEW UPDATED
+
+Expected:
+
+NO notification.
+
+==================================================
+TEST 11 — SUGGESTION CREATED
+
+Expected:
+
+All active Admins:
+notification.
+
+Browser notification.
+
+NO sound.
+
+==================================================
+TEST 12 — SUGGESTION IMPLEMENTED/REJECTED
+
+Expected:
+
+NO notification.
+
+==================================================
+TEST 13 — ORDER DELIVERED
+
+Expected:
+
+NO notification.
+
+==================================================
+TEST 14 — ADMIN NOTE ADDED
+
+Expected:
+
+NO notification.
+
+==================================================
+TEST 15 — REALTIME
+
+Open Admin CRM in Browser A.
+
+Support works in Browser B.
+
+Create Complaint.
+
+Without refreshing Browser A:
+
+Bell updates.
+
+Browser desktop notification appears.
+
+Complaint actionable badge updates.
+
+Sound plays once.
+
+==================================================
+TEST 16 — TWO ADMINS
+
+Open:
+
+Admin A
+Admin B
+
+Admin A creates Complaint.
+
+Expected:
+
+Admin B notified.
+
+Admin A not notified.
+
+==================================================
+TEST 17 — DUPLICATION
+
+Perform every allowed event once.
+
+Expected:
+
+Exactly ONE notification per intended recipient.
+
+Exactly ONE sound per Admin session when sound is applicable.
+
+==================================================
+TEST 18 — BROWSER PERMISSION DENIED
+
+Expected:
+
+Browser desktop notification does not appear.
+
+CRM notification still appears normally.
+
+No errors.
+
+==================================================
+FINAL REPLIT REPORT
+==================================================
+
+After implementation provide:
+
+1. Central notification allowlist
+2. Complaint notification rules
+3. Order/payment notification rules
+4. Review notification rules
+5. Suggestion notification rules
+6. Events explicitly silenced
+7. Browser notification implementation
+8. Realtime implementation
+9. Sound implementation
+10. Deduplication approach
+11. Notification recipient logic
+12. Tests performed
+13. Files changed
+14. Supabase fields added, if any
+
+Explicitly confirm:
+
+- Only approved events generate notifications.
+- All other events are silent.
+- Support Complaint notifies all Admins.
+- Admin Complaint notifies other Admins.
+- Designer is notified only when Complaint is Confirmed.
+- Dismissed Complaint generates no notification.
+- Admin-created Order notifies assigned Designer and other Admins.
+- Support payment verification request notifies all Admins.
+- Approved Order notifies other Admins, original Support member and assigned Designer.
+- Disapproved Order notifies only original Support member.
+- New Review notifies all Admins.
+- New Suggestion notifies all Admins.
+- Suggestion status changes generate no notification.
+- New Complaint, Payment Request and Review play the existing Admin alert sound.
+- Suggestion does not play sound.
+- Browser notifications use simple readable wording.
+- Reporter identity remains hidden from Designer.
+- No duplicate notifications are generated.
+- Existing Supabase connection was not changed.
+- No destructive database migration was performed.

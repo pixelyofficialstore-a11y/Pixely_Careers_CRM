@@ -446,7 +446,7 @@ function FeedbackFilters({ designers, showDesignerFilter, value, onChange, statu
      <div><h3 className="text-lg font-bold text-white">{title}</h3><p className="text-sm text-slate-500">{count} {title.toLowerCase().replace(/s$/, "")}{count === 1 ? "" : "s"} for {month}</p></div>
      <div className="flex flex-wrap gap-2">
       <Select value={year} onValueChange={setYear}><SelectTrigger className="w-24 border-slate-800 bg-slate-900 text-white"><SelectValue /></SelectTrigger><SelectContent className="border-slate-800 bg-slate-900 text-white">{[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(value => <SelectItem key={value} value={String(value)}>{value}</SelectItem>)}</SelectContent></Select>
-      <Select value={monthValue} onValueChange={setMonth}><SelectTrigger className="w-36 border-slate-800 bg-slate-900 text-white"><SelectValue /></SelectTrigger><SelectContent className="border-slate-800 bg-slate-900 text-white">{Array.from({ length: 12 }, (_, index) => <SelectItem key={index + 1} value={String(index + 1)}>{format(new Date(2024, index, 1), "MMMM")}</SelectItem>)}</SelectContent></Select>
+       <Select value={monthValue} onValueChange={setMonth}><SelectTrigger className="w-40 border-slate-800 bg-slate-900 text-white"><SelectValue /></SelectTrigger><SelectContent className="border-slate-800 bg-slate-900 text-white">{Array.from({ length: 12 }, (_, index) => <SelectItem key={index + 1} value={String(index + 1)}>{format(new Date(2024, index, 1), "MMMM")}</SelectItem>)}</SelectContent></Select>
     </div>
   </div>;
 }
