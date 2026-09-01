@@ -1,0 +1,1347 @@
+PIXELY CAREERS CRM
+TASK: COMPLETE SUGGESTION DETAIL DRAWER UX RESTRUCTURE
+
+==================================================
+IMPORTANT CONTEXT
+==================================================
+
+The Suggestions module already works.
+
+The approved Suggestion workflow is now ONLY:
+
+New
+→ Implemented
+
+OR
+
+New
+→ Rejected
+
+There is NO:
+
+Under Review
+Accepted
+Progress workflow
+
+DO NOT reintroduce those statuses.
+
+DO NOT rebuild Suggestions.
+
+DO NOT break:
+
+- Orders
+- Complaints
+- Reviews
+- Feedback Page
+- Payments
+- Cloudinary
+- Supabase
+- Nested drawer navigation
+- Role permissions
+- Client Case Report
+- Order Activity
+- Existing Suggestion records
+
+This task is specifically to redesign and restructure the Suggestion Details drawer so it looks like a professional management improvement record.
+
+==================================================
+CURRENT UX PROBLEM
+==================================================
+
+The Suggestion drawer currently feels like raw database information.
+
+Current problems include:
+
+1. The actual Suggestion text does not receive enough visual importance.
+
+2. Metadata such as:
+
+Added By
+Reviewed By
+Related Order
+
+takes too much space compared with the Suggestion itself.
+
+3. "Reviewed By" is now confusing because Suggestions no longer have an Under Review workflow.
+
+4. Admin Notes behave like one editable field.
+
+Existing notes should NOT remain inside an editable textarea.
+
+5. Rejection Reason appears as a disconnected field near the bottom instead of being part of a clear final Management Decision section.
+
+6. There is no strong hierarchy between:
+
+Suggestion
+Evidence
+Decision
+Admin Notes
+History
+
+7. History should use the same clean human-readable timeline as Order Activity and Complaint Case History.
+
+==================================================
+CORE DESIGN PRINCIPLE
+==================================================
+
+The Suggestion drawer should answer these questions immediately:
+
+1. WHAT WAS SUGGESTED?
+2. WHICH CLIENT / ORDER DOES IT RELATE TO?
+3. WHICH DESIGNER WAS ASSOCIATED WITH IT?
+4. WHO RECORDED THE SUGGESTION?
+5. IS THERE ANY EVIDENCE?
+6. WHAT DID MANAGEMENT DECIDE?
+7. WHY WAS IT IMPLEMENTED OR REJECTED?
+8. WHAT INTERNAL NOTES EXIST?
+9. WHO DID WHAT AND WHEN?
+
+The page should feel like a clean improvement record, not a database form.
+
+==================================================
+NEW SUGGESTION DRAWER STRUCTURE
+==================================================
+
+Use this exact information order:
+
+1. HEADER
+2. SUGGESTION SUMMARY
+3. SUGGESTION DETAILS
+4. EVIDENCE
+5. RELATED ORDER
+6. MANAGEMENT DECISION
+7. INTERNAL ADMIN NOTES
+8. SUGGESTION HISTORY
+
+Do not randomly mix these sections.
+
+==================================================
+SECTION 1 — HEADER
+==================================================
+
+At the top:
+
+If opened from another record:
+
+← Back
+
+Then:
+
+SUG-2609-005
+
+Status badge:
+
+New
+Implemented
+Rejected
+
+Close X.
+
+Under the ID show a short status helper.
+
+NEW:
+
+"Awaiting management decision."
+
+IMPLEMENTED:
+
+"Suggestion approved and implemented."
+
+REJECTED:
+
+"Suggestion reviewed and not implemented."
+
+Do not use software/database terms.
+
+==================================================
+SECTION 2 — SUGGESTION SUMMARY
+==================================================
+
+Create a compact card:
+
+SUGGESTION SUMMARY
+
+Show:
+
+Category
+Document Quality
+
+Related Designer
+Safwan Masood
+
+Date Recorded
+Sep 01, 2026 · 6:41 PM
+
+Recorded By
+Soban Masood
+
+Use:
+
+Recorded By
+
+NOT:
+
+Added By
+
+because the employee is recording the client's suggestion in CRM.
+
+==================================================
+REMOVE "REVIEWED BY"
+==================================================
+
+Remove the generic:
+
+Reviewed By
+
+field from the normal summary.
+
+It no longer makes sense because there is no "Under Review" process.
+
+Instead final decisions should use:
+
+Decision By
+
+Implemented By
+
+or:
+
+Rejected By
+
+depending on the final outcome.
+
+==================================================
+SECTION 3 — SUGGESTION DETAILS
+==================================================
+
+THIS MUST BE THE MOST IMPORTANT CONTENT AREA.
+
+Heading:
+
+CLIENT SUGGESTION
+
+Display the actual Suggestion text prominently.
+
+Example:
+
+CLIENT SUGGESTION
+
+"The client suggested reducing the service charges for future packages."
+
+Requirements:
+
+- Larger readable text than metadata
+- Comfortable padding
+- Good line spacing
+- Proper text wrapping
+- Preserve line breaks
+- No truncation
+- Do not mix it into the same row as Category/Designer
+
+The Suggestion is the reason this record exists.
+
+It must visually stand out.
+
+==================================================
+SECTION 4 — SUGGESTION EVIDENCE
+==================================================
+
+Heading:
+
+SUGGESTION EVIDENCE
+
+If screenshot exists:
+
+Show thumbnail.
+
+Click:
+
+Open existing CRM image lightbox.
+
+Do NOT navigate away.
+
+If no screenshot:
+
+Show small text:
+
+"No evidence was attached to this suggestion."
+
+Do not create a large empty card.
+
+==================================================
+CLOUDINARY
+==================================================
+
+Continue using:
+
+Image
+→ Cloudinary
+→ secure URL
+→ URL stored in Supabase
+
+Do NOT:
+
+Use Supabase Storage
+Store Base64
+Change Cloudinary credentials
+Build another upload system
+
+==================================================
+SECTION 5 — RELATED ORDER
+==================================================
+
+Heading:
+
+RELATED ORDER
+
+Keep compact.
+
+Show:
+
+Order ID
+PX-2609-002
+
+Client
+Ali Shamshad
+
+Package / Services
+
+Designer
+
+Order Status
+
+Do NOT repeat excessive financial information unless it is useful to understanding the Suggestion.
+
+Suggestions normally do not require full financial details like Complaints.
+
+Order ID must remain clickable.
+
+Nested drawer navigation must remain intact.
+
+==================================================
+SECTION 6 — MANAGEMENT DECISION
+==================================================
+
+This section depends on status.
+
+==================================================
+WHEN STATUS = NEW
+==================================================
+
+Heading:
+
+MANAGEMENT DECISION
+
+Helper:
+
+"Decide whether this suggestion should be implemented or rejected."
+
+Show only two clear actions:
+
+Implement Suggestion
+
+Reject Suggestion
+
+Do NOT use a generic dropdown.
+
+Do NOT show:
+
+Under Review
+Accepted
+
+==================================================
+IMPLEMENT SUGGESTION
+==================================================
+
+When Admin clicks:
+
+Implement Suggestion
+
+Open a small modal.
+
+Title:
+
+Implement Suggestion
+
+Message:
+
+"Confirm that this suggestion has been adopted and implemented."
+
+Field:
+
+Implementation Details
+
+I recommend making this REQUIRED.
+
+Why?
+
+Because later management should know WHAT was actually changed.
+
+Example:
+
+"Updated the Production Team response-time policy from 30 minutes to 10 minutes."
+
+Optional:
+
+Implementation Evidence
+
+Screenshot upload using Cloudinary.
+
+Buttons:
+
+Cancel
+
+Mark Implemented
+
+==================================================
+IMPLEMENTED RESULT
+==================================================
+
+After confirmation:
+
+Status:
+Implemented
+
+Store:
+
+implementation_details
+
+implementation_screenshot_url
+
+implemented_by_user_id
+
+implemented_at
+
+Create:
+
+Suggestion history event
+
+Order Activity event
+
+Do not show decision buttons anymore.
+
+==================================================
+WHEN STATUS = IMPLEMENTED
+==================================================
+
+Replace editable controls with a READ-ONLY final decision record.
+
+Heading:
+
+MANAGEMENT DECISION
+
+Status:
+
+Implemented
+
+Implementation Summary
+
+[actual implementation text]
+
+Implemented By
+Soban Masood
+
+Implemented On
+Sep 05, 2026 · 4:20 PM
+
+Implementation Evidence
+
+[View Screenshot]
+
+Small helper:
+
+"This suggestion was adopted and implemented."
+
+Do not show disabled form fields.
+
+Do not show the original implementation text inside an editable textarea.
+
+==================================================
+REJECT SUGGESTION
+==================================================
+
+When Admin clicks:
+
+Reject Suggestion
+
+Open modal.
+
+Title:
+
+Reject Suggestion
+
+Message:
+
+"Please explain why this suggestion will not be implemented."
+
+Required field:
+
+Reason for Rejection
+
+This should be REQUIRED.
+
+Example:
+
+"Reducing current package pricing is not commercially sustainable."
+
+Buttons:
+
+Cancel
+
+Reject Suggestion
+
+==================================================
+REJECTED RESULT
+==================================================
+
+After submission:
+
+Status:
+Rejected
+
+Store:
+
+rejection_reason
+
+rejected_by_user_id
+
+rejected_at
+
+Create:
+
+Suggestion History event
+
+Order Activity event
+
+==================================================
+WHEN STATUS = REJECTED
+==================================================
+
+Do NOT show the rejection reason as a random separate card at the bottom.
+
+Display it properly inside:
+
+MANAGEMENT DECISION
+
+Example:
+
+MANAGEMENT DECISION
+
+Rejected
+
+Reason for Rejection
+
+"Reducing current package pricing is not commercially sustainable."
+
+Rejected By
+Soban Masood
+
+Rejected On
+Sep 01, 2026 · 7:25 PM
+
+Small helper:
+
+"This suggestion will not be implemented."
+
+No decision buttons should remain.
+
+==================================================
+SECTION 7 — INTERNAL ADMIN NOTES
+==================================================
+
+The current Admin Notes UX must be replaced.
+
+Current behavior:
+
+One textarea acts like the saved Admin Notes field.
+
+This is not acceptable.
+
+Admin Notes must behave as a NOTE LOG.
+
+==================================================
+ADMIN NOTES FINAL STRUCTURE
+==================================================
+
+Heading:
+
+INTERNAL ADMIN NOTES
+
+Helper:
+
+"Private management notes. These notes are not visible to Designers or Support."
+
+Then show saved notes as individual read-only cards.
+
+Example:
+
+INTERNAL ADMIN NOTES
+
+────────────────────────
+
+This suggestion may be useful for future premium packages.
+
+Soban Masood · Admin
+Sep 01, 2026 · 7:20 PM
+
+────────────────────────
+
+Client mentioned the same issue twice.
+
+Soban Masood · Admin
+Sep 02, 2026 · 8:10 PM
+
+────────────────────────
+
+Then:
+
+ADD NEW NOTE
+
+[ Write an internal note... ]
+
+[ Add Note ]
+
+==================================================
+IMPORTANT NOTES BEHAVIOR
+==================================================
+
+The Add New Note textarea must always start EMPTY.
+
+Placeholder:
+
+"Write an internal note..."
+
+Existing notes MUST NOT load into this textarea.
+
+When note is added:
+
+1. Save a NEW note.
+2. Keep old notes.
+3. Clear textarea.
+4. Show new note in the note list.
+5. Record:
+   - note author
+   - date
+   - time
+6. Create one Suggestion History event.
+
+Do NOT overwrite previous notes.
+
+==================================================
+MULTIPLE ADMIN NOTES
+==================================================
+
+Suggestions must support multiple internal notes.
+
+Do not maintain one editable notes blob.
+
+If current schema only has:
+
+admin_notes
+
+inspect carefully.
+
+If needed, create an additive:
+
+suggestion_notes
+
+table.
+
+Suggested fields:
+
+id
+
+suggestion_id
+
+note_text
+
+created_by_user_id
+
+created_at
+
+==================================================
+MIGRATE EXISTING ADMIN NOTES
+==================================================
+
+Existing Suggestion Admin Notes must NOT be lost.
+
+If existing suggestion.admin_notes contains text:
+
+migrate it into the new note structure.
+
+Do not invent missing author/timestamp data.
+
+Use only real stored metadata when available.
+
+==================================================
+ADMIN NOTE PERMISSIONS
+==================================================
+
+ADMIN / AUTHORIZED MANAGEMENT:
+
+Can view notes.
+Can add notes.
+
+DESIGNER:
+
+Cannot view.
+Cannot retrieve through API.
+
+SUPPORT:
+
+Cannot view.
+Cannot retrieve through API.
+
+Frontend hiding alone is NOT enough.
+
+==================================================
+SECTION 8 — SUGGESTION HISTORY
+==================================================
+
+Rename generic:
+
+HISTORY
+
+to:
+
+SUGGESTION HISTORY
+
+Use the SAME timeline component/design already used for:
+
+Order Activity
+Complaint Case History
+
+Same:
+
+Direction
+Dots
+Spacing
+Date format
+Actor display
+Typography
+
+==================================================
+HISTORY MUST BE HUMAN READABLE
+==================================================
+
+Do not display backend-style entries such as:
+
+Suggestion Status
+
+Suggestion Note
+
+Suggestion Created
+
+without explanation.
+
+Use:
+
+Suggestion recorded by Soban Masood
+Sep 01, 2026 · 6:41 PM
+
+Suggestion rejected by Soban Masood
+Sep 01, 2026 · 7:25 PM
+
+Admin note added by Soban Masood
+Sep 01, 2026 · 7:30 PM
+
+or:
+
+Suggestion implemented by Soban Masood
+Sep 05, 2026 · 4:20 PM
+
+==================================================
+REJECTION HISTORY
+==================================================
+
+Example:
+
+Suggestion rejected
+Soban Masood · Sep 01, 2026 · 7:25 PM
+
+Reason:
+"Reducing the service price is not commercially sustainable."
+
+==================================================
+IMPLEMENTATION HISTORY
+==================================================
+
+Example:
+
+Suggestion implemented
+Soban Masood · Sep 05, 2026 · 4:20 PM
+
+Implementation:
+"Added monthly client follow-up automation to CRM."
+
+==================================================
+ADMIN NOTE HISTORY
+==================================================
+
+General history should only say:
+
+Admin note added
+Soban Masood · Sep 01, 2026 · 7:30 PM
+
+Do NOT repeat the full private note inside the timeline.
+
+The full note is shown in Internal Admin Notes.
+
+==================================================
+ORDER ACTIVITY CONNECTION
+==================================================
+
+Important Suggestion actions must appear in:
+
+Order Details → Activity
+
+Examples:
+
+Suggestion SUG-2609-005 recorded.
+
+Suggestion SUG-2609-005 implemented.
+
+Suggestion SUG-2609-005 rejected.
+
+Do not log every character/note update in Order Activity.
+
+Admin notes may remain only in Suggestion History because they are internal.
+
+==================================================
+SECTION 9 — SUGGESTION DRAWER FINAL LAYOUT
+==================================================
+
+Conceptually:
+
+────────────────────────────────────
+
+← Back          SUG-2609-005    [Rejected]    X
+
+Suggestion reviewed and not implemented.
+
+────────────────────────────────────
+
+SUGGESTION SUMMARY
+
+Category
+[Document Quality]
+
+Related Designer
+Safwan Masood
+
+Date Recorded
+Sep 01, 2026 · 6:41 PM
+
+Recorded By
+Soban Masood
+
+────────────────────────────────────
+
+CLIENT SUGGESTION
+
+"The client suggested reducing our service charges."
+
+────────────────────────────────────
+
+SUGGESTION EVIDENCE
+
+No evidence was attached to this suggestion.
+
+────────────────────────────────────
+
+RELATED ORDER
+
+PX-2609-002
+Ali Shamshad
+
+Executive Career Branding
+Safwan Masood
+
+────────────────────────────────────
+
+MANAGEMENT DECISION
+
+Rejected
+
+Reason for Rejection
+
+"Current pricing cannot be reduced while maintaining the service quality and production cost."
+
+Rejected By
+Soban Masood
+
+Rejected On
+Sep 01, 2026 · 7:25 PM
+
+────────────────────────────────────
+
+INTERNAL ADMIN NOTES
+
+"Could consider a smaller entry package instead."
+
+Soban Masood · Admin
+Sep 01, 2026 · 7:30 PM
+
+
+ADD NEW NOTE
+
+[ Write an internal note... ]
+
+[ Add Note ]
+
+────────────────────────────────────
+
+SUGGESTION HISTORY
+
+● Suggestion rejected
+  Soban Masood
+  Sep 01, 2026 · 7:25 PM
+
+● Suggestion recorded
+  Soban Masood
+  Sep 01, 2026 · 6:41 PM
+
+────────────────────────────────────
+
+Use actual CRM components rather than literally rendering ASCII layout.
+
+==================================================
+IMPLEMENTED EXAMPLE
+==================================================
+
+For an Implemented Suggestion:
+
+MANAGEMENT DECISION
+
+Implemented
+
+Implementation Summary
+
+"Updated the Production communication script and introduced a 10-minute active-shift response standard."
+
+Implemented By
+Soban Masood
+
+Implemented On
+Sep 05, 2026 · 4:20 PM
+
+Implementation Evidence
+[View Screenshot]
+
+==================================================
+SECTION 10 — VISUAL HIERARCHY
+==================================================
+
+Highest priority:
+
+Suggestion ID
+Current Status
+Category
+Client Suggestion
+
+High:
+
+Management Decision
+
+Medium:
+
+Evidence
+Related Order
+
+Lower:
+
+Recorded By
+Dates
+Admin Notes
+History
+
+Do not make all cards equal size/importance.
+
+==================================================
+SECTION 11 — WORDING
+==================================================
+
+Use:
+
+Suggestion Summary
+
+Client Suggestion
+
+Suggestion Evidence
+
+Related Order
+
+Management Decision
+
+Implementation Summary
+
+Reason for Rejection
+
+Internal Admin Notes
+
+Add New Note
+
+Suggestion History
+
+Recorded By
+
+Implemented By
+
+Rejected By
+
+Do NOT use:
+
+Added By
+
+Reviewed By
+
+Reviewer
+
+Decision Actor
+
+Entity Status
+
+Workflow State
+
+==================================================
+SECTION 12 — REMOVE THESE UI ITEMS
+==================================================
+
+REMOVE:
+
+Reviewed By generic field
+
+Under Review status
+
+Accepted status
+
+generic Suggestion Status dropdown
+
+large technical status explanations
+
+saved Admin Note inside textarea
+
+disconnected Reason for Rejection card
+
+raw backend-looking History entries
+
+==================================================
+SECTION 13 — DECISION BUTTONS
+==================================================
+
+When status = New:
+
+Show:
+
+Implement Suggestion
+
+Reject Suggestion
+
+When status = Implemented:
+
+No buttons.
+
+When status = Rejected:
+
+No buttons.
+
+Simple.
+
+==================================================
+SECTION 14 — EVIDENCE VIEWER
+==================================================
+
+Use same evidence viewer for:
+
+Suggestion Screenshot
+
+Implementation Screenshot
+
+Click:
+
+Open image lightbox.
+
+Do not change background page.
+
+==================================================
+SECTION 15 — ROLE PERMISSIONS
+==================================================
+
+DESIGNER:
+
+Can:
+Add Suggestion for authorized Orders.
+View Suggestion.
+View management decision once available.
+View normal Suggestion evidence.
+
+Cannot:
+Implement.
+Reject.
+See Internal Admin Notes.
+
+SUPPORT:
+
+Can:
+Add Suggestion.
+View Suggestion according to Order permissions.
+
+Cannot:
+Implement.
+Reject.
+See Internal Admin Notes.
+
+ADMIN:
+
+Can:
+Add.
+View all.
+Implement.
+Reject.
+Add Admin Notes.
+See full history.
+
+==================================================
+SECTION 16 — NESTED DRAWER NAVIGATION
+==================================================
+
+Preserve current behavior:
+
+Orders
+→ Order
+→ Suggestion
+
+Back:
+returns to same Order tab.
+
+Feedback
+→ Suggestions
+→ Suggestion
+
+Feedback remains in background.
+
+Do not break this.
+
+==================================================
+SECTION 17 — CLIENT CASE REPORT
+==================================================
+
+Update Suggestion section of Client Case Report.
+
+Remove:
+
+Under Review
+Accepted
+Reviewed By
+
+Use:
+
+Suggestion ID
+
+Category
+
+Suggestion
+
+Status:
+New / Implemented / Rejected
+
+Recorded By
+
+Recorded Date
+
+If Implemented:
+
+Implementation Summary
+Implemented By
+Implemented Date
+
+If Rejected:
+
+Reason for Rejection
+Rejected By
+Rejected Date
+
+Evidence where applicable.
+
+==================================================
+SECTION 18 — TEST EXISTING REJECTED SUGGESTION
+==================================================
+
+Open current:
+
+SUG-2609-005
+
+Expected:
+
+Client Suggestion clearly highlighted.
+
+No generic Reviewed By field.
+
+Reason for Rejection appears inside Management Decision.
+
+Rejected By shown.
+
+Rejected Date shown.
+
+No status dropdown.
+
+Admin Notes saved separately.
+
+New-note input empty.
+
+==================================================
+SECTION 19 — TEST ADMIN NOTES
+==================================================
+
+Existing Admin Note:
+
+must appear as read-only saved note.
+
+Textarea:
+
+must be empty.
+
+Add another note.
+
+Expected:
+
+Old note remains.
+New note added separately.
+Textarea clears.
+History updated.
+
+Refresh.
+
+Expected:
+
+Both notes remain.
+
+==================================================
+SECTION 20 — TEST NEW SUGGESTION
+==================================================
+
+New Suggestion.
+
+Expected:
+
+Only:
+
+Implement Suggestion
+Reject Suggestion
+
+No other status options.
+
+==================================================
+SECTION 21 — TEST IMPLEMENT
+==================================================
+
+Click Implement Suggestion.
+
+Enter implementation details.
+
+Optional screenshot.
+
+Confirm.
+
+Expected:
+
+Status = Implemented.
+
+Read-only Management Decision appears.
+
+Who implemented recorded.
+
+Date recorded.
+
+History updated.
+
+Order Activity updated.
+
+==================================================
+SECTION 22 — TEST REJECT
+==================================================
+
+Click Reject Suggestion.
+
+Reason required.
+
+Expected:
+
+Status = Rejected.
+
+Reason saved.
+
+Rejected By saved.
+
+Date saved.
+
+History updated.
+
+==================================================
+SECTION 23 — CONSISTENCY TEST
+==================================================
+
+Compare:
+
+Complaint Detail
+Review Detail
+Suggestion Detail
+
+They should share:
+
+Same drawer shell.
+Same headings style.
+Same metadata style.
+Same screenshot viewer.
+Same typography.
+Same spacing.
+
+BUT they should NOT have the same workflow because they serve different business purposes.
+
+Complaint:
+Case resolution workflow.
+
+Review:
+Simple recorded feedback.
+
+Suggestion:
+Management Implement / Reject decision.
+
+==================================================
+FINAL PRODUCT STANDARD
+==================================================
+
+A Suggestion is NOT a complicated workflow.
+
+The employee records what the client suggested.
+
+Management then makes ONE decision:
+
+IMPLEMENT IT
+
+or
+
+REJECT IT.
+
+The drawer should make that story obvious:
+
+WHAT DID THE CLIENT SUGGEST?
+
+WHO/WHICH ORDER IS IT ABOUT?
+
+WHAT EVIDENCE EXISTS?
+
+WHAT DID MANAGEMENT DECIDE?
+
+WHY?
+
+WHO MADE THE DECISION?
+
+WHEN?
+
+WHAT INTERNAL NOTES EXIST?
+
+WHAT HAPPENED OVER TIME?
+
+Make the backend structured and auditable.
+
+Make the frontend simple, clean and immediately understandable.

@@ -5,3 +5,6 @@
 - [Startup cleanup retention](startup-cleanup-retention.md) — startup cleanup can delete historical notification/payment records; treat it as an owner-approved retention policy.
 - [Railway stale source snapshots](railway-stale-source-snapshots.md) — logs can build an archived GitHub source; verify a unique marker and relink the source before changing images again.
 - [Complaint intake policy](complaint-intake-policy.md) — admin-filed complaints are immediately valid; support/sales complaints require admin review; category history is immutable.
+- [Complaint admin notes](complaint-admin-notes.md) — admin notes are append-only case records; migrate legacy text once and never overwrite historical notes.
+- [Client reviews are records](client-review-records.md) — reviews capture received feedback, not workflow stages; keep legacy progress internal and never surface or advance it.
+- [Suggestion decisions and notes](suggestion-decision-records.md) — suggestions have one irreversible Implement/Reject decision; private admin notes are append-only and server-redacted.

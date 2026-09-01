@@ -240,11 +240,27 @@ export async function runMigrations() {
         screenshot_url TEXT,
         admin_notes TEXT,
         decision_note TEXT,
+        implementation_details TEXT,
+        implementation_screenshot_url TEXT,
+        implemented_by_user_id INTEGER REFERENCES users(id),
+        implemented_at TIMESTAMP,
+        rejection_reason TEXT,
+        rejected_by_user_id INTEGER REFERENCES users(id),
+        rejected_at TIMESTAMP,
         created_by_id INTEGER NOT NULL REFERENCES users(id),
         reviewed_by_user_id INTEGER REFERENCES users(id),
         reviewed_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS suggestion_notes (
+        id SERIAL PRIMARY KEY,
+        suggestion_id INTEGER NOT NULL REFERENCES client_suggestions(id) ON DELETE CASCADE,
+        note_text TEXT NOT NULL,
+        created_by_user_id INTEGER REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT NOW()
       )
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS client_reviews_designer_idx ON client_reviews(review_for_designer_id)`);
@@ -282,6 +298,19 @@ export async function runMigrations() {
       )
     `);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS complaint_notes (
+        id                  SERIAL PRIMARY KEY,
+        complaint_id        INTEGER NOT NULL REFERENCES complaints(id),
+        note_text           TEXT NOT NULL,
+        created_by_user_id  INTEGER REFERENCES users(id),
+        created_at          TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS complaint_notes_complaint_idx
+        ON complaint_notes(complaint_id, created_at DESC)
+    `);
     await client.query(`
       CREATE INDEX IF NOT EXISTS complaints_order_id_idx
         ON complaints(order_id)
@@ -392,12 +421,32 @@ export async function runMigrations() {
 
     await client.query(`
       ALTER TABLE complaints
+        ADD COLUMN IF NOT EXISTS admin_notes TEXT,
+        ADD COLUMN IF NOT EXISTS resolution TEXT,
         ADD COLUMN IF NOT EXISTS resolution_outcome TEXT,
         ADD COLUMN IF NOT EXISTS screenshot_url TEXT,
         ADD COLUMN IF NOT EXISTS resolution_screenshot_url TEXT,
         ADD COLUMN IF NOT EXISTS dismissal_reason TEXT,
         ADD COLUMN IF NOT EXISTS dismissed_by_user_id INTEGER REFERENCES users(id),
-        ADD COLUMN IF NOT EXISTS dismissed_at TIMESTAMP
+        ADD COLUMN IF NOT EXISTS dismissed_at TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS resolved_by_user_id INTEGER REFERENCES users(id),
+        ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()
+    `);
+    // Preserve any legacy single-note values as read-only historical notes.
+    // A nullable author is intentional: the old column did not record one.
+    await client.query(`
+      INSERT INTO complaint_notes (complaint_id, note_text, created_at)
+      SELECT c.id, c.admin_notes, COALESCE(c.updated_at, c.created_at, NOW())
+      FROM complaints c
+      WHERE NULLIF(BTRIM(c.admin_notes), '') IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1
+          FROM complaint_notes n
+          WHERE n.complaint_id = c.id
+            AND n.note_text = c.admin_notes
+            AND n.created_by_user_id IS NULL
+        )
     `);
     await client.query(`CREATE SEQUENCE IF NOT EXISTS review_number_seq`);
     await client.query(`CREATE SEQUENCE IF NOT EXISTS suggestion_number_seq`);
@@ -425,8 +474,43 @@ export async function runMigrations() {
         ADD COLUMN IF NOT EXISTS screenshot_url TEXT,
         ADD COLUMN IF NOT EXISTS admin_notes TEXT,
         ADD COLUMN IF NOT EXISTS decision_note TEXT,
+        ADD COLUMN IF NOT EXISTS implementation_details TEXT,
+        ADD COLUMN IF NOT EXISTS implementation_screenshot_url TEXT,
+        ADD COLUMN IF NOT EXISTS implemented_by_user_id INTEGER REFERENCES users(id),
+        ADD COLUMN IF NOT EXISTS implemented_at TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS rejection_reason TEXT,
+        ADD COLUMN IF NOT EXISTS rejected_by_user_id INTEGER REFERENCES users(id),
+        ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMP,
         ADD COLUMN IF NOT EXISTS reviewed_by_user_id INTEGER REFERENCES users(id),
         ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP;
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS suggestion_notes (
+        id SERIAL PRIMARY KEY,
+        suggestion_id INTEGER NOT NULL REFERENCES client_suggestions(id) ON DELETE CASCADE,
+        note_text TEXT NOT NULL,
+        created_by_user_id INTEGER REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS suggestion_notes_suggestion_idx ON suggestion_notes(suggestion_id, created_at DESC);
+      INSERT INTO suggestion_notes (suggestion_id, note_text, created_by_user_id, created_at)
+      SELECT s.id, s.admin_notes, s.reviewed_by_user_id, COALESCE(s.updated_at, s.created_at, NOW())
+      FROM client_suggestions s
+      WHERE NULLIF(BTRIM(s.admin_notes), '') IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM suggestion_notes n
+          WHERE n.suggestion_id = s.id AND n.note_text = s.admin_notes
+        );
+      UPDATE client_suggestions
+      SET rejection_reason = COALESCE(rejection_reason, decision_note),
+          rejected_by_user_id = COALESCE(rejected_by_user_id, reviewed_by_user_id),
+          rejected_at = COALESCE(rejected_at, reviewed_at)
+      WHERE status = 'rejected' AND NULLIF(BTRIM(decision_note), '') IS NOT NULL;
+      UPDATE client_suggestions
+      SET implementation_details = COALESCE(implementation_details, decision_note),
+          implemented_by_user_id = COALESCE(implemented_by_user_id, reviewed_by_user_id),
+          implemented_at = COALESCE(implemented_at, reviewed_at)
+      WHERE status = 'implemented' AND NULLIF(BTRIM(decision_note), '') IS NOT NULL;
     `);
     await client.query(`
       DO $$ BEGIN

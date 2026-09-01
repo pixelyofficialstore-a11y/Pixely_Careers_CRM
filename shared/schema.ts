@@ -207,11 +207,26 @@ export const clientSuggestions = pgTable("client_suggestions", {
   screenshotUrl: text("screenshot_url"),
   adminNotes: text("admin_notes"),
   decisionNote: text("decision_note"),
+  implementationDetails: text("implementation_details"),
+  implementationScreenshotUrl: text("implementation_screenshot_url"),
+  implementedByUserId: integer("implemented_by_user_id").references(() => users.id),
+  implementedAt: timestamp("implemented_at"),
+  rejectionReason: text("rejection_reason"),
+  rejectedByUserId: integer("rejected_by_user_id").references(() => users.id),
+  rejectedAt: timestamp("rejected_at"),
   createdById: integer("created_by_id").notNull().references(() => users.id),
   reviewedByUserId: integer("reviewed_by_user_id").references(() => users.id),
   reviewedAt: timestamp("reviewed_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const suggestionNotes = pgTable("suggestion_notes", {
+  id: serial("id").primaryKey(),
+  suggestionId: integer("suggestion_id").notNull().references(() => clientSuggestions.id, { onDelete: "cascade" }),
+  noteText: text("note_text").notNull(),
+  createdByUserId: integer("created_by_user_id").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const complaints = pgTable("complaints", {
@@ -237,6 +252,14 @@ export const complaints = pgTable("complaints", {
   resolvedAt: timestamp("resolved_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const complaintNotes = pgTable("complaint_notes", {
+  id: serial("id").primaryKey(),
+  complaintId: integer("complaint_id").notNull().references(() => complaints.id),
+  noteText: text("note_text").notNull(),
+  createdByUserId: integer("created_by_user_id").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const supportDesignerAssignments = pgTable("support_designer_assignments", {
@@ -312,9 +335,15 @@ export const clientSuggestionsRelations = relations(clientSuggestions, ({ one })
   order: one(orders, { fields: [clientSuggestions.orderId], references: [orders.id] }),
   createdBy: one(users, { fields: [clientSuggestions.createdById], references: [users.id], relationName: "suggestionCreator" }),
   reviewedBy: one(users, { fields: [clientSuggestions.reviewedByUserId], references: [users.id], relationName: "suggestionReviewer" }),
+  implementedBy: one(users, { fields: [clientSuggestions.implementedByUserId], references: [users.id], relationName: "suggestionImplementer" }),
+  rejectedBy: one(users, { fields: [clientSuggestions.rejectedByUserId], references: [users.id], relationName: "suggestionRejector" }),
+}));
+export const suggestionNotesRelations = relations(suggestionNotes, ({ one }) => ({
+  suggestion: one(clientSuggestions, { fields: [suggestionNotes.suggestionId], references: [clientSuggestions.id] }),
+  createdBy: one(users, { fields: [suggestionNotes.createdByUserId], references: [users.id], relationName: "suggestionNoteAuthor" }),
 }));
 
-export const complaintsRelations = relations(complaints, ({ one }) => ({
+export const complaintsRelations = relations(complaints, ({ one, many }) => ({
   order: one(orders, {
     fields: [complaints.orderId],
     references: [orders.id],
@@ -334,6 +363,12 @@ export const complaintsRelations = relations(complaints, ({ one }) => ({
     references: [users.id],
     relationName: "complaintResolvedBy",
   }),
+  notes: many(complaintNotes),
+}));
+
+export const complaintNotesRelations = relations(complaintNotes, ({ one }) => ({
+  complaint: one(complaints, { fields: [complaintNotes.complaintId], references: [complaints.id] }),
+  createdBy: one(users, { fields: [complaintNotes.createdByUserId], references: [users.id], relationName: "complaintNoteCreator" }),
 }));
 
 export const orderServicesRelations = relations(orderServices, ({ one }) => ({
@@ -359,11 +394,16 @@ export const insertActivityLogSchema = createInsertSchema(activityLogs).omit({ i
 export const insertPaymentVerificationSchema = createInsertSchema(paymentVerifications).omit({ id: true, createdAt: true });
 export const insertClientReviewSchema = createInsertSchema(clientReviews).omit({ id: true, reviewNumber: true, createdAt: true, updatedAt: true });
 export const insertClientSuggestionSchema = createInsertSchema(clientSuggestions).omit({ id: true, suggestionNumber: true, createdAt: true, updatedAt: true });
+export const insertSuggestionNoteSchema = createInsertSchema(suggestionNotes).omit({ id: true, createdAt: true });
 export const insertComplaintSchema = createInsertSchema(complaints).omit({
   id: true,
   complaintNumber: true,
   createdAt: true,
   updatedAt: true,
+});
+export const insertComplaintNoteSchema = createInsertSchema(complaintNotes).omit({
+  id: true,
+  createdAt: true,
 });
 export const insertSupportDesignerAssignmentSchema = createInsertSchema(supportDesignerAssignments).omit({ id: true, assignedAt: true });
 export const insertServicesCatalogSchema = createInsertSchema(servicesCatalog).omit({ id: true, createdAt: true });
@@ -386,8 +426,12 @@ export type ClientReview = typeof clientReviews.$inferSelect;
 export type InsertClientReview = z.infer<typeof insertClientReviewSchema>;
 export type ClientSuggestion = typeof clientSuggestions.$inferSelect;
 export type InsertClientSuggestion = z.infer<typeof insertClientSuggestionSchema>;
+export type SuggestionNote = typeof suggestionNotes.$inferSelect;
+export type InsertSuggestionNote = z.infer<typeof insertSuggestionNoteSchema>;
 export type Complaint = typeof complaints.$inferSelect;
 export type InsertComplaint = z.infer<typeof insertComplaintSchema>;
+export type ComplaintNote = typeof complaintNotes.$inferSelect;
+export type InsertComplaintNote = z.infer<typeof insertComplaintNoteSchema>;
 export type MonthlyFinance = typeof monthlyFinance.$inferSelect;
 export type UserRole = (typeof userRoles)[number];
 
@@ -461,6 +505,14 @@ export type ComplaintResponse = {
   resolvedAt: Date | null;
   createdAt: Date | null;
   updatedAt: Date | null;
+  adminNotesLog?: ComplaintNoteResponse[];
+};
+
+export type ComplaintNoteResponse = {
+  id: number;
+  noteText: string;
+  createdAt: Date | null;
+  createdBy?: ComplaintUserSummary | null;
 };
 
 export type ComplaintHistoryEntry = {

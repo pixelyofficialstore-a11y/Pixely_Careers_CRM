@@ -1,6 +1,6 @@
 import { 
   users, orders, notifications, orderServices, paymentVerifications, supportDesignerAssignments,
-  servicesCatalog, packageConfigs, platformsCatalog, complaintCategoryConfigs, pushSubscriptions, activityLogs, complaints, clientReviews, clientSuggestions,
+  servicesCatalog, packageConfigs, platformsCatalog, complaintCategoryConfigs, pushSubscriptions, activityLogs, complaints, complaintNotes, clientReviews, clientSuggestions, suggestionNotes,
   type User, type InsertUser, type Order, type InsertOrder,
   type OrderService, type InsertOrderService, type OrderWithServices,
   type PaymentVerification, type InsertPaymentVerification, type PaymentVerificationWithUsers,
@@ -9,10 +9,10 @@ import {
   type PackageConfig, type InsertPackageConfig,
   type PlatformCatalogItem, type InsertPlatformCatalogItem,
   type ComplaintCategoryConfig, type InsertComplaintCategoryConfig,
-  type PushSubscription, type Complaint, type InsertComplaint, type ComplaintResponse,
+  type PushSubscription, type Complaint, type InsertComplaint, type ComplaintResponse, type ComplaintNote, type ComplaintNoteResponse,
   type ComplaintHistoryEntry, type ComplaintStats,
   type InsertActivityLog, type ActivityLog,
-  type ClientReview, type InsertClientReview, type ClientSuggestion, type InsertClientSuggestion, type ActivityLogWithActor,
+  type ClientReview, type InsertClientReview, type ClientSuggestion, type InsertClientSuggestion, type ActivityLogWithActor, type SuggestionNote,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, ne, desc, sql, and, isNotNull, inArray, asc } from "drizzle-orm";
@@ -111,6 +111,8 @@ export interface IStorage {
     cancelOrder?: boolean,
   ): Promise<Complaint | undefined>;
   getComplaintHistory(id: number): Promise<ComplaintHistoryEntry[]>;
+  getComplaintNotes(id: number): Promise<ComplaintNoteResponse[]>;
+  addComplaintNote(id: number, noteText: string, actorId: number): Promise<ComplaintNote>;
   getComplaintStats(role: string, userId: number, filters?: ComplaintListFilters): Promise<ComplaintStats>;
 }
 
@@ -332,7 +334,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getOrderActivity(orderId: number): Promise<ActivityLogWithActor[]> {
-    const logs = await db.select().from(activityLogs).where(eq(activityLogs.orderId, orderId)).orderBy(desc(activityLogs.createdAt));
+    const logs = (await db.select().from(activityLogs).where(eq(activityLogs.orderId, orderId)).orderBy(desc(activityLogs.createdAt)))
+      .filter(log => {
+        const details = (log.details || {}) as Record<string, unknown>;
+        return !(log.activityType === "review_updated" && typeof details.event === "string" && details.event.includes("review_progress"));
+      });
     const usersById = new Map((await this.getUsers()).map(user => [user.id, user]));
     return logs.map(log => ({ ...log, actor: log.actorId ? usersById.get(log.actorId) || null : null }));
   }
@@ -389,6 +395,21 @@ export class DatabaseStorage implements IStorage {
   async updateClientSuggestion(id: number, updates: Partial<InsertClientSuggestion>): Promise<ClientSuggestion> {
     const [updated] = await db.update(clientSuggestions).set({ ...updates, updatedAt: new Date() }).where(eq(clientSuggestions.id, id)).returning();
     return updated;
+  }
+  async getSuggestionNotes(suggestionId: number): Promise<Array<SuggestionNote & { createdBy: Pick<User, "id" | "name" | "role"> | null }>> {
+    const [notes, usersList] = await Promise.all([
+      db.select().from(suggestionNotes).where(eq(suggestionNotes.suggestionId, suggestionId)).orderBy(desc(suggestionNotes.createdAt)),
+      this.getUsers(),
+    ]);
+    const usersById = new Map(usersList.map(user => [user.id, user]));
+    return notes.map(note => {
+      const author = usersById.get(note.createdByUserId);
+      return { ...note, createdBy: author ? { id: author.id, name: author.name, role: author.role } : null };
+    });
+  }
+  async addSuggestionNote(suggestionId: number, noteText: string, createdByUserId: number): Promise<SuggestionNote> {
+    const [note] = await db.insert(suggestionNotes).values({ suggestionId, noteText, createdByUserId }).returning();
+    return note;
   }
 
   private complaintUserSummary(user: User | undefined) {
@@ -447,7 +468,6 @@ export class DatabaseStorage implements IStorage {
     // and support receive the same safe base projection regardless of client code.
     if (role === "admin") {
       response.filedBy = this.complaintUserSummary(usersById.get(complaint.filedByUserId));
-      response.adminNotes = complaint.adminNotes;
     }
     response.resolution = complaint.resolution;
     response.resolutionOutcome = complaint.resolutionOutcome;
@@ -553,7 +573,11 @@ export class DatabaseStorage implements IStorage {
 
   async getComplaintForUser(id: number, role: string, userId: number): Promise<ComplaintResponse | undefined> {
     const complaintsForUser = await this.getComplaints(role, userId);
-    return complaintsForUser.find(complaint => complaint.id === id);
+    const response = complaintsForUser.find(complaint => complaint.id === id);
+    if (response && role === "admin") {
+      response.adminNotesLog = await this.getComplaintNotes(id);
+    }
+    return response;
   }
 
   async getComplaintRecord(id: number): Promise<Complaint | undefined> {
@@ -587,6 +611,47 @@ export class DatabaseStorage implements IStorage {
         }
       }
       return updated;
+    });
+  }
+
+  async getComplaintNotes(id: number): Promise<ComplaintNoteResponse[]> {
+    const notes = await db.select().from(complaintNotes)
+      .where(eq(complaintNotes.complaintId, id))
+      .orderBy(desc(complaintNotes.createdAt), desc(complaintNotes.id));
+    const allUsers = await this.getUsers();
+    const usersById = new Map(allUsers.map(user => [user.id, user]));
+    return notes.map(note => ({
+      id: note.id,
+      noteText: note.noteText,
+      createdAt: note.createdAt,
+      createdBy: note.createdByUserId
+        ? this.complaintUserSummary(usersById.get(note.createdByUserId))
+        : null,
+    }));
+  }
+
+  async addComplaintNote(id: number, noteText: string, actorId: number): Promise<ComplaintNote> {
+    const text = noteText.trim();
+    if (!text) throw new Error("Admin note cannot be empty.");
+    return await db.transaction(async (tx) => {
+      const [complaint] = await tx.select().from(complaints).where(eq(complaints.id, id));
+      if (!complaint) throw new Error("Complaint not found.");
+      const [note] = await tx.insert(complaintNotes).values({
+        complaintId: id,
+        noteText: text,
+        createdByUserId: actorId,
+      }).returning();
+      await tx.insert(activityLogs).values({
+        orderId: complaint.orderId,
+        actorId,
+        activityType: "complaint_note",
+        newValue: "added",
+        details: {
+          complaintId: complaint.id,
+          complaintNumber: complaint.complaintNumber,
+        },
+      });
+      return note;
     });
   }
 

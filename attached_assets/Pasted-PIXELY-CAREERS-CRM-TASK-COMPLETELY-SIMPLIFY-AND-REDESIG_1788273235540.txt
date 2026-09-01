@@ -1,0 +1,920 @@
+PIXELY CAREERS CRM
+TASK: COMPLETELY SIMPLIFY AND REDESIGN REVIEW DETAIL VIEW
+
+IMPORTANT:
+The Reviews module already works.
+
+DO NOT rebuild Reviews.
+DO NOT change Orders, Complaints, Suggestions, Payments, Cloudinary, authentication, role permissions, nested drawer navigation, or existing Review IDs.
+
+This task is specifically to FIX the Review detail drawer and remove unnecessary workflow/progress concepts.
+
+==================================================
+CORE BUSINESS RULE
+==================================================
+
+A CLIENT REVIEW IS NOT A WORKFLOW.
+
+We are NOT tracking a review through stages.
+
+We are simply RECORDING feedback already received from a client.
+
+Therefore REMOVE from the Review UI:
+
+- Review Progress
+- Progress bar
+- Feedback Requested
+- Feedback Received
+- Public Review Added
+- Completed
+- Progress-stage explanations
+- Progress status controls
+- Progress-related history/log entries
+- Any review workflow that makes the Review look like a task-management system
+
+The Review is simply a CLIENT FEEDBACK RECORD.
+
+==================================================
+DATABASE SAFETY
+==================================================
+
+If an existing review_progress/status field already exists in Supabase:
+
+DO NOT delete it destructively if that could break existing data or migrations.
+
+It may remain internally for backward compatibility if required.
+
+However:
+
+- Do not show it in the UI.
+- Do not require it when creating Reviews.
+- Do not use it for Review metrics.
+- Do not create new progress history events.
+- Do not make users manage it.
+
+If it can be safely deprecated without breaking anything, document that at the end.
+
+==================================================
+WHAT A REVIEW SHOULD RECORD
+==================================================
+
+A Review needs to answer only:
+
+1. Which client gave the feedback?
+2. Which Order does it belong to?
+3. Which Designer handled the Order?
+4. What rating did the client give?
+5. What did the client say?
+6. Where was the feedback received?
+7. Is there public-review evidence?
+8. Is there screenshot/evidence?
+9. Does Pixely have permission to use it?
+10. Which staff member recorded the Review?
+11. When was it recorded?
+
+That is all.
+
+==================================================
+NEW REVIEW DETAIL DRAWER STRUCTURE
+==================================================
+
+Use this order:
+
+1. HEADER
+2. REVIEW SUMMARY
+3. CLIENT FEEDBACK
+4. REVIEW SOURCES / CHANNELS
+5. REVIEW EVIDENCE
+6. RELATED ORDER
+7. RECORD DETAILS
+
+Do not add a workflow section.
+
+Do not add progress bars.
+
+Do not add Review status.
+
+==================================================
+SECTION 1 — HEADER
+==================================================
+
+At top:
+
+← Back
+when opened from an Order or another nested record.
+
+Then:
+
+REV-2609-003
+
+Optional small label:
+
+Client Review
+
+Update button where user has permission.
+
+Close X.
+
+Do NOT put any progress/status badge beside the Review ID.
+
+The Review itself already exists. That is enough.
+
+==================================================
+SECTION 2 — REVIEW SUMMARY
+==================================================
+
+Create a clean primary summary card.
+
+Heading:
+
+REVIEW SUMMARY
+
+Show:
+
+Client
+Ali Shamshad
+
+Rating
+5/5
+
+Designer
+Safwan Masood
+
+Date Recorded
+Sep 01, 2026 · 6:34 PM
+
+Keep Rating visually prominent.
+
+If Rating = Not Rated:
+
+Display:
+
+Not Rated
+
+Do not calculate fake numbers.
+
+==================================================
+SECTION 3 — CLIENT FEEDBACK
+==================================================
+
+This should be the MOST important content area.
+
+Heading:
+
+CLIENT FEEDBACK
+
+Display the actual client's words in a clean highlighted content block.
+
+Example:
+
+"Bahut Achi Services Hain"
+
+Do not mix feedback text into Client Name metadata.
+
+Do not make the feedback look like a random line underneath the name.
+
+Requirements:
+
+- Comfortable padding
+- Readable font
+- Good line height
+- Full text
+- Proper wrapping
+- Preserve line breaks
+- No truncation
+
+==================================================
+SECTION 4 — REVIEW SOURCES
+==================================================
+
+Heading:
+
+FEEDBACK SOURCES
+
+Show only relevant channels.
+
+Possible:
+
+WhatsApp Feedback
+Facebook Review
+Video Testimonial
+
+Use clear compact rows/cards.
+
+Example:
+
+WhatsApp Feedback        Received
+Facebook Review          Received
+Video Testimonial        Not Received
+
+Do not use confusing workflow wording.
+
+==================================================
+FACEBOOK REVIEW
+==================================================
+
+If Facebook Review = Yes:
+
+Show:
+
+Facebook Review
+Received
+
+Public Review Link
+[Open Review]
+
+if URL exists.
+
+If screenshot exists:
+
+Show screenshot under Evidence.
+
+If Facebook Review = No:
+
+Show:
+
+Facebook Review
+Not Received
+
+Do not create giant empty cards.
+
+==================================================
+VIDEO TESTIMONIAL
+==================================================
+
+If Video Review = Yes:
+
+Show:
+
+Video Testimonial
+Received
+
+If a video/testimonial URL exists later, show it appropriately.
+
+Do not build unnecessary video hosting functionality in this task.
+
+==================================================
+WHATSAPP FEEDBACK
+==================================================
+
+If WhatsApp Feedback = Yes:
+
+Show:
+
+WhatsApp Feedback
+Received
+
+Simple and clear.
+
+==================================================
+SECTION 5 — REVIEW EVIDENCE
+==================================================
+
+Heading:
+
+REVIEW EVIDENCE
+
+If screenshot exists:
+
+Show a clean thumbnail.
+
+Click:
+
+Open existing image lightbox/full-screen preview.
+
+Do not navigate away from the drawer.
+
+If no screenshot:
+
+Show:
+
+"No review evidence attached."
+
+Keep empty state small.
+
+==================================================
+CLOUDINARY
+==================================================
+
+Continue existing architecture:
+
+Image
+→ Cloudinary
+→ secure URL
+→ URL stored in Supabase
+
+Do NOT:
+
+use Supabase Storage
+store Base64
+change Cloudinary credentials
+create another image system
+
+==================================================
+SECTION 6 — RELATED ORDER
+==================================================
+
+Heading:
+
+RELATED ORDER
+
+Keep this compact.
+
+Show:
+
+Order ID
+PX-2609-002
+
+Client
+Ali Shamshad
+
+Package / Services
+
+Designer
+
+Order Status
+
+Order ID must remain clickable.
+
+If Review was opened from the Order drawer:
+
+Back button returns to the same Order.
+
+Do NOT navigate to another background page.
+
+==================================================
+SECTION 7 — RECORD DETAILS
+==================================================
+
+Heading:
+
+RECORD DETAILS
+
+Show secondary administrative information:
+
+Recorded By
+Soban Masood
+
+Recorded On
+Sep 01, 2026 · 6:34 PM
+
+Marketing Permission
+Not Asked
+
+Last Updated
+only if Review has actually been edited.
+
+Do not make these details compete visually with Client Feedback.
+
+==================================================
+WORDING CHANGES
+==================================================
+
+Replace:
+
+Added By
+
+with:
+
+Recorded By
+
+Because the staff member did not GIVE the Review.
+
+The CLIENT gave the Review.
+
+The staff member only recorded it in CRM.
+
+Use:
+
+Recorded By: Soban Masood
+
+not:
+
+Review By: Soban Masood
+
+==================================================
+MARKETING PERMISSION WORDING
+==================================================
+
+Possible values:
+
+Permission Granted
+Permission Not Granted
+Not Asked
+
+Do not display raw database values such as:
+
+true
+false
+null
+
+==================================================
+UPDATE REVIEW FORM
+==================================================
+
+Update button should allow editing the actual Review record.
+
+Fields:
+
+Rating
+
+Client Feedback
+
+WhatsApp Feedback
+Yes / No
+
+Facebook Review
+Yes / No
+
+Video Testimonial
+Yes / No
+
+Public Review Link
+
+Marketing Permission
+
+Screenshot / Evidence
+
+Do NOT include:
+
+Review Progress
+Status
+Workflow Stage
+
+==================================================
+ONE REVIEW PER ORDER
+==================================================
+
+Preserve existing rule:
+
+One Order normally has ONE consolidated Review record.
+
+If Review already exists:
+
+Update it.
+
+Do not create duplicate Reviews because the client later gives Facebook feedback.
+
+Example:
+
+Initially:
+
+WhatsApp = Yes
+Facebook = No
+Video = No
+
+Later:
+
+WhatsApp = Yes
+Facebook = Yes
+Video = No
+
+Same Review record.
+
+==================================================
+REVIEW HISTORY
+==================================================
+
+REMOVE the big Review progress/history workflow.
+
+A Review does not need a visible case-history timeline like Complaints.
+
+Do NOT display:
+
+Feedback Requested
+Feedback Received
+Public Review Added
+Completed
+
+Do NOT display meaningless Review progress logs.
+
+==================================================
+OPTIONAL MINIMAL AUDIT INFORMATION
+==================================================
+
+The backend may still keep audit information for accountability.
+
+If a Review is updated, the detail drawer may simply show:
+
+Last Updated
+Soban Masood · Sep 03, 2026 · 7:20 PM
+
+No full timeline is required.
+
+The Order Activity may still record IMPORTANT events such as:
+
+Client Review recorded.
+
+Client Review updated.
+
+Facebook Review added.
+
+But do not turn the Review detail page itself into a workflow timeline.
+
+==================================================
+ORDER ACTIVITY
+==================================================
+
+When Review is first created:
+
+Order Activity:
+
+Client Review REV-2609-003 recorded by Soban Masood
+Sep 01, 2026 · 6:34 PM
+
+If Facebook Review is added later:
+
+Facebook Review recorded for REV-2609-003 by Muhammad Anas
+Sep 03, 2026 · 7:20 PM
+
+This is enough.
+
+Do NOT generate activity for meaningless internal Review progress states.
+
+==================================================
+REVIEW PAGE TABLE
+==================================================
+
+Keep Review table clean.
+
+Recommended columns:
+
+Review ID
+Date
+Client
+Designer
+Order ID
+Rating
+Channels
+Recorded By — Admin where appropriate
+Actions
+
+Channels can show badges:
+
+WhatsApp
+Facebook
+Video
+
+Only show channels marked received.
+
+==================================================
+REVIEW PAGE METRICS
+==================================================
+
+Keep:
+
+All Reviews
+Average Rating
+WhatsApp Feedback
+Facebook Reviews
+Video Reviews
+
+These are useful.
+
+Remove any metric based on:
+
+Review Progress
+Completed Reviews
+Requested Reviews
+
+unless there is a genuine business reason later.
+
+==================================================
+REVIEW DRAWER VISUAL HIERARCHY
+==================================================
+
+Highest priority:
+
+Client Name
+Rating
+Client Feedback
+
+Second priority:
+
+Feedback Sources
+Evidence
+
+Third priority:
+
+Related Order
+
+Lowest priority:
+
+Recorded By
+Marketing Permission
+Dates
+
+The current drawer gives too much visual space to metadata and the useless progress bar.
+
+Fix that.
+
+==================================================
+FINAL CONCEPTUAL LAYOUT
+==================================================
+
+────────────────────────────────────
+
+← Back           REV-2609-003      Update   X
+
+CLIENT REVIEW
+
+────────────────────────────────────
+
+REVIEW SUMMARY
+
+Client
+Ali Shamshad
+
+Rating
+★★★★★ 5/5
+
+Designer
+Safwan Masood
+
+Date Recorded
+Sep 01, 2026 · 6:34 PM
+
+────────────────────────────────────
+
+CLIENT FEEDBACK
+
+"Bahut Achi Services Hain"
+
+────────────────────────────────────
+
+FEEDBACK SOURCES
+
+WhatsApp Feedback       Received
+Facebook Review         Received
+Video Testimonial       Received
+
+Public Review Link
+Open Facebook Review
+
+────────────────────────────────────
+
+REVIEW EVIDENCE
+
+[ Screenshot Thumbnail ]
+
+View Full Image
+
+────────────────────────────────────
+
+RELATED ORDER
+
+PX-2609-002
+Ali Shamshad
+
+Executive Career Branding
+Safwan Masood
+
+────────────────────────────────────
+
+RECORD DETAILS
+
+Recorded By
+Soban Masood
+
+Marketing Permission
+Not Asked
+
+Recorded On
+Sep 01, 2026 · 6:34 PM
+
+────────────────────────────────────
+
+Use existing CRM components rather than literally displaying this ASCII structure.
+
+==================================================
+REMOVE THESE ITEMS COMPLETELY FROM UI
+==================================================
+
+REMOVE:
+
+Review Progress
+
+Progress bar
+
+Feedback Requested stage
+
+Feedback Received stage
+
+Public Review Added stage
+
+Completed stage
+
+"Client feedback collection progress."
+
+Any explanation about progress stages
+
+Any status dropdown for Review workflow
+
+Any stage-based Review actions
+
+Any Review-stage history
+
+==================================================
+IMPORTANT — DO NOT REMOVE USEFUL DATA
+==================================================
+
+Do NOT remove:
+
+Rating
+Feedback
+WhatsApp
+Facebook
+Video
+Review Link
+Screenshot
+Marketing Permission
+Designer
+Order
+Recorded By
+Recorded Date
+
+These are actual Review information.
+
+==================================================
+ROLE PERMISSIONS
+==================================================
+
+DESIGNER:
+
+Must still be able to:
+
+Add Review
+Update Review for authorized Orders
+Upload screenshot
+Mark WhatsApp/Facebook/Video details
+View Review
+
+SUPPORT:
+
+Must still be able to:
+
+Add Review
+Update Review where current Order permissions allow
+Upload evidence
+View Review
+
+ADMIN:
+
+Full Review access.
+
+Do not accidentally make Update Admin-only.
+
+==================================================
+NESTED DRAWER
+==================================================
+
+Preserve:
+
+Orders
+→ Order
+→ Review
+
+Background stays Orders.
+
+Back:
+returns to same Order → Client Experience.
+
+Feedback Page:
+Click Review
+
+Feedback stays in background.
+
+X closes drawer.
+
+Do not break this.
+
+==================================================
+CLIENT CASE REPORT
+==================================================
+
+Update the Client Case Report accordingly.
+
+REMOVE:
+
+Review Progress
+
+from report.
+
+Review section should contain:
+
+Review ID
+Client Rating
+Client Feedback
+WhatsApp Feedback
+Facebook Review
+Video Testimonial
+Public Review Link
+Marketing Permission
+Evidence
+Designer
+Recorded By
+Recorded Date
+
+==================================================
+TESTS
+==================================================
+
+TEST 1
+
+Open existing Review.
+
+Expected:
+
+NO progress bar.
+
+TEST 2
+
+Review drawer immediately highlights:
+
+Client
+Rating
+Feedback.
+
+TEST 3
+
+WhatsApp/Facebook/Video clearly shown.
+
+TEST 4
+
+Screenshot visible.
+
+TEST 5
+
+Update Review.
+
+Expected:
+
+No status/progress required.
+
+TEST 6
+
+Designer login.
+
+Expected:
+
+Can Add and Update Review where authorized.
+
+TEST 7
+
+Support login.
+
+Expected:
+
+Can Add and Update Review where authorized.
+
+TEST 8
+
+Admin.
+
+Expected:
+
+Can view all record details.
+
+TEST 9
+
+Review opened from Order.
+
+Back returns to same Order Client Experience.
+
+TEST 10
+
+Review metrics still work.
+
+TEST 11
+
+Average Rating calculation ignores Not Rated.
+
+TEST 12
+
+Client Case Report no longer contains Review Progress.
+
+TEST 13
+
+Existing Reviews remain intact.
+
+TEST 14
+
+No database records are lost.
+
+TEST 15
+
+Production build succeeds.
+
+==================================================
+FINAL BUSINESS RULE
+==================================================
+
+COMPLAINT = A CASE requiring investigation and resolution.
+
+SUGGESTION = A management decision requiring Implement or Reject.
+
+REVIEW = A RECORD of what the client said.
+
+Do NOT treat all three as workflows.
+
+The Review page should look like a polished testimonial/client-feedback record, not a project-management process.

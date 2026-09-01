@@ -1,0 +1,1567 @@
+PIXELY CAREERS CRM
+TASK: COMPLETE COMPLAINT DETAIL DRAWER UX RESTRUCTURE
+
+==================================================
+OBJECTIVE
+==================================================
+
+The Complaint system is already functional.
+
+DO NOT rebuild Complaints.
+DO NOT change the approved Complaint workflow.
+DO NOT break nested drawer navigation.
+DO NOT change Cloudinary.
+DO NOT change Orders, Payments, Reviews, Suggestions or authentication except where complaint relationships are displayed.
+
+THIS TASK IS SPECIFICALLY TO REDESIGN AND RESTRUCTURE THE COMPLAINT DETAIL DRAWER SO THAT IT READS LIKE A PROFESSIONAL CASE RECORD.
+
+Current problem:
+
+Complaint information is technically available, but the drawer feels mixed and unstructured.
+
+Important information such as:
+
+- Complaint Category
+- Complaint Description
+- Complaint Against
+- Current Status
+
+does not stand out enough.
+
+Meanwhile:
+
+- Related Order
+- Filed By
+- Evidence
+- Resolution
+- Admin Notes
+- History
+
+are presented as similar-looking disconnected blocks.
+
+Admin Notes are especially wrong because an existing note is being loaded inside the editable textarea, making it look like placeholder/editable content instead of a historical saved note.
+
+We need a clear visual and information hierarchy.
+
+==================================================
+CORE DESIGN PRINCIPLE
+==================================================
+
+The drawer should tell the user this story in order:
+
+1. WHAT IS THE COMPLAINT?
+2. WHO IS IT AGAINST?
+3. WHAT DID THE CLIENT REPORT?
+4. WHAT EVIDENCE EXISTS?
+5. WHICH ORDER IS INVOLVED?
+6. WHAT DECISION DID MANAGEMENT MAKE?
+7. HOW WAS IT RESOLVED?
+8. WHAT INTERNAL NOTES WERE ADDED?
+9. WHAT HAPPENED THROUGHOUT THE CASE?
+
+The user should not have to visually search through random cards.
+
+==================================================
+NEW COMPLAINT DRAWER STRUCTURE
+==================================================
+
+Use this exact information order:
+
+1. HEADER
+2. COMPLAINT SUMMARY
+3. COMPLAINT DESCRIPTION
+4. COMPLAINT EVIDENCE
+5. RELATED ORDER
+6. MANAGEMENT DECISION / OUTCOME
+7. ADMIN NOTES
+8. CASE HISTORY
+
+Do not mix the order.
+
+==================================================
+SECTION 1 — HEADER
+==================================================
+
+Top of drawer:
+
+If opened from another record:
+
+← Back
+
+Then:
+
+CMP-2609-006
+
+Status badge:
+
+New
+Confirmed
+Dismissed
+Resolved
+Refunded
+
+Close X on right.
+
+Under Complaint ID, add a concise status helper.
+
+Examples:
+
+NEW
+"Awaiting management review."
+
+CONFIRMED
+"Complaint confirmed. Resolution is required."
+
+DISMISSED
+"Complaint reviewed and dismissed."
+
+RESOLVED
+"Complaint resolved and closed."
+
+REFUNDED
+"Complaint refunded and related order canceled."
+
+Keep this small.
+
+Do not use technical wording such as:
+
+"terminal state"
+"decision recorded"
+"untriaged"
+
+==================================================
+SECTION 2 — COMPLAINT SUMMARY
+==================================================
+
+This must be the FIRST major card and visually stronger than secondary information.
+
+Heading:
+
+COMPLAINT SUMMARY
+
+Show:
+
+Category
+Complaint Against
+Date Reported
+
+ADMIN ONLY:
+Reported By
+
+Example:
+
+Category
+Unprofessional Behavior
+
+Complaint Against
+Muhammad Anas
+
+Date Reported
+Sep 01, 2026 · 5:30 PM
+
+Reported By
+Soban Masood · Admin
+
+Do NOT make "Filed By" a completely separate giant card anymore.
+
+For Admin, include Reported By inside Complaint Summary as metadata.
+
+For Designer:
+
+DO NOT render Reported By at all.
+
+==================================================
+CATEGORY VISUAL EMPHASIS
+==================================================
+
+Category should be visually prominent.
+
+Use a clean badge or highlighted label.
+
+Example:
+
+[ Unprofessional Behavior ]
+
+Do not use oversized styling.
+
+==================================================
+SECTION 3 — COMPLAINT DESCRIPTION
+==================================================
+
+THIS IS THE MOST IMPORTANT PIECE OF CONTENT.
+
+It currently gets lost inside the same card as Category.
+
+Separate it.
+
+Heading:
+
+CLIENT COMPLAINT
+
+or:
+
+COMPLAINT DETAILS
+
+I recommend:
+
+COMPLAINT DETAILS
+
+Inside use a visually highlighted text area/card.
+
+Example:
+
+COMPLAINT DETAILS
+
+"The client reported that communication remained unprofessional during the revision process..."
+
+The complaint description should:
+
+- use slightly larger readable text
+- have comfortable line spacing
+- have enough padding
+- wrap correctly
+- never look like metadata
+
+If description is long, display full text.
+
+Do not truncate inside the detail drawer.
+
+==================================================
+SECTION 4 — COMPLAINT EVIDENCE
+==================================================
+
+Heading:
+
+COMPLAINT EVIDENCE
+
+If screenshot exists:
+
+Show a medium clean thumbnail.
+
+Below/alongside:
+
+View Full Image
+
+Clicking image:
+
+Open screenshot in existing CRM lightbox/image viewer.
+
+Do NOT leave the Complaint drawer.
+
+If no screenshot:
+
+Use simple empty state:
+
+"No evidence was attached to this complaint."
+
+Do NOT create a large empty card just for this sentence.
+
+==================================================
+SECTION 5 — RELATED ORDER
+==================================================
+
+Heading:
+
+ORDER SUMMARY
+
+This is contextual information, so make it more compact than Complaint Details.
+
+Show:
+
+Order ID
+Client
+Services
+Total
+Advance
+Remaining
+Order Status
+
+Example:
+
+ORDER SUMMARY
+
+PX-2609-001
+Hamza
+
+Services
+ATS Career Package
+
+Total              Rs1,000
+Advance            Rs500
+Remaining          Rs500
+
+Status
+In Production
+
+Order ID must remain clickable.
+
+If clicked from the Complaint drawer:
+
+Use the existing nested drawer navigation.
+
+Do NOT change the background page.
+
+==================================================
+PAYMENT DISPLAY
+==================================================
+
+For normal Orders:
+
+Advance:
+Rs500
+
+Remaining:
+Rs500
+
+For Refunded/Canceled Orders:
+
+Advance:
+Rs500
+with strikethrough
+"Refunded"
+
+Remaining:
+Rs500
+with strikethrough
+"Canceled"
+
+Use the financial rules already implemented.
+
+Do not alter calculations in this UI-refinement task.
+
+==================================================
+SECTION 6 — MANAGEMENT DECISION
+==================================================
+
+Replace generic heading:
+
+DECISION CONTROLS
+
+with:
+
+MANAGEMENT DECISION
+
+This section changes according to Complaint status.
+
+==================================================
+WHEN STATUS = NEW
+==================================================
+
+Heading:
+
+MANAGEMENT DECISION
+
+Helper:
+
+"Review the complaint and decide whether the reported issue should be confirmed or dismissed."
+
+Buttons:
+
+Confirm Complaint
+
+Dismiss Complaint
+
+Do NOT write:
+
+"Every decision is recorded and cannot be reversed."
+
+as the main text.
+
+If needed, use small helper:
+
+"Final complaint decisions are recorded for audit purposes."
+
+==================================================
+WHEN STATUS = CONFIRMED
+==================================================
+
+Heading:
+
+RESOLUTION
+
+Status notice:
+
+"This complaint has been confirmed. Record how the issue was handled before closing the case."
+
+Show:
+
+Resolution Details textarea
+
+Resolution Evidence upload
+
+Buttons:
+
+Mark Resolved
+
+Mark Refunded & Cancel Order
+
+Use existing functionality.
+
+==================================================
+WHEN STATUS = DISMISSED
+==================================================
+
+Do NOT display decision controls.
+
+Instead display a completed outcome card:
+
+DECISION
+
+Complaint Dismissed
+
+Reason for Dismissal:
+[actual saved dismissal reason]
+
+Dismissed By:
+Soban Masood
+
+Date:
+Sep 01, 2026 · 5:34 PM
+
+Small final text:
+
+"No further action is required."
+
+==================================================
+WHEN STATUS = RESOLVED
+==================================================
+
+Do NOT display an editable Resolution field.
+
+The resolution must become a READ-ONLY historical record.
+
+Heading:
+
+RESOLUTION
+
+Display:
+
+Resolution Summary
+
+[actual resolution text]
+
+Resolved By
+Soban Masood
+
+Resolved On
+Sep 01, 2026 · 5:43 PM
+
+Resolution Evidence
+[screenshot if available]
+
+Final badge:
+
+Resolved
+
+Do not show a disabled text field.
+
+Do not make the saved Resolution look editable.
+
+==================================================
+WHEN STATUS = REFUNDED
+==================================================
+
+Heading:
+
+FINAL OUTCOME
+
+Show:
+
+Refunded & Order Canceled
+
+Refund / Resolution Details
+
+Refund Amount
+
+Order ID
+
+Refunded By
+
+Refunded Date
+
+Refund Evidence if available
+
+Small explanation:
+
+"The complaint resulted in a client refund and cancellation of the related order."
+
+Do not show any decision controls after this.
+
+==================================================
+SECTION 7 — RESOLUTION CONTENT HIERARCHY
+==================================================
+
+Saved Resolution should NOT appear as just:
+
+RESOLUTION
+huhhuhuh
+
+inside an isolated green box.
+
+Instead format as a complete resolution record.
+
+Example:
+
+RESOLUTION
+
+Resolution Summary
+────────────────────
+
+The Designer corrected the incorrect information and delivered the revised documents to the client.
+
+Resolved By
+Soban Masood
+
+Resolved On
+Sep 01, 2026 · 7:15 PM
+
+Evidence
+[View Screenshot]
+
+This must visually read as completed case information.
+
+==================================================
+SECTION 8 — ADMIN NOTES MUST BE COMPLETELY REDESIGNED
+==================================================
+
+CURRENT PROBLEM:
+
+The previously saved Admin Note is being loaded inside the text area.
+
+This is WRONG UX.
+
+Existing saved notes must NEVER appear inside the "Add Note" textarea.
+
+Admin Notes must work as an actual internal note log.
+
+==================================================
+ADMIN NOTES NEW STRUCTURE
+==================================================
+
+Heading:
+
+INTERNAL ADMIN NOTES
+
+Helper:
+
+"Private management notes. These are not visible to Designers or Support."
+
+Then show EXISTING SAVED NOTES as individual read-only note cards.
+
+Example:
+
+INTERNAL ADMIN NOTES
+
+┌──────────────────────────────────┐
+│ Best Thing Ever Happened         │
+│                                  │
+│ Soban Masood · Admin             │
+│ Sep 01, 2026 · 7:20 PM           │
+└──────────────────────────────────┘
+
+
+Then BELOW saved notes:
+
+ADD NEW NOTE
+
+[ Write an internal note...          ]
+[                                   ]
+
+                 Add Note
+
+==================================================
+IMPORTANT ADMIN NOTE BEHAVIOR
+==================================================
+
+The input area must ALWAYS begin empty.
+
+Placeholder:
+
+"Write an internal note..."
+
+NEVER preload the previous saved note into this field.
+
+When Admin adds a note:
+
+1. Save it as a new historical note.
+2. Clear the textarea.
+3. Add the note above/below according to chronology.
+4. Record actor.
+5. Record timestamp.
+6. Create a History event.
+
+Do not overwrite previous notes.
+
+==================================================
+MULTIPLE ADMIN NOTES
+==================================================
+
+The system must support MULTIPLE notes.
+
+Example:
+
+Note 1:
+"Client requested another revision."
+
+Note 2:
+"Designer confirmed the requested correction."
+
+Note 3:
+"Client approved the final version."
+
+These are separate records.
+
+Do not keep one complaint.admin_notes text field that gets overwritten again and again.
+
+==================================================
+DATABASE FOR ADMIN NOTES
+==================================================
+
+First inspect the existing complaint schema.
+
+If there is already a proper complaint notes table:
+
+USE IT.
+
+If current implementation only has one:
+
+admin_notes
+
+column:
+
+Create an additive table such as:
+
+complaint_notes
+
+Fields:
+
+id
+complaint_id
+note_text
+created_by_user_id
+created_at
+updated_at if necessary
+
+Do not delete the existing admin_notes value.
+
+Migrate any existing non-empty admin_notes into complaint_notes as an initial historical note where safely possible.
+
+After migration:
+
+New notes should use complaint_notes.
+
+Do not silently lose old notes.
+
+==================================================
+ADMIN NOTE PERMISSIONS
+==================================================
+
+ADMIN / AUTHORIZED MANAGEMENT:
+
+Can:
+View notes
+Add notes
+
+DESIGNER:
+
+Must NOT receive notes in API response.
+
+SUPPORT:
+
+Must NOT receive notes in API response.
+
+Frontend hiding alone is not sufficient.
+
+==================================================
+EDITING ADMIN NOTES
+==================================================
+
+For V1:
+
+Do NOT allow normal editing of historical Admin Notes.
+
+Once saved, keep them as audit records.
+
+If absolutely necessary, Admin may delete/correct through future functionality.
+
+Do not add unnecessary complexity now.
+
+==================================================
+SECTION 9 — CASE HISTORY
+==================================================
+
+Rename:
+
+HISTORY
+
+to:
+
+CASE HISTORY
+
+This helps employees understand what it represents.
+
+==================================================
+CASE HISTORY DESIGN
+==================================================
+
+Reuse EXACTLY the visual timeline style used in:
+
+Order Details → Activity
+
+Same:
+
+Timeline line
+Dots
+Spacing
+Date style
+Actor style
+Newest/oldest direction
+Font hierarchy
+
+Do not maintain another different history UI.
+
+==================================================
+CASE HISTORY MUST BE HUMAN READABLE
+==================================================
+
+Bad current style:
+
+Complaint Created
+Soban Masood · Sep 01
+
+Complaint Status
+Soban Masood · Sep 01
+
+Complaint Note
+Soban Masood · Sep 01
+
+Replace with:
+
+Complaint filed
+Soban Masood · Sep 01, 2026 · 5:30 PM
+
+Complaint confirmed
+Soban Masood · Sep 01, 2026 · 5:34 PM
+
+Resolution details added
+Soban Masood · Sep 01, 2026 · 5:40 PM
+
+Complaint marked as Resolved
+Soban Masood · Sep 01, 2026 · 5:43 PM
+
+Admin note added
+Soban Masood · Sep 01, 2026 · 7:20 PM
+
+==================================================
+BETTER STATUS HISTORY
+==================================================
+
+Where previous/new statuses are known, show:
+
+Status changed
+New → Confirmed
+
+Updated By
+Soban Masood
+
+Sep 01, 2026 · 5:34 PM
+
+or compactly:
+
+Complaint status changed from New to Confirmed
+Soban Masood · Sep 01, 2026 · 5:34 PM
+
+Do not show database values like:
+
+new → confirmed
+
+Use human-readable names.
+
+==================================================
+DISMISSED HISTORY
+==================================================
+
+Example:
+
+Complaint dismissed
+Soban Masood · Sep 01, 2026 · 5:34 PM
+
+Reason
+"The delay was caused by missing information from the client."
+
+==================================================
+RESOLVED HISTORY
+==================================================
+
+Example:
+
+Resolution recorded
+Soban Masood · Sep 01, 2026 · 5:40 PM
+
+Complaint marked Resolved
+Soban Masood · Sep 01, 2026 · 5:43 PM
+
+==================================================
+REFUNDED HISTORY
+==================================================
+
+Example:
+
+Refund confirmed
+Soban Masood · Sep 01, 2026 · 5:45 PM
+
+Rs500 refunded to client.
+
+Related Order canceled
+PX-2609-001 · Sep 01, 2026 · 5:45 PM
+
+==================================================
+ADMIN NOTES HISTORY
+==================================================
+
+History should show:
+
+Admin note added
+Soban Masood · Sep 01, 2026 · 7:20 PM
+
+Do NOT repeat the full Admin Note text in the general case timeline unless Admin clicks/details.
+
+The actual note is already visible in Internal Admin Notes.
+
+This avoids duplication.
+
+==================================================
+SECTION 10 — COMPLAINT DRAWER FINAL LAYOUT
+==================================================
+
+Final conceptual structure:
+
+────────────────────────────────────
+
+← Back        CMP-2609-006   [Resolved]     X
+
+Complaint resolved and closed.
+
+────────────────────────────────────
+
+COMPLAINT SUMMARY
+
+Category
+[Unprofessional Behavior]
+
+Complaint Against
+Muhammad Anas
+
+Date Reported
+Sep 01, 2026 · 5:30 PM
+
+Reported By
+Soban Masood · Admin
+(Admin only)
+
+────────────────────────────────────
+
+COMPLAINT DETAILS
+
+Client reported that...
+
+────────────────────────────────────
+
+COMPLAINT EVIDENCE
+
+[ Screenshot ]
+
+OR
+
+No evidence was attached to this complaint.
+
+────────────────────────────────────
+
+ORDER SUMMARY
+
+PX-2609-001 · Hamza
+
+Services
+ATS Career Package
+
+Total       Rs1,000
+Advance     Rs500
+Remaining   Rs500
+
+────────────────────────────────────
+
+RESOLUTION
+
+Resolution Summary
+
+Designer corrected the reported issue and delivered
+the final revision.
+
+Resolved By
+Soban Masood
+
+Resolved On
+Sep 01, 2026 · 7:15 PM
+
+Resolution Evidence
+[ Screenshot ]
+
+────────────────────────────────────
+
+INTERNAL ADMIN NOTES
+
+Best Thing Ever Happened
+
+Soban Masood · Admin
+Sep 01, 2026 · 7:20 PM
+
+
+ADD NEW NOTE
+
+[ Write an internal note... ]
+
+[ Add Note ]
+
+────────────────────────────────────
+
+CASE HISTORY
+
+● Complaint marked Resolved
+  Soban Masood
+  Sep 01, 2026 · 7:15 PM
+
+● Resolution details added
+  Soban Masood
+  Sep 01, 2026 · 7:10 PM
+
+● Complaint confirmed
+  Soban Masood
+  Sep 01, 2026 · 7:05 PM
+
+● Complaint filed
+  Soban Masood
+  Sep 01, 2026 · 5:30 PM
+
+────────────────────────────────────
+
+Use actual CRM components rather than literally rendering this ASCII design.
+
+==================================================
+SECTION 11 — VISUAL WEIGHT
+==================================================
+
+Not every card should look equally important.
+
+Visual priority:
+
+HIGHEST:
+
+Complaint ID
+Current Status
+Complaint Category
+Complaint Description
+
+HIGH:
+
+Final Decision / Resolution
+
+MEDIUM:
+
+Order Summary
+Evidence
+
+LOWER:
+
+Metadata
+Reported By
+Admin Notes
+History
+
+Use typography and spacing to create hierarchy.
+
+Do not rely only on random colors.
+
+==================================================
+SECTION 12 — COMPLAINT DESCRIPTION COLOR
+==================================================
+
+Do NOT make the complaint description a danger/red box unless the CRM already uses that style appropriately.
+
+A complaint is not necessarily confirmed when initially filed.
+
+Use neutral but prominent styling.
+
+After Confirmed:
+
+Status chip communicates confirmation.
+
+==================================================
+SECTION 13 — RESOLUTION COLOR
+==================================================
+
+Resolved outcome may use the existing green/positive visual convention.
+
+Dismissed may use neutral/slate/gray.
+
+Refunded/Canceled may use the existing warning/destructive convention.
+
+Follow existing CRM palette.
+
+Do not hardcode a new unrelated design system.
+
+==================================================
+SECTION 14 — LONG TEXT
+==================================================
+
+Complaint descriptions
+Resolution
+Dismissal reasons
+Notes
+
+may become long.
+
+Requirements:
+
+- word wrapping
+- readable line height
+- preserve basic newlines
+- no horizontal overflow
+- no tiny font
+- no forced one-line text
+
+==================================================
+SECTION 15 — DATE CONSISTENCY
+==================================================
+
+Use same format everywhere:
+
+Sep 01, 2026 · 7:20 PM
+
+or whatever exact format Order Activity uses.
+
+Do not mix:
+
+Sep 01, 2026
+September 1
+01/09/26
+
+inside one drawer.
+
+==================================================
+SECTION 16 — LABEL CONSISTENCY
+==================================================
+
+Use these labels:
+
+Complaint Summary
+
+Complaint Details
+
+Complaint Evidence
+
+Order Summary
+
+Management Decision
+
+Reason for Dismissal
+
+Resolution
+
+Resolution Summary
+
+Resolution Evidence
+
+Final Outcome
+
+Internal Admin Notes
+
+Add New Note
+
+Case History
+
+Reported By
+
+Complaint Against
+
+Do not alternate randomly between:
+
+Filed By / Placed By / Created By / Reporter
+
+Inside Complaint details use:
+
+Reported By
+
+In complaint listing table existing "Placed By" may remain if changing it would create inconsistency with established table design, but detail drawer should use more professional wording.
+
+==================================================
+SECTION 17 — REMOVE REDUNDANT INFORMATION
+==================================================
+
+Audit current drawer.
+
+Remove duplicate displays of:
+
+Order ID
+Client name
+Designer
+Status
+Resolution
+
+Do not show same fact in three cards.
+
+Example:
+
+If Status = Resolved appears beside Complaint ID:
+
+Do not repeat a giant "Resolved" badge lower down unless it explains final outcome.
+
+==================================================
+SECTION 18 — DECISION CONTROLS ARE CONDITIONAL
+==================================================
+
+Do not render Decision Controls on closed complaints.
+
+NEW:
+Show Confirm / Dismiss.
+
+CONFIRMED:
+Show Resolution workflow.
+
+DISMISSED:
+Show dismissal record.
+
+RESOLVED:
+Show resolution record.
+
+REFUNDED:
+Show refund outcome record.
+
+No disabled action boxes saying:
+
+"This complaint has reached a terminal state."
+
+Simply show the final record.
+
+==================================================
+SECTION 19 — NOTES MUST NOT BE CONFUSED WITH RESOLUTION
+==================================================
+
+Resolution:
+
+Official client-facing/business action taken to solve the complaint.
+
+Admin Note:
+
+Private management remark.
+
+Case History:
+
+System record of actions.
+
+These are THREE different concepts.
+
+Do not mix them.
+
+==================================================
+SECTION 20 — RESOLUTION MUST NOT BE AN ADMIN NOTE
+==================================================
+
+Resolution should store:
+
+Official resolution text.
+
+Do not take resolution from the latest Admin Note.
+
+Do not display Admin Notes inside Resolution.
+
+==================================================
+SECTION 21 — HISTORY MUST NOT BE NOTES
+==================================================
+
+History events are generated by actions.
+
+Examples:
+
+Status changed.
+Note added.
+Resolution added.
+
+Users should not manually type History.
+
+==================================================
+SECTION 22 — COMPLAINT SUMMARY DATA
+==================================================
+
+Where available also display:
+
+Client Name
+
+But avoid overcrowding.
+
+Recommended Complaint Summary:
+
+Category
+Complaint Against
+Client
+Date Reported
+Reported By (Admin only)
+
+Then Order Summary handles full Order details.
+
+==================================================
+SECTION 23 — SCREENSHOT LIGHTBOX
+==================================================
+
+Complaint Evidence and Resolution Evidence:
+
+Use the same existing image viewer.
+
+Click screenshot:
+
+Open full preview without closing drawer/background.
+
+Close preview:
+
+Return to same complaint scroll position.
+
+==================================================
+SECTION 24 — NESTED DRAWER NAVIGATION
+==================================================
+
+DO NOT break current behavior:
+
+Orders → Order → Complaint
+
+Back:
+Order returns.
+
+Complaints Page → Complaint
+
+X:
+Complaints Page remains.
+
+This task only improves the Complaint content.
+
+==================================================
+SECTION 25 — ADMIN NOTES MIGRATION
+==================================================
+
+Existing records may currently have:
+
+complaints.admin_notes
+
+Example:
+
+"Best Thing Ever Happened"
+
+DO NOT lose this.
+
+If new complaint_notes table is introduced:
+
+Migrate old values.
+
+Create one historical note per non-empty existing admin_notes value.
+
+Use a safe migration.
+
+If original note author/timestamp can be identified from existing history:
+
+Use them.
+
+If not:
+
+Do NOT invent an author/timestamp.
+
+Use available complaint/admin update metadata carefully, or mark as:
+
+"Migrated Admin Note"
+
+only for Admin.
+
+==================================================
+SECTION 26 — API RESPONSE
+==================================================
+
+Build one role-aware Complaint detail response.
+
+Admin may receive:
+
+complaint
+order summary
+reported by
+evidence
+resolution
+admin notes
+history
+
+Designer may receive:
+
+complaint
+allowed order summary
+evidence
+allowed resolution
+filtered history
+
+But NEVER:
+
+reported_by
+admin notes
+complainant identity
+
+Support:
+follow existing role access.
+
+==================================================
+SECTION 27 — PERFORMANCE
+==================================================
+
+Do not make one Complaint open trigger 15 duplicate requests.
+
+Where practical:
+
+Fetch:
+
+Complaint core
+Order summary
+Evidence references
+Resolution
+Notes
+History
+
+efficiently.
+
+Do not continuously refetch while user types an Admin Note.
+
+After successful note addition:
+
+refresh only Notes/History or update local state safely.
+
+==================================================
+SECTION 28 — SUCCESS TOASTS
+==================================================
+
+Use clear messages:
+
+"Admin note added."
+
+"Complaint confirmed."
+
+"Complaint dismissed."
+
+"Resolution saved."
+
+"Complaint resolved."
+
+"Refund recorded and order canceled."
+
+Avoid generic:
+
+"Success."
+
+==================================================
+SECTION 29 — ERROR MESSAGES
+==================================================
+
+Examples:
+
+"Unable to add the Admin note. Please try again."
+
+"Resolution details are required before closing this complaint."
+
+"Unable to load complaint history."
+
+Do not expose Supabase/raw SQL errors.
+
+==================================================
+SECTION 30 — TEST ADMIN NOTES
+==================================================
+
+MANDATORY:
+
+Open existing Complaint with old Admin Note.
+
+Expected:
+
+Saved note appears as READ-ONLY note card.
+
+Textarea is EMPTY.
+
+Add second note.
+
+Expected:
+
+Old note remains.
+New note appears separately.
+Textarea clears.
+History adds one event.
+
+Refresh.
+
+Expected:
+
+Both notes remain.
+
+==================================================
+SECTION 31 — TEST DESIGNER
+==================================================
+
+Designer opens Complaint.
+
+Expected:
+
+Complaint Summary visible.
+Description clearly visible.
+Evidence visible.
+Order Summary visible.
+Allowed Resolution visible.
+Case History visible.
+
+NOT visible:
+
+Reported By
+Internal Admin Notes
+Admin-only actor information revealing reporter
+
+==================================================
+SECTION 32 — TEST RESOLVED COMPLAINT
+==================================================
+
+Open Resolved complaint.
+
+Expected:
+
+No editable Resolution textarea.
+No Decision Controls.
+No "terminal state" technical message.
+
+Instead:
+
+Readable Resolution record.
+
+==================================================
+SECTION 33 — TEST NEW COMPLAINT
+==================================================
+
+Expected:
+
+Complaint details strongly highlighted.
+
+Management Decision contains:
+
+Confirm Complaint
+Dismiss Complaint
+
+No Resolution section until confirmed.
+
+==================================================
+SECTION 34 — TEST DISMISSED COMPLAINT
+==================================================
+
+Expected:
+
+Dismissal reason prominently recorded.
+
+Who dismissed.
+When dismissed.
+
+No action buttons.
+
+==================================================
+SECTION 35 — TEST REFUNDED COMPLAINT
+==================================================
+
+Expected:
+
+Final Outcome clearly shown.
+
+Refund amount.
+Order canceled.
+Refunded by.
+Refunded on.
+Evidence.
+Financial order summary correctly reflects canceled/refunded state.
+
+==================================================
+SECTION 36 — TEST HISTORY
+==================================================
+
+Compare:
+
+Order Activity
+Complaint Case History
+
+They must use:
+
+Same visual timeline language.
+Same chronological direction.
+Same date format.
+Same actor styling.
+
+==================================================
+SECTION 37 — DO NOT BREAK OTHER MODULES
+==================================================
+
+Regression test:
+
+Orders
+Complaints List
+Complaint creation
+Complaint decisions
+Refund
+Payments
+Feedback
+Reviews
+Suggestions
+Dashboard
+Client Case Report
+Nested drawers
+Cloudinary
+Notifications
+Role permissions
+
+==================================================
+FINAL PRODUCT STANDARD
+==================================================
+
+When an Admin opens a complaint, they should understand the case in under 10 seconds:
+
+WHAT:
+The complaint.
+
+WHO:
+The Designer involved.
+
+WHY:
+The complaint description.
+
+EVIDENCE:
+Attached proof.
+
+ORDER:
+Related financial/service context.
+
+DECISION:
+Confirmed or dismissed.
+
+OUTCOME:
+Resolved or refunded.
+
+NOTES:
+Internal management discussion.
+
+HISTORY:
+Who did what and when.
+
+The page should feel like a professional complaint case file, not a collection of database fields.
+
+Prioritize:
+
+clarity
+hierarchy
+readability
+auditability
+professional language
+clean UI
+role privacy
+
+Do not add more features unless they directly improve these goals.

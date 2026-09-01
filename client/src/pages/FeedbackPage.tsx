@@ -34,7 +34,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import type { OrderWithServices, User } from "@shared/schema";
 
-type Review = {
+export type Review = {
   id: number;
   reviewNumber: string;
   orderId: number;
@@ -50,10 +50,9 @@ type Review = {
   publicReviewLink?: string | null;
   marketingPermission: string;
   screenshotUrl?: string | null;
-  reviewProgress: "requested" | "received" | "public_review_received" | "closed";
   createdAt: string | Date | null;
   updatedAt: string | Date | null;
-  order?: { packageType?: string | null; services?: OrderWithServices["services"]; paymentStatus?: string | null };
+  order?: { packageType?: string | null; services?: OrderWithServices["services"]; paymentStatus?: string | null; status?: string | null };
 };
 
 type Suggestion = {
@@ -70,11 +69,17 @@ type Suggestion = {
   screenshotUrl?: string | null;
   adminNotes?: string | null;
   decisionNote?: string | null;
-  reviewedBy?: User | null;
-  reviewedAt?: string | Date | null;
+  adminNotesLog?: Array<{ id: number; noteText: string; createdAt: string | Date | null; createdBy?: Pick<User, "id" | "name" | "role"> | null }>;
+  implementationDetails?: string | null;
+  implementationScreenshotUrl?: string | null;
+  implementedBy?: User | null;
+  implementedAt?: string | Date | null;
+  rejectionReason?: string | null;
+  rejectedBy?: User | null;
+  rejectedAt?: string | Date | null;
   createdAt: string | Date | null;
   updatedAt: string | Date | null;
-  order?: { packageType?: string | null; services?: OrderWithServices["services"] };
+  order?: { packageType?: string | null; services?: OrderWithServices["services"]; status?: string | null };
 };
 
 type FeedbackStats = {
@@ -114,7 +119,17 @@ const suggestionStatusLabels: Record<Suggestion["status"], string> = {
 };
 
 const titleCase = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, letter => letter.toUpperCase());
+const packageLabels: Record<string, string> = {
+  ats_career: "ATS Career Package",
+  international_career_pro: "International Career Pro",
+  executive_career_branding: "Executive Career Branding",
+  starter: "Starter",
+  professional: "Professional",
+  executive: "Executive",
+  custom: "Custom Order",
+};
 const errorText = (error: Error) => error.message.match(/"message":"([^"]+)"/)?.[1] || "The request could not be completed.";
+const marketingPermissionLabel = (value?: string | null) => value === "yes" ? "Permission Granted" : value === "no" ? "Permission Not Granted" : "Not Asked";
 
 function MetricCard({ title, value, icon: Icon, color = "blue", testId }: { title: string; value: string | number; icon: typeof Star; color?: string; testId?: string }) {
   const colors: Record<string, string> = {
@@ -179,8 +194,7 @@ function ScreenshotField({ value, onChange, folder }: { value: string; onChange:
   );
 }
 
-function ReviewForm({ review, orders, open, onOpenChange, defaultOrderId }: { review?: Review | null; orders: OrderWithServices[]; open: boolean; onOpenChange: (open: boolean) => void; defaultOrderId?: number | null }) {
-  const { user } = useAuth();
+export function ReviewForm({ review, orders, open, onOpenChange, defaultOrderId }: { review?: Review | null; orders: OrderWithServices[]; open: boolean; onOpenChange: (open: boolean) => void; defaultOrderId?: number | null }) {
   const { toast } = useToast();
   const [orderId, setOrderId] = useState(review?.orderId ? String(review.orderId) : defaultOrderId ? String(defaultOrderId) : "");
   const [rating, setRating] = useState(review?.rating ? String(review.rating) : "not_rated");
@@ -191,7 +205,6 @@ function ReviewForm({ review, orders, open, onOpenChange, defaultOrderId }: { re
   const [publicLink, setPublicLink] = useState(review?.publicReviewLink || "");
   const [marketingPermission, setMarketingPermission] = useState(review?.marketingPermission || "not_asked");
   const [screenshotUrl, setScreenshotUrl] = useState(review?.screenshotUrl || "");
-  const [reviewProgress, setReviewProgress] = useState<Review["reviewProgress"]>(review?.reviewProgress || "requested");
   const selectedOrder = orders.find(order => String(order.id) === orderId);
   const mutation = useMutation({
     mutationFn: async () => (await apiRequest(review ? "PATCH" : "POST", review ? `/api/feedback/reviews/${review.id}` : "/api/feedback/reviews", {
@@ -204,7 +217,6 @@ function ReviewForm({ review, orders, open, onOpenChange, defaultOrderId }: { re
       publicReviewLink: publicLink.trim() || null,
       marketingPermission,
       screenshotUrl: screenshotUrl || null,
-      ...(review && user?.role === "admin" ? { reviewProgress } : {}),
     })).json(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/feedback"] });
@@ -222,7 +234,6 @@ function ReviewForm({ review, orders, open, onOpenChange, defaultOrderId }: { re
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">{[["WhatsApp", whatsapp, setWhatsapp], ["Facebook", facebook, setFacebook], ["Video", video, setVideo]].map(([label, checked, setter]) => <label key={label as string} className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-sm text-slate-300"><input type="checkbox" checked={checked as boolean} onChange={event => (setter as (value: boolean) => void)(event.target.checked)} />{label as string} received</label>)}</div>
       <div className="space-y-2"><Label htmlFor="public-review-link">Public Review Link <span className="text-slate-600">(optional)</span></Label><Input id="public-review-link" type="url" value={publicLink} onChange={event => setPublicLink(event.target.value)} placeholder="https://…" /></div>
       <div className="space-y-2"><Label>Marketing Permission</Label><Select value={marketingPermission} onValueChange={setMarketingPermission}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="yes">Yes</SelectItem><SelectItem value="no">No</SelectItem><SelectItem value="not_asked">Not Asked</SelectItem></SelectContent></Select></div>
-      {review && user?.role === "admin" && <div className="space-y-2"><Label>Review progress</Label><Select value={reviewProgress} onValueChange={value => setReviewProgress(value as Review["reviewProgress"])}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="requested">Feedback Requested</SelectItem><SelectItem value="received">Feedback Received</SelectItem><SelectItem value="public_review_received">Public Review Added</SelectItem><SelectItem value="closed">Completed</SelectItem></SelectContent></Select><p className="text-xs text-slate-500">Progress advances automatically when feedback is recorded.</p></div>}
       <ScreenshotField value={screenshotUrl} onChange={setScreenshotUrl} folder="reviews" />
       <Button className="w-full bg-blue-600 hover:bg-blue-500" disabled={!orderId || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{review ? "Save Review" : "Add Review"}</Button>
     </div>
@@ -258,52 +269,89 @@ function SuggestionForm({ orders, open, onOpenChange, defaultOrderId }: { orders
   </DialogContent></Dialog>;
 }
 
-function ReviewProgress({ review }: { review: Review }) {
-  const steps: Array<{ value: Review["reviewProgress"]; label: string }> = [{ value: "requested", label: "Feedback Requested" }, { value: "received", label: "Feedback Received" }, { value: "public_review_received", label: "Public Review Added" }, { value: "closed", label: "Completed" }];
-  const current = Math.max(0, steps.findIndex(step => step.value === review.reviewProgress));
-  return <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
-    <div className="flex items-center justify-between gap-3 text-xs"><span className="font-medium text-slate-300">Review progress</span><span className="text-blue-300">{steps[current].label}</span></div>
-    <div className="mt-3 grid grid-cols-4 gap-1" aria-label={`Review progress: ${steps[current].label}`}>{steps.map((step, index) => <div key={step.value} className="min-w-0"><span className={`block h-1.5 rounded-full ${index <= current ? "bg-blue-500" : "bg-slate-700"}`} /><span className={`mt-1 block truncate text-[10px] ${index <= current ? "text-blue-300" : "text-slate-600"}`}>{step.label}</span></div>)}</div>
-    <p className="mt-2 text-xs text-slate-500">Client feedback collection progress.</p>
-  </div>;
-}
-
 function ReviewDetails({ review, open, onOpenChange, onEdit, onOpenOrder }: { review: Review | null; open: boolean; onOpenChange: (open: boolean) => void; onEdit: () => void; onOpenOrder: (id: number) => void }) {
-  return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent className="w-full overflow-y-auto border-slate-800 bg-slate-950 text-white sm:max-w-xl"><SheetHeader><SheetTitle className="flex items-center justify-between gap-3 pr-6"><span>{review?.reviewNumber || "Review Details"}</span>{review && <Button variant="outline" size="sm" onClick={onEdit}><Pencil className="mr-2 h-3.5 w-3.5" />Update</Button>}</SheetTitle></SheetHeader>{review && <div className="mt-6 space-y-5">
-    <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-xs uppercase tracking-wider text-slate-500">Client feedback</p><p className="mt-2 text-lg font-medium">{review.clientName}</p><p className="mt-1 text-sm text-slate-500">{review.orderNumber || `Order #${review.orderId}`} · {review.createdAt ? format(new Date(review.createdAt), "MMM dd, yyyy h:mm a") : "—"}</p></div><div className="text-right"><p className="text-xs text-slate-500">Rating</p><p className="mt-1 text-2xl font-bold text-amber-400">{review.rating ? `${review.rating}/5` : "Not Rated"}</p></div></div><p className="mt-5 whitespace-pre-wrap text-sm leading-relaxed text-slate-300">{review.feedbackText || "No written feedback recorded."}</p></section>
-    <section className="grid grid-cols-2 gap-3 rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-sm"><div><p className="text-xs text-slate-500">Designer</p><p className="mt-1">{review.reviewForDesigner?.name || "Unassigned"}</p></div><div><p className="text-xs text-slate-500">Added by</p><p className="mt-1">{review.createdBy?.name || "—"}</p></div><div><p className="text-xs text-slate-500">Marketing permission</p><p className="mt-1">{titleCase(review.marketingPermission)}</p></div><div><p className="text-xs text-slate-500">Related order</p><button className="mt-1 text-blue-300 hover:underline" onClick={() => onOpenOrder(review.orderId)}>{review.orderNumber || `Order #${review.orderId}`}</button></div></section>
-    <ReviewProgress review={review} />
-    {review.publicReviewLink && <a href={review.publicReviewLink} target="_blank" rel="noreferrer" className="block rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 text-sm text-blue-300 underline">Open public review link</a>}
-    {review.screenshotUrl && <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"><p className="mb-3 text-xs uppercase tracking-wider text-slate-500">Evidence</p><a href={review.screenshotUrl} target="_blank" rel="noreferrer"><img src={review.screenshotUrl} alt="Review evidence" className="max-h-64 w-full rounded-lg bg-slate-950 object-contain" /></a></section>}
-  </div>}</SheetContent></Sheet>;
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const channels = [
+    ["WhatsApp Feedback", review?.whatsappFeedbackReceived],
+    ["Facebook Review", review?.facebookReviewReceived],
+    ["Video Testimonial", review?.videoReviewReceived],
+  ] as const;
+  return <Sheet open={open} onOpenChange={value => { if (!value) setImagePreview(null); onOpenChange(value); }}><SheetContent className="w-full overflow-y-auto border-slate-800 bg-slate-950 text-white sm:max-w-xl">
+    <SheetHeader className="border-b border-slate-800 pb-5 pr-8 text-left">
+      <SheetTitle className="flex items-center justify-between gap-3"><div><span className="font-mono text-xl text-blue-300">{review?.reviewNumber || "Review Details"}</span><p className="mt-1 text-xs font-normal uppercase tracking-[0.16em] text-slate-500">Client Review</p></div>{review && <Button variant="outline" size="sm" onClick={onEdit}><Pencil className="mr-2 h-3.5 w-3.5" />Update</Button>}</SheetTitle>
+    </SheetHeader>
+    {review && <div className="mt-6 space-y-5">
+      <section className="rounded-2xl border border-slate-700 bg-slate-900/80 p-5 shadow-lg shadow-black/10">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Review Summary</p>
+        <dl className="mt-5 grid grid-cols-2 gap-x-5 gap-y-5">
+          <div className="col-span-2"><dt className="text-xs text-slate-500">Client</dt><dd className="mt-1 text-xl font-semibold text-white">{review.clientName || "—"}</dd></div>
+          <div><dt className="text-xs text-slate-500">Rating</dt><dd className="mt-1 text-2xl font-bold text-amber-400">{review.rating ? <span className="inline-flex items-center gap-1"><Star className="h-5 w-5 fill-current" />{review.rating}/5</span> : "Not Rated"}</dd></div>
+          <div><dt className="text-xs text-slate-500">Designer</dt><dd className="mt-1 text-sm font-medium text-white">{review.reviewForDesigner?.name || "Unassigned"}</dd></div>
+          <div><dt className="text-xs text-slate-500">Date Recorded</dt><dd className="mt-1 text-sm text-slate-300">{review.createdAt ? format(new Date(review.createdAt), "MMM dd, yyyy · h:mm a") : "—"}</dd></div>
+        </dl>
+      </section>
+
+      <section className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-5">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-300">Client Feedback</p>
+        <blockquote className="mt-4 whitespace-pre-wrap break-words text-[17px] leading-8 text-slate-100">{review.feedbackText || "No written feedback recorded."}</blockquote>
+      </section>
+
+      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Feedback Sources</p>
+        <div className="mt-4 space-y-2">{channels.map(([label, received]) => <div key={label} className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-3 text-sm"><span className="text-slate-300">{label}</span><Badge variant="outline" className={received ? "border-emerald-500/30 text-emerald-300" : "border-slate-700 text-slate-500"}>{received ? "Received" : "Not Received"}</Badge></div>)}</div>
+        {review.facebookReviewReceived && review.publicReviewLink && <a href={review.publicReviewLink} target="_blank" rel="noreferrer" className="mt-4 block rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 text-sm text-blue-300 hover:underline">Public Review Link · Open Review</a>}
+      </section>
+
+      <section className="border-b border-slate-800 pb-5">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Review Evidence</p>
+        {review.screenshotUrl ? <div className="mt-4 space-y-3"><button type="button" onClick={() => setImagePreview(review.screenshotUrl!)} className="block w-full overflow-hidden rounded-xl border border-slate-800 bg-slate-900"><img src={review.screenshotUrl} alt="Review evidence" className="max-h-56 w-full object-contain" /></button><Button variant="ghost" size="sm" className="px-0 text-blue-300 hover:text-blue-200" onClick={() => setImagePreview(review.screenshotUrl!)}>View Full Image</Button></div> : <p className="mt-3 text-sm text-slate-500">No review evidence attached.</p>}
+      </section>
+
+      <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Related Order</p>
+        <button className="mt-3 block font-mono text-sm font-medium text-blue-300 hover:underline" onClick={() => onOpenOrder(review.orderId)}>{review.orderNumber || `Order #${review.orderId}`}</button>
+        <dl className="mt-4 grid grid-cols-2 gap-4 text-sm"><div><dt className="text-xs text-slate-500">Client</dt><dd className="mt-1 text-slate-300">{review.clientName || "—"}</dd></div><div><dt className="text-xs text-slate-500">Designer</dt><dd className="mt-1 text-slate-300">{review.reviewForDesigner?.name || "Unassigned"}</dd></div>{review.order?.packageType && <div className="col-span-2"><dt className="text-xs text-slate-500">Package</dt><dd className="mt-1 text-slate-300">{packageLabels[review.order.packageType] || titleCase(review.order.packageType)}</dd></div>}{review.order?.services?.length ? <div className="col-span-2"><dt className="text-xs text-slate-500">Services / Add-ons</dt><dd className="mt-1 text-slate-300">{review.order.services.map(service => `${service.serviceType} ×${service.quantity || 1}`).join(", ")}</dd></div> : null}{review.order?.status && <div><dt className="text-xs text-slate-500">Order Status</dt><dd className="mt-1 text-slate-300">{titleCase(review.order.status)}</dd></div>}</dl>
+      </section>
+
+      <section className="rounded-2xl border border-slate-800 bg-slate-900/30 p-5">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Record Details</p>
+        <dl className="mt-4 grid grid-cols-2 gap-4 text-sm"><div><dt className="text-xs text-slate-500">Recorded By</dt><dd className="mt-1 text-slate-300">{review.createdBy?.name || "—"}</dd></div><div><dt className="text-xs text-slate-500">Marketing Permission</dt><dd className="mt-1 text-slate-300">{marketingPermissionLabel(review.marketingPermission)}</dd></div><div><dt className="text-xs text-slate-500">Recorded On</dt><dd className="mt-1 text-slate-300">{review.createdAt ? format(new Date(review.createdAt), "MMM dd, yyyy · h:mm a") : "—"}</dd></div>{review.updatedAt && review.createdAt && new Date(review.updatedAt).getTime() > new Date(review.createdAt).getTime() + 1000 && <div><dt className="text-xs text-slate-500">Last Updated</dt><dd className="mt-1 text-slate-300">{format(new Date(review.updatedAt), "MMM dd, yyyy · h:mm a")}</dd></div>}</dl>
+      </section>
+    </div>}
+    <Dialog open={Boolean(imagePreview)} onOpenChange={value => !value && setImagePreview(null)}><DialogContent className="max-w-4xl border-slate-800 bg-slate-950"><DialogTitle className="sr-only">Review evidence preview</DialogTitle>{imagePreview && <img src={imagePreview} alt="Full review evidence preview" className="max-h-[80vh] w-full object-contain" />}</DialogContent></Dialog>
+  </SheetContent></Sheet>;
 }
 
 function SuggestionDetails({ suggestion, open, onOpenChange, onOpenOrder, onUpdated }: { suggestion: Suggestion | null; open: boolean; onOpenChange: (open: boolean) => void; onOpenOrder: (id: number) => void; onUpdated: (suggestion: Suggestion) => void }) {
   const { user } = useAuth(); const { toast } = useToast();
   const [pendingDecision, setPendingDecision] = useState<"implemented" | "rejected" | null>(null);
   const [decisionNote, setDecisionNote] = useState("");
-  const [adminNotes, setAdminNotes] = useState("");
-  useEffect(() => {
-    setAdminNotes(suggestion?.adminNotes || "");
-  }, [suggestion?.id, suggestion?.adminNotes]);
+  const [implementationEvidence, setImplementationEvidence] = useState("");
+  const [adminNote, setAdminNote] = useState("");
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const { data: orderActivity = [] } = useQuery<any[]>({ queryKey: [`/api/orders/${suggestion?.orderId}/activity`], enabled: open && Boolean(suggestion?.orderId) });
+  const history = orderActivity.filter(entry => Number((entry.details || {}).suggestionId) === suggestion?.id);
   const update = useMutation({
-    mutationFn: async ({ status, note }: { status: "implemented" | "rejected"; note: string }) => (await apiRequest("PATCH", `/api/feedback/suggestions/${suggestion?.id}`, { status, confirmDecision: true, decisionNote: note || null })).json(),
-    onSuccess: (updated: Suggestion) => { onUpdated(updated); queryClient.invalidateQueries({ queryKey: ["/api/feedback"] }); queryClient.invalidateQueries({ queryKey: ["/api/feedback/stats"] }); setPendingDecision(null); setDecisionNote(""); toast({ title: "Suggestion status updated" }); },
+    mutationFn: async ({ status, note }: { status: "implemented" | "rejected"; note: string }) => (await apiRequest("PATCH", `/api/feedback/suggestions/${suggestion?.id}`, { status, confirmDecision: true, ...(status === "implemented" ? { implementationDetails: note, implementationScreenshotUrl: implementationEvidence || null } : { rejectionReason: note }) })).json(),
+    onSuccess: (updated: Suggestion) => { onUpdated(updated); queryClient.invalidateQueries({ queryKey: ["/api/feedback"] }); queryClient.invalidateQueries({ queryKey: ["/api/feedback/stats"] }); queryClient.invalidateQueries({ queryKey: [`/api/orders/${suggestion?.orderId}/activity`] }); setPendingDecision(null); setDecisionNote(""); setImplementationEvidence(""); toast({ title: updated.status === "implemented" ? "Suggestion implemented" : "Suggestion rejected" }); },
     onError: (error: Error) => toast({ title: "Could not update suggestion", description: errorText(error), variant: "destructive" }),
   });
   const updateNotes = useMutation({
-    mutationFn: async (notes: string) => (await apiRequest("PATCH", `/api/feedback/suggestions/${suggestion?.id}`, { adminNotes: notes.trim() || null })).json(),
-    onSuccess: (updated: Suggestion) => { onUpdated(updated); queryClient.invalidateQueries({ queryKey: ["/api/feedback"] }); toast({ title: "Admin Notes saved" }); },
-    onError: (error: Error) => toast({ title: "Could not save Admin Notes", description: errorText(error), variant: "destructive" }),
+    mutationFn: async (note: string) => (await apiRequest("PATCH", `/api/feedback/suggestions/${suggestion?.id}`, { adminNote: note.trim() })).json(),
+    onSuccess: (updated: Suggestion) => { onUpdated(updated); setAdminNote(""); queryClient.invalidateQueries({ queryKey: ["/api/feedback"] }); queryClient.invalidateQueries({ queryKey: [`/api/orders/${suggestion?.orderId}/activity`] }); toast({ title: "Admin note added" }); },
+    onError: (error: Error) => toast({ title: "Could not add Admin Note", description: errorText(error), variant: "destructive" }),
   });
-  return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent className="w-full overflow-y-auto border-slate-800 bg-slate-950 text-white sm:max-w-xl"><SheetHeader><SheetTitle>{suggestion?.suggestionNumber || "Suggestion Details"}</SheetTitle></SheetHeader>{suggestion && <div className="mt-6 space-y-5">
-    <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-xs uppercase tracking-wider text-slate-500">Suggestion</p><p className="mt-2 text-lg font-medium">{suggestion.clientName}</p><p className="mt-1 text-sm text-slate-500">{suggestion.orderNumber || `Order #${suggestion.orderId}`} · {suggestion.createdAt ? format(new Date(suggestion.createdAt), "MMM dd, yyyy h:mm a") : "—"}</p></div><Badge className="bg-blue-500/10 text-blue-300">{suggestionStatusLabels[suggestion.status]}</Badge></div><div className="mt-5 flex items-center gap-2 text-xs text-slate-400"><Badge variant="outline" className="border-slate-700">{titleCase(suggestion.category)}</Badge><span>Designer: {suggestion.relatedDesigner?.name || "Unassigned"}</span></div><p className="mt-5 whitespace-pre-wrap text-sm leading-relaxed text-slate-300">{suggestion.suggestionText}</p></section>
-     <section className="grid grid-cols-2 gap-3 rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-sm"><div><p className="text-xs text-slate-500">Added by</p><p className="mt-1">{suggestion.createdBy?.name || "—"}</p></div><div><p className="text-xs text-slate-500">Related order</p><button className="mt-1 text-blue-300 hover:underline" onClick={() => onOpenOrder(suggestion.orderId)}>{suggestion.orderNumber || `Order #${suggestion.orderId}`}</button></div><div><p className="text-xs text-slate-500">Reviewed by</p><p className="mt-1">{suggestion.reviewedBy?.name || "Not reviewed"}</p></div></section>
-     {user?.role === "admin" && <section className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/60 p-4"><div><p className="text-xs uppercase tracking-wider text-slate-500">Admin Notes</p><p className="mt-1 text-xs text-slate-500">Private notes for management. Not visible to Designers or Support.</p></div><Textarea value={adminNotes} onChange={event => setAdminNotes(event.target.value)} placeholder="Add a private note about this suggestion…" rows={4} /><Button variant="outline" disabled={updateNotes.isPending} onClick={() => updateNotes.mutate(adminNotes)}>{updateNotes.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save Admin Notes</Button></section>}
-    {suggestion.decisionNote && <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"><p className="text-xs uppercase tracking-wider text-slate-500">{suggestion.status === "rejected" ? "Reason for Rejection" : "Implementation Note"}</p><p className="mt-2 whitespace-pre-wrap text-sm text-slate-300">{suggestion.decisionNote}</p></section>}
-    {user?.role === "admin" && suggestion.status === "new" && <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"><p className="text-xs uppercase tracking-wider text-slate-500">Decision</p><div className="mt-3 grid grid-cols-2 gap-2"><Button disabled={update.isPending} onClick={() => setPendingDecision("implemented")}>Implement Suggestion</Button><Button variant="outline" disabled={update.isPending} onClick={() => setPendingDecision("rejected")}>Reject Suggestion</Button></div><p className="mt-2 text-xs text-slate-500">A final decision is recorded and cannot be reversed in the normal CRM workflow.</p></section>}
-    {suggestion.screenshotUrl && <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"><p className="mb-3 text-xs uppercase tracking-wider text-slate-500">Evidence</p><a href={suggestion.screenshotUrl} target="_blank" rel="noreferrer"><img src={suggestion.screenshotUrl} alt="Suggestion evidence" className="max-h-64 w-full rounded-lg bg-slate-950 object-contain" /></a></section>}
-  </div>}<Dialog open={pendingDecision !== null} onOpenChange={v => !v && setPendingDecision(null)}><DialogContent className="border-slate-800 bg-slate-900 text-white"><DialogHeader><DialogTitle>{pendingDecision === "rejected" ? "Reject Suggestion" : "Implement Suggestion"}</DialogTitle></DialogHeader><p className="text-sm text-slate-400">{pendingDecision === "rejected" ? "Confirm that this suggestion will not be implemented." : "Confirm that this suggestion has been adopted and implemented."}</p><div className="space-y-2"><Label>{pendingDecision === "rejected" ? "Reason for Rejection *" : "Implementation Note (optional)"}</Label><Textarea value={decisionNote} onChange={e => setDecisionNote(e.target.value)} /></div><div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setPendingDecision(null)}>Cancel</Button><Button disabled={update.isPending || (pendingDecision === "rejected" && !decisionNote.trim())} onClick={() => pendingDecision && update.mutate({ status: pendingDecision, note: decisionNote.trim() })}>{pendingDecision === "rejected" ? "Reject Suggestion" : "Mark Implemented"}</Button></div></DialogContent></Dialog></SheetContent></Sheet>;
+  const helper = suggestion?.status === "implemented" ? "Suggestion approved and implemented." : suggestion?.status === "rejected" ? "Suggestion reviewed and not implemented." : "Awaiting management decision.";
+  const historyLabel = (entry: any) => entry.activityType === "suggestion_created" ? "Suggestion recorded" : entry.activityType === "suggestion_status" && entry.newValue === "implemented" ? "Suggestion implemented" : entry.activityType === "suggestion_status" && entry.newValue === "rejected" ? "Suggestion rejected" : "Admin note added";
+  return <Sheet open={open} onOpenChange={value => { if (!value) { setImagePreview(null); setPendingDecision(null); } onOpenChange(value); }}><SheetContent className="w-full overflow-y-auto border-slate-800 bg-slate-950 text-white sm:max-w-xl"><SheetHeader className="border-b border-slate-800 pb-5 pr-8 text-left"><SheetTitle className="flex items-center justify-between gap-3"><span className="font-mono text-xl text-blue-300">{suggestion?.suggestionNumber || "Suggestion Details"}</span>{suggestion && <Badge className={suggestion.status === "implemented" ? "bg-emerald-500/15 text-emerald-300" : suggestion.status === "rejected" ? "bg-rose-500/15 text-rose-300" : "bg-blue-500/15 text-blue-300"}>{suggestionStatusLabels[suggestion.status]}</Badge>}</SheetTitle><p className="text-sm text-slate-400">{helper}</p></SheetHeader>{suggestion && <div className="mt-6 space-y-5">
+    <section className="rounded-2xl border border-slate-700 bg-slate-900/80 p-5"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Suggestion Summary</p><dl className="mt-4 grid grid-cols-2 gap-4 text-sm"><div><dt className="text-xs text-slate-500">Category</dt><dd className="mt-1 text-white">{titleCase(suggestion.category)}</dd></div><div><dt className="text-xs text-slate-500">Related Designer</dt><dd className="mt-1 text-white">{suggestion.relatedDesigner?.name || "Unassigned"}</dd></div><div><dt className="text-xs text-slate-500">Date Recorded</dt><dd className="mt-1 text-slate-300">{suggestion.createdAt ? format(new Date(suggestion.createdAt), "MMM dd, yyyy · h:mm a") : "—"}</dd></div><div><dt className="text-xs text-slate-500">Recorded By</dt><dd className="mt-1 text-slate-300">{suggestion.createdBy?.name || "—"}</dd></div></dl></section>
+    <section className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-5"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-300">Client Suggestion</p><blockquote className="mt-4 whitespace-pre-wrap break-words text-[17px] leading-8 text-slate-100">{suggestion.suggestionText}</blockquote></section>
+    <section className="border-b border-slate-800 pb-5"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Suggestion Evidence</p>{suggestion.screenshotUrl ? <button type="button" onClick={() => setImagePreview(suggestion.screenshotUrl!)} className="mt-4 block w-full overflow-hidden rounded-xl border border-slate-800 bg-slate-900"><img src={suggestion.screenshotUrl} alt="Suggestion evidence" className="max-h-56 w-full object-contain" /></button> : <p className="mt-3 text-sm text-slate-500">No evidence was attached to this suggestion.</p>}</section>
+    <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Related Order</p><button className="mt-3 font-mono text-sm text-blue-300 hover:underline" onClick={() => onOpenOrder(suggestion.orderId)}>{suggestion.orderNumber || `Order #${suggestion.orderId}`}</button><dl className="mt-4 grid grid-cols-2 gap-4 text-sm"><div><dt className="text-xs text-slate-500">Client</dt><dd className="mt-1">{suggestion.clientName}</dd></div><div><dt className="text-xs text-slate-500">Designer</dt><dd className="mt-1">{suggestion.relatedDesigner?.name || "Unassigned"}</dd></div>{suggestion.order?.packageType && <div className="col-span-2"><dt className="text-xs text-slate-500">Package</dt><dd className="mt-1">{packageLabels[suggestion.order.packageType] || titleCase(suggestion.order.packageType)}</dd></div>}{suggestion.order?.services?.length ? <div className="col-span-2"><dt className="text-xs text-slate-500">Services / Add-ons</dt><dd className="mt-1">{suggestion.order.services.map(service => `${service.serviceType} ×${service.quantity || 1}`).join(", ")}</dd></div> : null}{suggestion.order?.status && <div><dt className="text-xs text-slate-500">Order Status</dt><dd className="mt-1">{titleCase(suggestion.order.status)}</dd></div>}</dl></section>
+    <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Management Decision</p>{suggestion.status === "new" ? <><p className="mt-2 text-sm text-slate-400">Decide whether this suggestion should be implemented or rejected.</p>{user?.role === "admin" && <div className="mt-4 grid grid-cols-2 gap-2"><Button onClick={() => setPendingDecision("implemented")}>Implement Suggestion</Button><Button variant="outline" onClick={() => setPendingDecision("rejected")}>Reject Suggestion</Button></div>}</> : suggestion.status === "implemented" ? <div className="mt-4 space-y-4"><Badge className="bg-emerald-500/15 text-emerald-300">Implemented</Badge><div><p className="text-xs text-slate-500">Implementation Summary</p><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-200">{suggestion.implementationDetails || suggestion.decisionNote || "—"}</p></div><div className="grid grid-cols-2 gap-4 text-sm"><div><p className="text-xs text-slate-500">Implemented By</p><p className="mt-1">{suggestion.implementedBy?.name || "—"}</p></div><div><p className="text-xs text-slate-500">Implemented On</p><p className="mt-1">{suggestion.implementedAt ? format(new Date(suggestion.implementedAt), "MMM dd, yyyy · h:mm a") : "—"}</p></div></div>{suggestion.implementationScreenshotUrl && <button onClick={() => setImagePreview(suggestion.implementationScreenshotUrl!)} className="text-sm text-blue-300 hover:underline">View Implementation Evidence</button>}<p className="text-xs text-slate-500">This suggestion was adopted and implemented.</p></div> : <div className="mt-4 space-y-4"><Badge className="bg-rose-500/15 text-rose-300">Rejected</Badge><div><p className="text-xs text-slate-500">Reason for Rejection</p><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-200">{suggestion.rejectionReason || suggestion.decisionNote || "—"}</p></div><div className="grid grid-cols-2 gap-4 text-sm"><div><p className="text-xs text-slate-500">Rejected By</p><p className="mt-1">{suggestion.rejectedBy?.name || "—"}</p></div><div><p className="text-xs text-slate-500">Rejected On</p><p className="mt-1">{suggestion.rejectedAt ? format(new Date(suggestion.rejectedAt), "MMM dd, yyyy · h:mm a") : "—"}</p></div></div><p className="text-xs text-slate-500">This suggestion will not be implemented.</p></div>}</section>
+    {user?.role === "admin" && <section className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Internal Admin Notes</p><p className="mt-2 text-xs text-slate-500">Private management notes. These notes are not visible to Designers or Support.</p><div className="mt-4 space-y-3">{suggestion.adminNotesLog?.length ? suggestion.adminNotesLog.map(note => <div key={note.id} className="rounded-lg border border-slate-800 bg-slate-950 p-3"><p className="whitespace-pre-wrap text-sm text-slate-200">{note.noteText}</p><p className="mt-2 text-xs text-slate-500">{note.createdBy?.name || "Admin"} · {note.createdAt ? format(new Date(note.createdAt), "MMM dd, yyyy · h:mm a") : "—"}</p></div>) : <p className="text-sm text-slate-500">No internal notes recorded.</p>}</div><div className="mt-5 space-y-2 border-t border-slate-800 pt-4"><Label>Add New Note</Label><Textarea value={adminNote} onChange={event => setAdminNote(event.target.value)} placeholder="Write an internal note..." rows={3} /><Button variant="outline" disabled={!adminNote.trim() || updateNotes.isPending} onClick={() => updateNotes.mutate(adminNote)}>{updateNotes.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Add Note</Button></div></section>}
+    <section className="rounded-2xl border border-slate-800 bg-slate-900/30 p-5"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Suggestion History</p><div className="mt-4 space-y-0">{history.length ? history.map((entry, index) => <div key={entry.id} className="relative flex gap-3 pb-5 last:pb-0">{index < history.length - 1 && <span className="absolute left-[5px] top-3 h-full w-px bg-slate-800" />}<span className="relative mt-1.5 h-3 w-3 shrink-0 rounded-full border-2 border-blue-400 bg-slate-950" /><div><p className="text-sm font-medium text-slate-200">{historyLabel(entry)}</p><p className="mt-1 text-xs text-slate-500">{entry.actor?.name || "System"} · {entry.createdAt ? format(new Date(entry.createdAt), "MMM dd, yyyy · h:mm a") : "—"}</p>{entry.activityType === "suggestion_status" && entry.newValue === "rejected" && entry.details?.rejectionReason && <p className="mt-2 text-sm text-slate-400">Reason: “{entry.details.rejectionReason}”</p>}{entry.activityType === "suggestion_status" && entry.newValue === "implemented" && entry.details?.implementationDetails && <p className="mt-2 text-sm text-slate-400">Implementation: “{entry.details.implementationDetails}”</p>}</div></div>) : <p className="text-sm text-slate-500">No history recorded.</p>}</div></section>
+  </div>}<Dialog open={pendingDecision !== null} onOpenChange={v => !v && setPendingDecision(null)}><DialogContent className="border-slate-800 bg-slate-900 text-white"><DialogHeader><DialogTitle>{pendingDecision === "rejected" ? "Reject Suggestion" : "Implement Suggestion"}</DialogTitle></DialogHeader><p className="text-sm text-slate-400">{pendingDecision === "rejected" ? "Please explain why this suggestion will not be implemented." : "Confirm that this suggestion has been adopted and implemented."}</p><div className="space-y-2"><Label>{pendingDecision === "rejected" ? "Reason for Rejection" : "Implementation Details"}</Label><Textarea value={decisionNote} onChange={e => setDecisionNote(e.target.value)} rows={4} /></div>{pendingDecision === "implemented" && <ScreenshotField value={implementationEvidence} onChange={setImplementationEvidence} folder="suggestions" />}<div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setPendingDecision(null)}>Cancel</Button><Button disabled={update.isPending || !decisionNote.trim()} onClick={() => pendingDecision && update.mutate({ status: pendingDecision, note: decisionNote.trim() })}>{pendingDecision === "rejected" ? "Reject Suggestion" : "Mark Implemented"}</Button></div></DialogContent></Dialog><Dialog open={Boolean(imagePreview)} onOpenChange={v => !v && setImagePreview(null)}><DialogContent className="max-w-4xl border-slate-800 bg-slate-950"><DialogTitle className="sr-only">Suggestion evidence preview</DialogTitle>{imagePreview && <img src={imagePreview} alt="Suggestion evidence preview" className="max-h-[80vh] w-full object-contain" />}</DialogContent></Dialog></SheetContent></Sheet>;
 }
 
 export default function FeedbackPage() {

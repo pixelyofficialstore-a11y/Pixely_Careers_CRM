@@ -642,29 +642,18 @@ export async function registerRoutes(
     if (user.role === "designer" && order.assignedToId !== user.id) return null;
     return order;
   };
-  const reviewProgressRank = { requested: 0, received: 1, public_review_received: 2, closed: 3 } as const;
-  const deriveReviewProgress = (review: Pick<ClientReview, "rating" | "feedbackText" | "whatsappFeedbackReceived" | "facebookReviewReceived" | "videoReviewReceived" | "publicReviewLink" | "reviewProgress">) => {
-    if (review.facebookReviewReceived || review.videoReviewReceived || !!review.publicReviewLink) return "public_review_received";
-    if (review.rating !== null || review.feedbackText.trim() || review.whatsappFeedbackReceived) return "received";
-    return "requested";
-  };
-  const forwardReviewProgress = (review: ClientReview, updates: Record<string, unknown>) => {
-    const candidate = { ...review, ...updates } as ClientReview;
-    const derived = deriveReviewProgress(candidate);
-    return reviewProgressRank[derived] > reviewProgressRank[review.reviewProgress] ? derived : review.reviewProgress;
-  };
   const userSummary = (person: User | null | undefined) => person ? ({
     id: person.id, name: person.name, role: person.role, title: person.title, avatar: person.avatar,
   }) : null;
   const feedbackProjection = async (items: any[], kind: "review" | "suggestion", role: string) => {
     const [allUsers, allOrders] = await Promise.all([storage.getUsers(), Promise.all(items.map(item => storage.getOrder(item.orderId)))]);
     const userById = new Map(allUsers.map(person => [person.id, person]));
-    return items.map((item, index) => {
+    return Promise.all(items.map(async (item, index) => {
       const order = allOrders[index];
       const summary = (id: number | null | undefined) => id ? userById.get(id) || null : null;
-      return kind === "review" ? { ...item, orderNumber: order?.orderNumber || null, clientName: order?.clientName || "", order: order ? { packageType: order.packageType, services: order.services, paymentStatus: order.paymentStatus } : undefined, reviewForDesigner: summary(item.reviewForDesignerId), createdBy: summary(item.createdById) } :
-        { ...item, ...(role === "admin" ? {} : { adminNotes: undefined }), orderNumber: order?.orderNumber || null, clientName: order?.clientName || "", order: order ? { packageType: order.packageType, services: order.services } : undefined, relatedDesigner: summary(item.relatedDesignerId), createdBy: summary(item.createdById), reviewedBy: summary(item.reviewedByUserId) };
-    });
+      return kind === "review" ? { ...item, orderNumber: order?.orderNumber || null, clientName: order?.clientName || "", order: order ? { packageType: order.packageType, services: order.services, paymentStatus: order.paymentStatus, status: order.status } : undefined, reviewForDesigner: summary(item.reviewForDesignerId), createdBy: summary(item.createdById) } :
+        { ...item, adminNotes: undefined, adminNotesLog: role === "admin" ? await storage.getSuggestionNotes(item.id) : undefined, orderNumber: order?.orderNumber || null, clientName: order?.clientName || "", order: order ? { packageType: order.packageType, services: order.services, status: order.status } : undefined, relatedDesigner: summary(item.relatedDesignerId), createdBy: summary(item.createdById), implementedBy: summary(item.implementedByUserId), rejectedBy: summary(item.rejectedByUserId) };
+    }));
   };
   const feedbackFilters = (req: Request) => ({
     search: typeof req.query.search === "string" ? req.query.search.toLowerCase() : "",
@@ -690,8 +679,12 @@ export async function registerRoutes(
     if (!order) return res.sendStatus(order === null ? 403 : 404);
     const logs = await storage.getOrderActivity(orderId);
     // Complaint activity must never reveal a filer to the designer it concerns.
-    res.json(logs.map(log => user.role === "designer" && log.activityType.startsWith("complaint_")
-      ? { ...log, actor: null } : log));
+    res.json(logs
+      .filter(log => user.role === "admin" || !(log.activityType === "suggestion_updated" && (
+        (log.details as any)?.event === "admin_note_added" || (log.details as any)?.fields?.includes?.("adminNotes")
+      )))
+      .map(log => user.role === "designer" && log.activityType.startsWith("complaint_")
+        ? { ...log, actor: null } : log));
   });
 
   app.get(api.orders.clientCaseReport.path, requireAuth, async (req, res) => {
@@ -700,28 +693,42 @@ export async function registerRoutes(
     const user = req.user as User;
     const order = await canAccessOrder(user, orderId);
     if (!order) return res.sendStatus(order === null ? 403 : 404);
-    const [payments, complaints, review, suggestions, activity] = await Promise.all([
+    const [payments, complaints, review, suggestions, activity, createdBy] = await Promise.all([
       storage.getPaymentVerificationsByOrder(orderId),
       storage.getComplaints(user.role, user.id, { orderId }),
       storage.getClientReviewByOrder(orderId),
       storage.getClientSuggestions(user.role, user.id, orderId),
       storage.getOrderActivity(orderId),
+      order.createdById ? storage.getUser(order.createdById) : Promise.resolve(undefined),
     ]);
     const safeOrder = {
       ...order,
       assignee: userSummary(order.assignee),
+      createdBy: userSummary(createdBy),
       totalPrice: user.role === "designer" ? undefined : order.totalPrice,
     };
+    const projectedReview = review ? (await feedbackProjection([review], "review", user.role))[0] : null;
+    const projectedSuggestions = await feedbackProjection(suggestions, "suggestion", user.role);
+    const safeReview = projectedReview
+      ? (({ reviewProgress: _reviewProgress, ...reviewRecord }) => reviewRecord)(projectedReview)
+      : null;
     res.json({
       order: safeOrder,
       payments: payments.map(({ screenshotData: _screenshotData, submittedBy, reviewedBy, ...payment }) => ({
         ...payment, submittedBy: userSummary(submittedBy), reviewedBy: userSummary(reviewedBy),
       })),
       complaints,
-      review,
-      suggestions: user.role === "designer" ? suggestions.map(({ adminNotes: _adminNotes, ...suggestion }) => suggestion) : suggestions,
-      activity: activity.map(log => user.role === "designer" && log.activityType.startsWith("complaint_")
-        ? { ...log, actor: null } : { ...log, actor: userSummary(log.actor) }),
+      review: safeReview,
+      suggestions: projectedSuggestions.map(({ adminNotes: _adminNotes, reviewedByUserId: _reviewedByUserId, reviewedAt: _reviewedAt, decisionNote: _decisionNote, ...suggestion }) => ({
+        ...suggestion,
+        adminNotesLog: user.role === "admin" ? suggestion.adminNotesLog : undefined,
+      })),
+      activity: activity
+        .filter(log => !(log.activityType === "suggestion_updated" && (
+          (log.details as any)?.event === "admin_note_added" || (log.details as any)?.fields?.includes?.("adminNotes")
+        )))
+        .map(log => user.role === "designer" && log.activityType.startsWith("complaint_")
+          ? { ...log, actor: null } : { ...log, actor: userSummary(log.actor) }),
     });
   });
 
@@ -763,9 +770,8 @@ export async function registerRoutes(
       if (!order) return res.sendStatus(order === null ? 403 : 404);
       if (input.screenshotUrl && !isCloudinaryUrl(input.screenshotUrl)) return res.status(400).json({ message: "Screenshot must be an HTTPS Cloudinary URL." });
       if (await storage.getClientReviewByOrder(input.orderId)) return res.status(409).json({ message: "This order already has a client review." });
-      const initialProgress = deriveReviewProgress({ ...input, reviewProgress: "requested" });
-      const review = await storage.createClientReview({ ...input, reviewProgress: initialProgress, reviewForDesignerId: order.assignedToId ?? null, createdById: user.id });
-      await storage.createActivityLog({ orderId: input.orderId, actorId: user.id, activityType: "review_created", newValue: review.reviewNumber, details: { reviewId: review.id, reviewProgress: initialProgress } });
+       const review = await storage.createClientReview({ ...input, reviewForDesignerId: order.assignedToId ?? null, createdById: user.id });
+       await storage.createActivityLog({ orderId: input.orderId, actorId: user.id, activityType: "review_created", newValue: review.reviewNumber, details: { reviewId: review.id, reviewNumber: review.reviewNumber } });
       res.status(201).json((await feedbackProjection([review], "review", user.role))[0]);
     } catch (err) { if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message || "Invalid review." }); return res.status(500).json({ message: "Unable to create client review." }); }
   });
@@ -777,17 +783,11 @@ export async function registerRoutes(
       const user = req.user as User; const order = await canAccessOrder(user, existing.orderId);
       if (!order) return res.sendStatus(order === null ? 403 : 404);
       if (input.screenshotUrl && !isCloudinaryUrl(input.screenshotUrl)) return res.status(400).json({ message: "Screenshot must be an HTTPS Cloudinary URL." });
-      if (input.reviewProgress !== undefined && user.role !== "admin") return res.status(403).json({ message: "Only admins can correct review progress." });
-      const requestedProgress = input.reviewProgress;
-      const { reviewProgress: _reviewProgress, ...reviewChanges } = input;
-      const nextProgress = requestedProgress ?? forwardReviewProgress(existing, reviewChanges);
-      const review = await storage.updateClientReview(id, { ...reviewChanges, reviewProgress: nextProgress });
+       const reviewChanges = input;
+       const review = await storage.updateClientReview(id, reviewChanges);
       const changedFields = Object.keys(reviewChanges).filter(field => (reviewChanges as any)[field] !== (existing as any)[field]);
       if (changedFields.length) {
         await storage.createActivityLog({ orderId: existing.orderId, actorId: user.id, activityType: "review_updated", details: { reviewId: id, fields: changedFields } });
-      }
-      if (nextProgress !== existing.reviewProgress) {
-        await storage.createActivityLog({ orderId: existing.orderId, actorId: user.id, activityType: "review_updated", previousValue: existing.reviewProgress, newValue: nextProgress, details: { reviewId: id, event: requestedProgress ? "review_progress_corrected" : "review_progress_derived" } });
       }
       for (const [field, label] of [["whatsappFeedbackReceived", "whatsapp"], ["facebookReviewReceived", "facebook"], ["videoReviewReceived", "video"]] as const) {
         if (input[field] === true && existing[field] === false) {
@@ -843,24 +843,39 @@ export async function registerRoutes(
       if (!existing) return res.sendStatus(404);
       const user = req.user as User; const order = await canAccessOrder(user, existing.orderId);
       if (!order) return res.sendStatus(order === null ? 403 : 404);
-      if ((input.status !== undefined || input.adminNotes !== undefined || input.decisionNote !== undefined) && user.role !== "admin") return res.status(403).json({ message: "Only admins can review suggestions." });
+      if (user.role !== "admin") return res.status(403).json({ message: "Only admins can make suggestion decisions or add internal notes." });
       if (input.status !== undefined && input.status !== existing.status) {
         if (existing.status !== "new" || !["implemented", "rejected"].includes(input.status) || input.confirmDecision !== true) {
           return res.status(400).json({ message: "Suggestions can only move from New to Implemented or Rejected after confirmation." });
         }
+        if (input.status === "implemented" && !input.implementationDetails?.trim()) return res.status(400).json({ message: "Implementation details are required." });
+        if (input.status === "rejected" && !input.rejectionReason?.trim()) return res.status(400).json({ message: "A reason for rejection is required." });
       }
-      const { confirmDecision: _confirmDecision, ...suggestionChanges } = input;
-      const suggestion = await storage.updateClientSuggestion(id, { ...suggestionChanges, reviewedByUserId: user.id, reviewedAt: new Date() });
+      if (input.implementationScreenshotUrl && !isCloudinaryUrl(input.implementationScreenshotUrl)) return res.status(400).json({ message: "Implementation evidence must be an HTTPS Cloudinary URL." });
+      const { confirmDecision: _confirmDecision, adminNote, ...submittedChanges } = input;
+      const now = new Date();
+      const suggestionChanges: Partial<InsertClientSuggestion> = input.status === "implemented" ? {
+        status: "implemented", implementationDetails: input.implementationDetails, implementationScreenshotUrl: input.implementationScreenshotUrl ?? null,
+        implementedByUserId: user.id, implementedAt: now, reviewedByUserId: user.id, reviewedAt: now,
+      } : input.status === "rejected" ? {
+        status: "rejected", rejectionReason: input.rejectionReason, rejectedByUserId: user.id, rejectedAt: now,
+        reviewedByUserId: user.id, reviewedAt: now,
+      } : {};
+      const suggestion = Object.keys(suggestionChanges).length ? await storage.updateClientSuggestion(id, suggestionChanges) : existing;
       if (input.status !== undefined && input.status !== existing.status) {
         await storage.createActivityLog({
           orderId: existing.orderId, actorId: user.id, activityType: "suggestion_status",
-          previousValue: existing.status, newValue: input.status, details: { suggestionId: id },
+          previousValue: existing.status, newValue: input.status, details: {
+            suggestionId: id, suggestionNumber: existing.suggestionNumber,
+            ...(input.status === "implemented" ? { implementationDetails: input.implementationDetails } : { rejectionReason: input.rejectionReason }),
+          },
         });
       }
-      if (input.adminNotes !== undefined && input.adminNotes !== existing.adminNotes) {
+      if (adminNote) {
+        await storage.addSuggestionNote(id, adminNote, user.id);
         await storage.createActivityLog({
           orderId: existing.orderId, actorId: user.id, activityType: "suggestion_updated",
-          details: { suggestionId: id, fields: ["adminNotes"] },
+          details: { suggestionId: id, suggestionNumber: existing.suggestionNumber, event: "admin_note_added" },
         });
       }
       res.json((await feedbackProjection([suggestion], "suggestion", user.role))[0]);
@@ -995,8 +1010,22 @@ export async function registerRoutes(
       const input = api.complaints.update.input.parse(req.body);
       const existing = await storage.getComplaintRecord(id);
       if (!existing) return res.sendStatus(404);
-      if (input.status === undefined && input.adminNotes === undefined && input.resolution === undefined && input.resolutionScreenshotUrl === undefined && input.dismissalReason === undefined) {
+      const adminNote = input.adminNote?.trim() || input.adminNotes?.trim() || "";
+      if (input.status === undefined && !adminNote && input.resolution === undefined && input.resolutionScreenshotUrl === undefined && input.dismissalReason === undefined) {
         return res.status(400).json({ message: "Provide a status, admin note, or decision details." });
+      }
+      const actor = req.user as User;
+      if (
+        adminNote &&
+        input.status === undefined &&
+        input.resolution === undefined &&
+        input.resolutionOutcome === undefined &&
+        input.resolutionScreenshotUrl === undefined &&
+        input.dismissalReason === undefined
+      ) {
+        await storage.addComplaintNote(id, adminNote, actor.id);
+        const response = await storage.getComplaintForUser(id, "admin", actor.id);
+        return res.json(response);
       }
 
       const status = input.status;
@@ -1045,7 +1074,6 @@ export async function registerRoutes(
         return res.status(400).json({ message: "The resolution and outcome are locked once a complaint is closed." });
       }
 
-      const actor = req.user as User;
       const historyEvents: InsertActivityLog[] = [];
       if (status !== undefined && status !== existing.status) {
         historyEvents.push({
@@ -1066,19 +1094,6 @@ export async function registerRoutes(
           orderId: existing.orderId, actorId: actor.id, activityType: "status_change",
           previousValue: "active", newValue: "canceled",
           details: { complaintId: existing.id, complaintNumber: existing.complaintNumber, refundRecorded: true },
-        });
-      }
-      if (input.adminNotes !== undefined && (input.adminNotes?.trim() || null) !== existing.adminNotes) {
-        historyEvents.push({
-          orderId: existing.orderId,
-          actorId: actor.id,
-          activityType: "complaint_note",
-          previousValue: existing.adminNotes,
-          newValue: input.adminNotes?.trim() || null,
-          details: {
-            complaintId: existing.id,
-            complaintNumber: existing.complaintNumber,
-          },
         });
       }
       if (input.resolution !== undefined && (input.resolution?.trim() || null) !== existing.resolution) {
@@ -1107,7 +1122,6 @@ export async function registerRoutes(
 
       const updated = await storage.updateComplaint(id, existing.status, {
         ...(status !== undefined ? { status } : {}),
-        ...(input.adminNotes !== undefined ? { adminNotes: input.adminNotes?.trim() || null } : {}),
         ...(input.resolution !== undefined ? { resolution: input.resolution?.trim() || null } : {}),
         ...(input.resolutionOutcome !== undefined ? { resolutionOutcome: input.resolutionOutcome } : {}),
         ...(input.resolutionScreenshotUrl !== undefined ? { resolutionScreenshotUrl: input.resolutionScreenshotUrl } : {}),
@@ -1121,6 +1135,9 @@ export async function registerRoutes(
         return res.status(409).json({
           message: "This complaint changed while you were reviewing it. Reload and try again.",
         });
+      }
+      if (adminNote) {
+        await storage.addComplaintNote(id, adminNote, actor.id);
       }
       if (status !== undefined && status !== existing.status) {
 
@@ -1147,12 +1164,20 @@ export async function registerRoutes(
     }
   });
 
-  app.get(api.complaints.history.path, requireRole(["admin"]), async (req, res) => {
+  app.get(api.complaints.history.path, requireAuth, async (req, res) => {
     const id = Number(req.params.id);
-    const complaint = await storage.getComplaintRecord(id);
+    const user = req.user as User;
+    const complaint = await storage.getComplaintForUser(id, user.role, user.id);
     if (!complaint) return res.sendStatus(404);
     const history = await storage.getComplaintHistory(id);
-    res.json(history);
+    // Reporter and management identities are restricted to Admin. Other roles
+    // receive the case events without actor metadata or internal note content.
+    res.json(user.role === "admin" ? history : history.map(entry => ({
+      ...entry,
+      actor: undefined,
+      previousValue: entry.action === "complaint_note" ? null : entry.previousValue,
+      newValue: entry.action === "complaint_note" ? null : entry.newValue,
+    })));
   });
 
   app.patch(api.orders.update.path, requireAuth, async (req, res) => {

@@ -1,0 +1,1720 @@
+PIXELY CAREERS CRM
+TASK: REFINE ORDER DETAILS + COMPLETELY REBUILD CLIENT CASE REPORT
+
+==================================================
+IMPORTANT CONTEXT
+==================================================
+
+The CRM already has working:
+
+- Orders
+- Order Details drawer
+- Overview / Activity / Client Experience tabs
+- Payments
+- Complaints
+- Reviews
+- Suggestions
+- Cloudinary screenshots
+- Activity history
+- Client Case Report export
+- Nested drawer navigation
+- Role permissions
+
+DO NOT rebuild these systems.
+
+The current Order Details UI is generally clean and should be refined, not replaced.
+
+The MAIN problem is the Client Case Report.
+
+The existing report is unacceptable because it outputs raw backend/database data.
+
+Examples of current problems:
+
+- raw JSON objects
+- database IDs
+- raw enum values
+- internal object structures
+- ISO timestamps
+- null values
+- raw activity metadata
+- raw user objects
+- raw service arrays
+
+THE CLIENT CASE REPORT MUST NEVER PRINT RAW DATABASE OBJECTS.
+
+The report must transform CRM data into a clean professional business report.
+
+==================================================
+PART 1 — ORDER DETAILS DRAWER CLEANUP
+==================================================
+
+Keep existing tabs:
+
+Overview
+Activity
+Client Experience
+
+This structure is correct.
+
+Improve what belongs in each tab.
+
+==================================================
+OVERVIEW TAB PURPOSE
+==================================================
+
+Overview should answer:
+
+WHO IS THE CLIENT?
+WHAT DID THEY ORDER?
+WHO IS HANDLING IT?
+WHAT IS THE PAYMENT POSITION?
+WHAT IS THE CURRENT ORDER STATUS?
+
+Overview should NOT become another Client Experience page.
+
+==================================================
+REMOVE DUPLICATED COMPLAINTS FROM OVERVIEW
+==================================================
+
+Currently Complaints appear in Overview and again in Client Experience.
+
+Remove the full Complaints section from Overview.
+
+Complaints belong under:
+
+Client Experience
+
+Overview should stay operational and concise.
+
+==================================================
+OVERVIEW FINAL ORDER
+==================================================
+
+Use:
+
+1. Order Summary
+2. Client Information
+3. Services & Package
+4. Assignment
+5. Financial Summary
+6. Delivery / Order Status if available
+
+==================================================
+ORDER SUMMARY
+==================================================
+
+At the top of Overview show a compact summary:
+
+Order ID
+PX-2609-002
+
+Status
+New / In Progress / Delivered / Canceled
+
+Created
+Sep 01, 2026 · 6:02 PM
+
+Created By
+Soban Masood
+
+Do not repeat this information excessively elsewhere.
+
+==================================================
+CLIENT INFORMATION
+==================================================
+
+Show:
+
+Client Name
+
+Client Type
+
+Contact
+
+Client Source
+
+Optional if fields already exist:
+Email
+Target Country
+Target Role
+Objective
+
+ONLY display fields that genuinely exist.
+
+Do not invent data.
+
+==================================================
+SERVICES & PACKAGE
+==================================================
+
+Rename:
+
+PACKAGE & ADD-ONS
+
+to:
+
+SERVICES & PACKAGE
+
+Display:
+
+Package
+Executive Career Branding
+
+Included Services
+- ATS CV
+- LinkedIn Optimization
+- Cover Letter
+etc. based on actual Order
+
+Add-ons
+- Bio Statement ×1
+
+Do not expose service database IDs.
+
+Do not display raw objects.
+
+==================================================
+ASSIGNMENT
+==================================================
+
+Display:
+
+Assigned Designer
+Safwan Masood
+
+Role
+Designer
+
+Assigned Date
+if stored
+
+Assigned By
+if stored
+
+If assignment history exists:
+
+Do not show all history in Overview.
+
+History belongs to Activity.
+
+==================================================
+FINANCIAL SUMMARY
+==================================================
+
+Use a clean card:
+
+Order Value
+Rs8,000
+
+Discount
+Rs0
+
+Advance Received
+Rs4,000
+
+Remaining Balance
+Rs4,000
+
+Payment Status
+Payment Pending
+
+If payment screenshot exists:
+
+View Payment Evidence
+
+Use the existing Cloudinary preview.
+
+==================================================
+CANCELED / REFUNDED ORDER
+==================================================
+
+If order is canceled/refunded:
+
+Show:
+
+Order Value
+Rs8,000
+
+Advance Received
+Rs4,000
+STRIKETHROUGH
+Refunded
+
+Remaining Balance
+Rs4,000
+STRIKETHROUGH
+Canceled
+
+Net Collected
+Rs0
+
+Remaining Receivable
+Rs0
+
+Do not destroy original amounts.
+
+==================================================
+ACTIVITY TAB
+==================================================
+
+The Activity tab is already moving in the right direction.
+
+Keep the human-readable timeline.
+
+Improve wording where necessary.
+
+Use:
+
+Suggestion SUG-2609-005 rejected.
+Soban Masood · Sep 01, 2026 · 7:27 PM
+
+NOT:
+
+suggestion_status new rejected {"suggestionId":4}
+
+Related-record links should remain clickable.
+
+==================================================
+CLIENT EXPERIENCE TAB
+==================================================
+
+Keep:
+
+Summary metric cards
+
+Complaints
+Review
+Suggestions
+
+But refine wording.
+
+Top cards:
+
+Complaints
+1
+
+Client Rating
+5/5
+
+Suggestions
+2
+
+Do not label the rating card simply "Review" if it displays 5/5.
+
+Use:
+
+Client Rating
+
+==================================================
+COMPLAINTS SECTION
+==================================================
+
+Show:
+
+Complaint count
+
+Currently Confirmed
+if useful
+
+Each complaint:
+
+CMP-2609-004
+Communication Issue
+Resolved
+
+Click opens Complaint details through existing nested drawer system.
+
+==================================================
+REVIEW SECTION
+==================================================
+
+Show:
+
+REV-2609-003
+
+Rating
+5/5
+
+Feedback channels:
+WhatsApp
+Facebook
+Video
+
+Button:
+
+View / Update
+
+Do not add review progress.
+
+==================================================
+SUGGESTIONS SECTION
+==================================================
+
+Show:
+
+Suggestion ID
+Category
+Status
+
+Example:
+
+SUG-2609-005
+Document Quality
+Rejected
+
+==================================================
+PART 2 — COMPLETELY REBUILD CLIENT CASE REPORT
+==================================================
+
+The existing Client Case Report must be replaced with a structured report renderer.
+
+DO NOT print:
+
+JSON.stringify(record)
+
+DO NOT print:
+
+Object objects
+
+DO NOT print:
+
+database rows joined by bullets
+
+DO NOT print:
+
+internal IDs unless they are business IDs such as:
+
+PX-
+CMP-
+REV-
+SUG-
+
+DO NOT print:
+
+null
+
+undefined
+
+raw ISO timestamps
+
+raw enum values
+
+raw user objects
+
+raw metadata objects
+
+==================================================
+REPORT NAME
+==================================================
+
+Use:
+
+PIXELY CAREERS
+CLIENT CASE REPORT
+
+Subtitle:
+
+Complete Order & Client Experience Record
+
+==================================================
+REPORT PURPOSE
+==================================================
+
+This is an INTERNAL professional case report.
+
+It should allow Admin/Management to understand the complete client/order history without opening the CRM.
+
+It should be useful for:
+
+- management review
+- complaint investigation
+- client-service assessment
+- staff evaluation
+- financial verification
+- audit/history
+- client success analysis
+
+==================================================
+REPORT DESIGN
+==================================================
+
+Use a WHITE professional PDF.
+
+Do NOT copy the dark CRM UI.
+
+Recommended visual style:
+
+White background
+
+Pixely Careers branding
+
+Professional dark heading text
+
+Blue accent consistent with CRM
+
+Thin dividers
+
+Clean cards/tables
+
+Readable 10–11pt body text
+
+Clear section headings
+
+Page numbers
+
+Generated date/time
+
+Order ID in header/footer
+
+Proper margins
+
+No overflowing text
+
+No raw data
+
+==================================================
+PAGE HEADER
+==================================================
+
+Top:
+
+PIXELY CAREERS
+
+CLIENT CASE REPORT
+
+Order PX-2609-002
+
+Generated Sep 01, 2026 · 7:48 PM
+
+Optional:
+
+INTERNAL MANAGEMENT RECORD
+
+==================================================
+SECTION 1 — CASE OVERVIEW
+==================================================
+
+Create a clean summary box.
+
+Client
+Ali Shamshad
+
+Order ID
+PX-2609-002
+
+Order Status
+New
+
+Assigned Designer
+Safwan Masood
+
+Order Value
+Rs8,000
+
+Client Rating
+5/5
+
+Complaints
+1
+
+Suggestions
+2
+
+This provides an immediate case snapshot.
+
+==================================================
+SECTION 2 — CLIENT PROFILE
+==================================================
+
+Heading:
+
+CLIENT INFORMATION
+
+Display available fields:
+
+Full Name
+
+Contact Number
+
+Email if stored
+
+Client Type
+
+Client Source
+
+Objective if stored
+
+Target Role if stored
+
+Target Country if stored
+
+Do not display fields that do not exist.
+
+Do not display:
+
+null
+—
+
+for dozens of missing fields.
+
+Simply omit irrelevant missing fields.
+
+==================================================
+SECTION 3 — ORDER INFORMATION
+==================================================
+
+Heading:
+
+ORDER INFORMATION
+
+Show:
+
+Order ID
+
+Created Date
+
+Created By
+
+Current Status
+
+Delivery Deadline if stored
+
+Completion Date if stored
+
+Current Designer
+
+==================================================
+SECTION 4 — SERVICES PURCHASED
+==================================================
+
+Heading:
+
+SERVICES & PACKAGE
+
+Show:
+
+Package
+Executive Career Branding
+
+Included services in a proper list:
+
+• ATS CV
+• LinkedIn Optimization
+• Cover Letter
+etc.
+
+Then:
+
+Add-ons
+
+• Bio Statement ×1
+
+Do NOT print:
+
+[{"id":1,"orderId":2,...}]
+
+Transform service records into readable labels.
+
+==================================================
+SECTION 5 — ASSIGNMENT
+==================================================
+
+Heading:
+
+ASSIGNMENT
+
+Current Designer
+Safwan Masood
+
+Role
+Designer
+
+Assigned By
+if available
+
+Assigned On
+if available
+
+If reassignment history exists:
+
+Show:
+
+ASSIGNMENT HISTORY
+
+Sep 01, 2026
+Safwan Masood assigned by Soban Masood.
+
+Sep 05, 2026
+Designer changed from Safwan Masood to Muhammad Anas.
+
+Do not fabricate missing historical data.
+
+==================================================
+SECTION 6 — FINANCIAL SUMMARY
+==================================================
+
+Heading:
+
+FINANCIAL SUMMARY
+
+Use a clean table:
+
+Order Value          Rs8,000
+Discount             Rs0
+Advance Received     Rs4,000
+Remaining Balance    Rs4,000
+Net Collected        Rs4,000
+Payment Status       Payment Pending
+
+If no refund:
+do not show Refund fields unnecessarily.
+
+==================================================
+IF REFUNDED
+==================================================
+
+Show:
+
+Original Order Value      Rs8,000
+Original Advance          Rs4,000
+Refunded Amount           Rs4,000
+Net Collected             Rs0
+Original Remaining        Rs4,000
+Remaining Receivable      Rs0
+Order Status              Canceled
+
+This is essential.
+
+Do not change original values to zero.
+
+==================================================
+PAYMENT HISTORY
+==================================================
+
+If payment events exist:
+
+Heading:
+
+PAYMENT HISTORY
+
+Example:
+
+Sep 01, 2026 · 6:05 PM
+Advance payment request submitted by Safwan Masood.
+
+Sep 01, 2026 · 6:10 PM
+Advance payment of Rs4,000 approved by Soban Masood.
+
+If screenshot exists:
+
+Payment Evidence
+[small screenshot thumbnail]
+
+Do not put huge screenshots into the report.
+
+==================================================
+SECTION 7 — COMPLAINT RECORD
+==================================================
+
+Heading:
+
+COMPLAINTS
+
+Do NOT print raw complaint objects.
+
+For each complaint use its own clean subsection.
+
+Example:
+
+COMPLAINT CMP-2609-004
+
+Status
+Resolved
+
+Category
+Communication Issue
+
+Reported Against
+Safwan Masood
+
+Reported By
+Soban Masood
+ADMIN REPORT ONLY
+
+Reported On
+Sep 01, 2026 · 6:27 PM
+
+Complaint Details
+
+"Happend What Happened"
+
+Evidence
+No evidence attached.
+
+Management Decision
+Confirmed
+
+Resolution
+
+"Designer na Issue Solve Kar Diya Tha"
+
+Resolution Type
+Correction / Revision
+
+Resolved By
+Soban Masood
+
+Resolved On
+Sep 01, 2026 · 6:31 PM
+
+==================================================
+COMPLAINT STATUS WORDING
+==================================================
+
+Display human values:
+
+new → New
+
+confirmed → Confirmed
+
+dismissed → Dismissed
+
+resolved → Resolved
+
+refunded → Refunded
+
+Do NOT show old raw:
+
+valid
+invalid
+
+if UI has migrated to:
+
+Confirmed
+Dismissed
+
+==================================================
+DISMISSED COMPLAINT
+==================================================
+
+Show:
+
+Management Decision
+Dismissed
+
+Reason for Dismissal
+[reason]
+
+Dismissed By
+
+Dismissed Date
+
+==================================================
+REFUNDED COMPLAINT
+==================================================
+
+Show:
+
+Final Outcome
+Refunded & Order Canceled
+
+Refund Amount
+
+Refund Details
+
+Refunded By
+
+Refunded Date
+
+Refund Evidence
+
+==================================================
+COMPLAINT EVIDENCE
+==================================================
+
+If Cloudinary evidence exists:
+
+Embed a scaled thumbnail where technically safe.
+
+Caption:
+
+Complaint Evidence
+
+If not:
+
+Use:
+
+No evidence attached.
+
+Do not print Cloudinary URL as giant raw text unless embedding fails.
+
+==================================================
+SECTION 8 — CLIENT REVIEW
+==================================================
+
+Heading:
+
+CLIENT REVIEW
+
+A Review is not a workflow.
+
+Do NOT include:
+
+Review Progress
+
+Requested
+
+Received
+
+Completed
+
+Display:
+
+Review ID
+REV-2609-003
+
+Client Rating
+5/5
+
+Client Feedback
+
+"Buhut Achi Services Hain"
+
+Feedback Sources
+
+WhatsApp Feedback      Received
+Facebook Review        Received
+Video Testimonial      Received
+
+Public Review Link
+if available
+
+Marketing Permission
+Not Asked
+
+Designer
+Safwan Masood
+
+Recorded By
+Soban Masood
+
+Recorded On
+Sep 01, 2026 · 6:34 PM
+
+Evidence
+if available
+
+==================================================
+SECTION 9 — CLIENT SUGGESTIONS
+==================================================
+
+Heading:
+
+CLIENT SUGGESTIONS
+
+Do NOT print raw suggestion rows.
+
+Each suggestion must be formatted separately.
+
+Example:
+
+SUGGESTION SUG-2609-005
+
+Category
+Document Quality
+
+Status
+Rejected
+
+Client Suggestion
+
+"jjhjhjhjhhhj"
+
+Recorded By
+Soban Masood
+
+Recorded On
+Sep 01, 2026 · 6:41 PM
+
+Management Decision
+Rejected
+
+Reason for Rejection
+
+"No Way This is going to Happen"
+
+Rejected By
+Soban Masood
+
+Rejected On
+Sep 01, 2026 · 7:27 PM
+
+==================================================
+NEW SUGGESTION
+==================================================
+
+If status = New:
+
+Display:
+
+Status
+Awaiting Management Decision
+
+Do not print:
+
+new
+
+as an unexplained database value.
+
+==================================================
+IMPLEMENTED SUGGESTION
+==================================================
+
+Show:
+
+Status
+Implemented
+
+Implementation Summary
+
+Implemented By
+
+Implemented On
+
+Evidence
+
+==================================================
+SECTION 10 — CLIENT EXPERIENCE SUMMARY
+==================================================
+
+Create one clean summary section:
+
+CLIENT EXPERIENCE SUMMARY
+
+Client Rating
+5/5
+
+Complaints
+1
+
+Confirmed Complaints
+0
+
+Resolved Complaints
+1
+
+Refunded Complaints
+0
+
+Suggestions
+2
+
+Implemented Suggestions
+0
+
+Rejected Suggestions
+1
+
+Public Review
+Received
+
+Video Testimonial
+Received
+
+This is very useful for management.
+
+==================================================
+SECTION 11 — COMPLETE CASE TIMELINE
+==================================================
+
+Heading:
+
+CASE TIMELINE
+
+THIS MUST NOT PRINT RAW ACTIVITY ROWS.
+
+Current report prints data such as:
+
+35 • 2 • 4 • suggestion_status • new • rejected • {"suggestionId":4}
+
+THIS IS COMPLETELY FORBIDDEN.
+
+Convert each event into human-readable text.
+
+==================================================
+ACTIVITY FORMAT
+==================================================
+
+Example:
+
+Sep 01, 2026 · 6:02 PM
+
+Order created
+Soban Masood created Order PX-2609-002.
+
+Sep 01, 2026 · 6:02 PM
+
+Designer assigned
+Safwan Masood was assigned to the Order by Soban Masood.
+
+Sep 01, 2026 · 6:27 PM
+
+Complaint filed
+Complaint CMP-2609-004 was recorded.
+
+Sep 01, 2026 · 6:30 PM
+
+Complaint confirmed
+Soban Masood confirmed Complaint CMP-2609-004.
+
+Sep 01, 2026 · 6:31 PM
+
+Complaint resolved
+Soban Masood resolved Complaint CMP-2609-004.
+
+Sep 01, 2026 · 6:34 PM
+
+Client Review recorded
+Review REV-2609-003 was recorded by Soban Masood with a rating of 5/5.
+
+Sep 01, 2026 · 6:36 PM
+
+Suggestion recorded
+Suggestion SUG-2609-004 was recorded by Soban Masood.
+
+Sep 01, 2026 · 7:27 PM
+
+Suggestion rejected
+Soban Masood rejected Suggestion SUG-2609-005.
+
+==================================================
+EVENT FORMATTERS
+==================================================
+
+Create proper event formatting functions.
+
+Examples:
+
+order_created
+→ "Order created"
+
+assignment
+→ "Designer assigned"
+
+complaint_created
+→ "Complaint filed"
+
+complaint_status
+new → confirmed
+→ "Complaint confirmed"
+
+complaint_status
+new → dismissed
+→ "Complaint dismissed"
+
+complaint_resolved
+→ "Complaint resolved"
+
+complaint_refunded
+→ "Complaint refunded and Order canceled"
+
+review_created
+→ "Client Review recorded"
+
+review_updated
+→ "Client Review updated"
+
+suggestion_created
+→ "Suggestion recorded"
+
+suggestion_status
+new → rejected
+→ "Suggestion rejected"
+
+suggestion_status
+new → implemented
+→ "Suggestion implemented"
+
+payment_approved
+→ "Payment approved"
+
+etc.
+
+Never show raw event_type values to users.
+
+==================================================
+METADATA HANDLING
+==================================================
+
+Activity metadata is INTERNAL structured data.
+
+Use it to create readable sentences.
+
+DO NOT print:
+
+{"complaintId":3,"complaintNumber":"CMP-2609-004"}
+
+Instead:
+
+Complaint CMP-2609-004
+
+==================================================
+USER OBJECT HANDLING
+==================================================
+
+Never print:
+
+{"id":4,"name":"Soban Masood","role":"admin","title":"Agency Owner","avatar":null}
+
+Instead:
+
+Soban Masood
+Admin
+
+or simply:
+
+Soban Masood
+
+depending on context.
+
+==================================================
+TIMESTAMP FORMATTING
+==================================================
+
+Never print:
+
+2026-09-01T13:31:39.606Z
+
+Convert to:
+
+Sep 01, 2026 · 6:31 PM
+
+using the application's/user timezone rules.
+
+==================================================
+ENUM FORMATTING
+==================================================
+
+Never print:
+
+executive_career_branding
+
+Use:
+
+Executive Career Branding
+
+Never print:
+
+communication_issue
+
+Use:
+
+Communication Issue
+
+Never print:
+
+correction_revision
+
+Use:
+
+Correction / Revision
+
+Create reusable human-readable formatter mappings.
+
+==================================================
+NULL HANDLING
+==================================================
+
+Never print:
+
+null
+
+undefined
+
+[object Object]
+
+{}
+
+[]
+
+If optional information is absent:
+
+either omit the row
+
+or display:
+
+Not recorded
+
+only when the field is important.
+
+==================================================
+SECTION 12 — MANAGEMENT NOTES
+==================================================
+
+For ADMIN Client Case Report only:
+
+Include:
+
+INTERNAL MANAGEMENT NOTES
+
+For complaints/suggestions where notes exist.
+
+Each note:
+
+Note text
+
+Author
+
+Date
+
+Do not merge notes into one blob.
+
+Do NOT include Admin Notes in Designer/Support versions if their permissions do not allow them.
+
+==================================================
+SECTION 13 — REPORT FOOTER
+==================================================
+
+Footer on each page:
+
+Pixely Careers CRM
+Client Case Report · PX-2609-002
+Page X of Y
+
+Optional:
+
+Confidential Internal Record
+
+==================================================
+SECTION 14 — REPORT COVERAGE
+==================================================
+
+The Client Case Report must include all important available client/order data but should NOT include meaningless backend information.
+
+Include:
+
+Client
+Order
+Services
+Assignment
+Financials
+Payments
+Complaints
+Reviews
+Suggestions
+Case Timeline
+
+Do not include:
+
+database primary keys
+foreign key IDs
+raw metadata
+raw objects
+empty fields
+API structures
+
+==================================================
+SECTION 15 — REPORT SECTION ORDER
+==================================================
+
+Final exact order:
+
+1. Report Header
+2. Case Overview
+3. Client Information
+4. Order Information
+5. Services & Package
+6. Assignment
+7. Financial Summary
+8. Payment History / Evidence
+9. Complaints
+10. Client Review
+11. Client Suggestions
+12. Client Experience Summary
+13. Case Timeline
+14. Internal Management Notes — Admin only
+15. Report Footer
+
+==================================================
+SECTION 16 — PROFESSIONAL PAGINATION
+==================================================
+
+Do not split headings awkwardly from their content.
+
+Avoid:
+
+heading at bottom of page
+content beginning next page
+
+Keep a Complaint card together where possible.
+
+Keep Suggestion record together where possible.
+
+Use page-break rules.
+
+==================================================
+SECTION 17 — LONG TEXT
+==================================================
+
+Complaint descriptions
+Reviews
+Suggestions
+Resolution text
+Notes
+
+must:
+
+wrap correctly
+respect page margins
+use readable line height
+
+Do not shrink text to unreadable sizes simply to fit.
+
+==================================================
+SECTION 18 — EVIDENCE IMAGES
+==================================================
+
+Cloudinary screenshots should be embedded carefully.
+
+Max reasonable height.
+
+Maintain aspect ratio.
+
+Add caption.
+
+Do not stretch.
+
+If remote image cannot load:
+
+Show:
+
+Evidence available in CRM.
+
+Do NOT fail entire report generation.
+
+==================================================
+SECTION 19 — REPORT FILE NAME
+==================================================
+
+Use:
+
+Pixely_Careers_Client_Case_Report_PX-2609-002.pdf
+
+NOT:
+
+client-case-report-PX-2609-002 (2).pdf
+
+Use sanitized consistent naming.
+
+==================================================
+SECTION 20 — EXPORT BUTTON
+==================================================
+
+Keep:
+
+Client Case Report
+
+in Order Details.
+
+Optionally rename button:
+
+Export Case Report
+
+if this fits better.
+
+Do not confuse with main Orders Export PDF.
+
+==================================================
+SECTION 21 — REPORT PERMISSIONS
+==================================================
+
+ADMIN:
+
+Full report:
+- Reported By
+- internal Admin Notes
+- full management decisions
+
+DESIGNER:
+
+Do NOT include:
+- Complaint Reported By identity
+- Admin Notes
+- restricted management data
+
+SUPPORT:
+
+Respect existing permissions.
+
+Do not generate Admin report for everyone.
+
+==================================================
+SECTION 22 — REPORT DATA SERVICE
+==================================================
+
+Create a clean report DTO / data transformation layer.
+
+DO NOT pass raw database results directly to PDF renderer.
+
+Conceptually:
+
+Raw Supabase data
+↓
+buildClientCaseReportData(orderId, user)
+↓
+clean structured object
+↓
+PDF renderer
+
+Example clean object:
+
+{
+  caseOverview: {...},
+  client: {...},
+  order: {...},
+  services: [...],
+  assignment: {...},
+  financials: {...},
+  payments: [...],
+  complaints: [...],
+  review: {...},
+  suggestions: [...],
+  timeline: [...]
+}
+
+The PDF renderer should receive already-clean display-ready information.
+
+==================================================
+SECTION 23 — STRICT REPORT SANITIZATION
+==================================================
+
+Before PDF rendering, ensure no value is an object unless specifically handled.
+
+If a value is:
+
+object
+array
+JSON
+
+it MUST be transformed intentionally.
+
+Never rely on implicit JavaScript string conversion.
+
+==================================================
+SECTION 24 — REPORT FALLBACK
+==================================================
+
+If one module fails to load:
+
+Do not necessarily crash entire report.
+
+Example:
+
+Review exists but screenshot fails.
+
+Generate report and say:
+
+Review Evidence
+Unable to load evidence.
+
+But if core Order cannot be loaded:
+
+Do not generate incomplete report.
+
+Show meaningful error.
+
+==================================================
+SECTION 25 — ORDER DRAWER + REPORT CONSISTENCY
+==================================================
+
+The Client Case Report should reflect the same clean terminology used in the CRM.
+
+If CRM says:
+
+Confirmed
+
+PDF should not say:
+
+valid
+
+If CRM says:
+
+Dismissed
+
+PDF should not say:
+
+invalid
+
+If CRM says:
+
+Recorded By
+
+PDF should not say:
+
+added_by_user
+
+Maintain one content vocabulary.
+
+==================================================
+SECTION 26 — TEST USING CURRENT ORDER PX-2609-002
+==================================================
+
+Use current test Order:
+
+PX-2609-002
+
+Current available data includes items such as:
+
+Client:
+Ali Shamshad
+
+Designer:
+Safwan Masood
+
+Order Value:
+Rs8,000
+
+Advance:
+Rs4,000
+
+Remaining:
+Rs4,000
+
+Review:
+REV-2609-003
+5/5
+
+Complaint:
+CMP-2609-004
+
+Suggestions:
+SUG-2609-004
+SUG-2609-005
+
+Generate new report.
+
+EXPECTED:
+
+No raw JSON anywhere.
+
+No raw IDs such as:
+2
+4
+5
+
+unless they are business IDs.
+
+No raw timestamps.
+
+No null.
+
+No raw enum names.
+
+No activity metadata objects.
+
+==================================================
+SECTION 27 — VISUAL TEST
+==================================================
+
+Open PDF and check:
+
+Professional first page.
+
+Proper heading hierarchy.
+
+Clean tables/cards.
+
+Good spacing.
+
+Readable text.
+
+No giant raw text blocks.
+
+No overflow.
+
+No clipped content.
+
+No broken evidence.
+
+Page numbers correct.
+
+==================================================
+SECTION 28 — TEXT TEST
+==================================================
+
+Search generated PDF text for:
+
+"{"
+"}"
+"null"
+"undefined"
+"clientName\":"
+"orderNumber\":"
+"role\":"
+"avatar\":"
+"suggestion_status"
+"complaint_status"
+"executive_career_branding"
+
+EXPECTED:
+
+NONE of these raw backend patterns should appear.
+
+==================================================
+SECTION 29 — REGRESSION TEST
+==================================================
+
+After implementation test:
+
+Order Details
+Overview
+Activity
+Client Experience
+Complaint nested drawer
+Review nested drawer
+Suggestion nested drawer
+Payments
+Cloudinary
+Client Case Report
+General Orders Export PDF
+Role permissions
+Dashboard
+Supabase
+
+==================================================
+FINAL STANDARD
+==================================================
+
+The Order drawer is the operational record.
+
+The Client Case Report is the professional printable record.
+
+The PDF must read as though a professional operations manager prepared a case summary.
+
+It must NOT look like a database export.
+
+When management opens the report, they should be able to understand:
+
+WHO the client is.
+
+WHAT they purchased.
+
+WHO handled the work.
+
+HOW much they paid.
+
+WHAT happened during the Order.
+
+WHETHER complaints occurred.
+
+HOW complaints were handled.
+
+WHAT feedback the client provided.
+
+WHAT improvements they suggested.
+
+WHO performed important actions.
+
+WHEN those actions occurred.
+
+That is the complete purpose of the Client Case Report.
