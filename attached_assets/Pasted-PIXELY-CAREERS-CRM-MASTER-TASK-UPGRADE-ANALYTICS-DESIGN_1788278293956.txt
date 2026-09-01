@@ -1,0 +1,2155 @@
+PIXELY CAREERS CRM
+MASTER TASK:
+UPGRADE ANALYTICS + DESIGNER PERFORMANCE + CLIENT EXPERIENCE ANALYTICS
+AND FURTHER REFINE COMPLAINTS / REVIEWS / SUGGESTIONS UI
+
+==================================================
+CRITICAL CONTEXT
+==================================================
+
+The CRM already contains:
+
+- Orders
+- Order Details
+- Complaints
+- Complaint Details
+- Reviews
+- Suggestions
+- Feedback Page
+- Payments
+- Dashboard
+- Analytics
+- Designer Performance
+- Support Performance
+- Marketing Analytics
+- Activity History
+- Client Experience
+- Client Case Report
+- Cloudinary screenshots
+- Supabase
+- Role permissions
+- Nested drawer navigation
+
+DO NOT rebuild these modules.
+
+DO NOT reset Supabase.
+
+DO NOT rewrite authentication.
+
+DO NOT create duplicate Complaints/Reviews/Suggestions tables.
+
+DO NOT break Orders, Payments, Finance calculations, Cloudinary, Client Case Report, Notifications or existing permissions.
+
+This task is primarily:
+
+1. Improve the Analytics UI dramatically.
+2. Connect Complaints, Reviews and Suggestions into Designer Analytics.
+3. Build a useful Designer Detail experience.
+4. Remove ugly / technical / developer-like wording.
+5. Improve Complaints, Reviews and Suggestions pages further.
+6. Make Analytics useful for management decisions.
+7. Preserve all current business logic.
+
+==================================================
+FIRST — INSPECT EXISTING IMPLEMENTATION
+==================================================
+
+Before modifying anything inspect:
+
+Analytics Page
+
+Designer Performance tab
+
+Support Performance tab
+
+Marketing Analytics tab
+
+Complaints Page
+
+Feedback Reviews tab
+
+Feedback Suggestions tab
+
+Designer/user models
+
+Orders
+
+Order statuses
+
+Review relationships
+
+Complaint relationships
+
+Suggestion relationships
+
+Cancellation/refund data
+
+Current metrics queries
+
+Current month/year filtering
+
+Current PDF export
+
+Current role permissions
+
+Do not guess field names.
+
+Use actual existing schema.
+
+==================================================
+CURRENT ANALYTICS PROBLEMS
+==================================================
+
+Current Designer Analytics is too basic.
+
+It currently mostly shows:
+
+Designer
+
+Completed Today
+
+Completed This Month
+
+Total Completed
+
+Pending
+
+Canceled
+
+Average Daily Rate
+
+This is not enough to evaluate a Designer.
+
+We now have much richer data:
+
+Orders
+
+Complaints
+
+Confirmed Complaints
+
+Resolved Complaints
+
+Dismissed Complaints
+
+Refunded Complaints
+
+Reviews
+
+Average Rating
+
+Facebook Reviews
+
+WhatsApp Feedback
+
+Video Testimonials
+
+Suggestions
+
+Implemented Suggestions
+
+Canceled Orders
+
+Designer assignment history
+
+Use these properly.
+
+==================================================
+PART 1 — REDESIGN ANALYTICS PAGE
+==================================================
+
+Keep the existing main tabs:
+
+Designer Performance
+
+Marketing Analytics
+
+Support Performance
+
+But improve their design.
+
+The tabs should feel like clean application navigation rather than basic HTML buttons.
+
+Reuse existing CRM styling.
+
+Do not redesign the global theme.
+
+==================================================
+DESIGNER PERFORMANCE PAGE STRUCTURE
+==================================================
+
+Replace the current layout with:
+
+1. Page Header
+2. Period Controls
+3. Team Performance Summary
+4. Designer Performance Table
+5. Client Experience Summary
+6. Optional recent/high-priority insights
+7. Designer Detail Drawer
+
+Do NOT show two giant repetitive monthly/overall tables.
+
+==================================================
+PART 2 — HEADER
+==================================================
+
+Title:
+
+Designer Performance
+
+Subtitle:
+
+Track production output, client experience and quality indicators across the design team.
+
+Top right:
+
+Export PDF
+
+Keep month/year controls clean and aligned.
+
+==================================================
+REMOVE TECHNICAL TEXT
+==================================================
+
+Remove ugly text such as:
+
+"Approved orders only. Status locks at Ready/Delivered and cannot be reversed."
+
+This sounds like developer documentation.
+
+If explanation is required use a small info tooltip:
+
+"Completed metrics include orders marked Ready or Delivered."
+
+Do not put technical business logic in large visible subtitles.
+
+==================================================
+PART 3 — PERIOD FILTER
+==================================================
+
+Current:
+
+Month
+Year
+
+Keep these.
+
+Add:
+
+Period View
+
+Options:
+
+Selected Month
+All Time
+
+When Selected Month:
+
+Month/year filters apply.
+
+When All Time:
+
+Ignore month filter and show full historical values.
+
+Do not maintain two giant duplicate tables.
+
+Use ONE table whose numbers change according to selected period.
+
+==================================================
+PART 4 — TEAM PERFORMANCE SUMMARY CARDS
+==================================================
+
+At top show clean summary cards.
+
+For Selected Month:
+
+Completed Orders
+
+Active / Pending Orders
+
+Canceled Orders
+
+Average Client Rating
+
+Reviews Received
+
+Confirmed Complaints
+
+Suggestions Recorded
+
+Refunded Orders
+
+Example:
+
+Completed Orders
+46
+
+Average Rating
+4.7 / 5
+
+Confirmed Complaints
+3
+
+Reviews
+29
+
+Use real data.
+
+Do not display fabricated metrics.
+
+==================================================
+CARD DESIGN
+==================================================
+
+Use current CRM metric card design.
+
+Same:
+
+height
+border
+icon
+spacing
+font
+hover
+
+Avoid 10 giant cards in one line.
+
+Use responsive grid.
+
+Desktop:
+
+4 cards per row or appropriate current grid.
+
+==================================================
+PART 5 — DESIGNER PERFORMANCE TABLE
+==================================================
+
+Replace the current limited table.
+
+Recommended main columns:
+
+Designer
+
+Completed
+
+Active
+
+Canceled
+
+Avg Rating
+
+Reviews
+
+Confirmed Complaints
+
+Suggestions
+
+Actions / View
+
+For desktop, if width permits also include:
+
+Refunded
+
+Do not overcrowd.
+
+==================================================
+IMPORTANT COMPLAINT METRIC
+==================================================
+
+Designer negative performance must use:
+
+CONFIRMED Complaints
+
+NOT:
+
+All Complaints Filed.
+
+Dismissed Complaints should NOT harm Designer performance.
+
+Example:
+
+Complaints filed = 8
+
+Confirmed = 2
+
+Dismissed = 6
+
+Performance metric should display:
+
+2 Confirmed Complaints
+
+not 8 complaints.
+
+==================================================
+PART 6 — CLICK DESIGNER FOR FULL DETAILS
+==================================================
+
+Designer name / row should be clickable.
+
+Open a right-side drawer using the SAME drawer design as:
+
+Order Details
+Complaint Details
+Review Details
+Suggestion Details
+
+Name:
+
+Designer Performance Details
+
+Do NOT navigate to a completely separate ugly page.
+
+==================================================
+PART 7 — DESIGNER DETAIL DRAWER
+==================================================
+
+The Designer Detail Drawer should contain tabs:
+
+Overview
+
+Orders
+
+Client Experience
+
+Do not make one giant scroll of unrelated data.
+
+==================================================
+DESIGNER DETAILS — HEADER
+==================================================
+
+Show:
+
+Designer Name
+
+Role / Title
+
+Selected Period
+
+Example:
+
+Muhammad Anas
+
+Senior Graphic Designer
+
+September 2026
+
+Optional profile avatar/initial.
+
+==================================================
+DESIGNER DETAILS — OVERVIEW
+==================================================
+
+Show a compact KPI grid.
+
+Completed Orders
+
+Active Orders
+
+Canceled Orders
+
+Refunded Orders
+
+Average Client Rating
+
+Reviews Received
+
+Confirmed Complaints
+
+Suggestions
+
+==================================================
+IMPORTANT — DO NOT CREATE RANDOM SCORE YET
+==================================================
+
+Do NOT invent a 78/100 performance score.
+
+The final Designer Experience Score formula has not been formally approved.
+
+For now show transparent raw metrics.
+
+Future composite scoring will be added separately.
+
+==================================================
+PART 8 — DESIGNER DETAILS: ORDERS TAB
+==================================================
+
+Show Order performance for selected period.
+
+Metrics:
+
+Completed Today
+
+Completed Selected Month
+
+Total Completed / selected period
+
+Active
+
+Canceled
+
+Refunded
+
+Average Completion Rate if this can be calculated from genuine data.
+
+Do NOT fabricate on-time delivery if delivery deadline data is unreliable.
+
+==================================================
+ORDERS LIST
+==================================================
+
+Show recent/relevant Orders:
+
+Order ID
+
+Client
+
+Services / Package
+
+Status
+
+Created Date
+
+Completion Date if available
+
+Click Order ID:
+
+Open canonical Order Details drawer.
+
+Use existing nested drawer navigation.
+
+==================================================
+PART 9 — DESIGNER DETAILS: CLIENT EXPERIENCE
+==================================================
+
+THIS IS IMPORTANT.
+
+Show:
+
+Average Client Rating
+
+Total Reviews
+
+WhatsApp Feedback
+
+Facebook Reviews
+
+Video Testimonials
+
+Confirmed Complaints
+
+Resolved Complaints
+
+Refunded Complaints
+
+Dismissed Complaints
+
+Suggestions Recorded
+
+Implemented Suggestions
+
+Rejected Suggestions
+
+==================================================
+CLIENT EXPERIENCE SUMMARY
+==================================================
+
+Example:
+
+Average Rating
+4.8/5
+
+Reviews
+18
+
+Confirmed Complaints
+1
+
+Resolved Complaints
+1
+
+Suggestions
+4
+
+Implemented Suggestions
+2
+
+This immediately shows management how the Designer is performing with clients.
+
+==================================================
+PART 10 — DESIGNER REVIEWS LIST
+==================================================
+
+Inside Client Experience:
+
+Recent Reviews
+
+Columns:
+
+Review ID
+
+Client
+
+Order ID
+
+Rating
+
+Channels
+
+Date
+
+Click Review:
+
+Open canonical Review Detail drawer.
+
+The UI must be EXACTLY the same Review Detail component used on Feedback Page.
+
+==================================================
+PART 11 — DESIGNER COMPLAINTS LIST
+==================================================
+
+Show:
+
+Complaint ID
+
+Client
+
+Order
+
+Category
+
+Status
+
+Date
+
+Only management/admin view should show complaint reporter identity.
+
+Click Complaint:
+
+Open canonical Complaint Detail component.
+
+==================================================
+PART 12 — DESIGNER SUGGESTIONS LIST
+==================================================
+
+Show:
+
+Suggestion ID
+
+Client
+
+Order
+
+Category
+
+Status
+
+Date
+
+Click:
+
+Open canonical Suggestion Details component.
+
+==================================================
+PART 13 — CLIENT EXPERIENCE METRIC LOGIC
+==================================================
+
+Review Avg Rating:
+
+Only use reviews with an actual numerical rating.
+
+Ignore:
+
+Not Rated.
+
+==================================================
+CONFIRMED COMPLAINTS
+==================================================
+
+Count statuses equivalent to:
+
+Confirmed
+
+and where necessary Complaints that later became:
+
+Resolved
+
+Refunded
+
+because those were originally Confirmed cases.
+
+Do NOT count Dismissed as confirmed.
+
+==================================================
+RESOLVED COMPLAINTS
+==================================================
+
+Count final status:
+
+Resolved.
+
+==================================================
+REFUNDED COMPLAINTS
+==================================================
+
+Count:
+
+Refunded.
+
+==================================================
+SUGGESTIONS
+==================================================
+
+Statuses:
+
+New
+
+Implemented
+
+Rejected
+
+No:
+
+Under Review
+Accepted
+
+==================================================
+PART 14 — DESIGNER TABLE VISUAL IMPROVEMENT
+==================================================
+
+Current table looks too plain.
+
+Improve:
+
+Row height
+
+Typography
+
+Avatar
+
+Hover
+
+Clickable Designer
+
+Metric alignment
+
+Status emphasis
+
+Do not make every number bright blue.
+
+Use colors only when they communicate meaning.
+
+Example:
+
+Confirmed Complaint > 0:
+warning color
+
+Average Rating:
+star icon + rating
+
+Canceled:
+subtle warning
+
+Completed:
+positive color
+
+==================================================
+PART 15 — DESIGNER DETAIL SUMMARY VISUAL
+==================================================
+
+Do not make the drawer look like 20 identical cards.
+
+Visual hierarchy:
+
+Primary:
+
+Completed
+Average Rating
+Confirmed Complaints
+Reviews
+
+Secondary:
+
+Active
+Canceled
+Suggestions
+Refunded
+
+Use spacing and typography, not excessive color.
+
+==================================================
+PART 16 — TEAM COMPARISON
+==================================================
+
+Add a simple:
+
+Team Comparison
+
+section only if there are at least 2 Designers.
+
+Do NOT create complicated charts yet.
+
+Could show:
+
+Designer
+Completed
+Avg Rating
+Confirmed Complaints
+Reviews
+
+Sortable table.
+
+Do not artificially rank solely by completed orders.
+
+==================================================
+PART 17 — NO FAKE RANKING
+==================================================
+
+Do NOT display:
+
+#1 Designer
+
+Best Designer
+
+Top Performer
+
+unless there is an approved scoring system.
+
+For now present factual comparisons.
+
+==================================================
+PART 18 — ANALYTICS CLIENT EXPERIENCE SECTION
+==================================================
+
+Add section beneath Designer Performance:
+
+CLIENT EXPERIENCE — TEAM SUMMARY
+
+Show:
+
+Total Reviews
+
+Average Team Rating
+
+Confirmed Complaints
+
+Resolved Complaints
+
+Refund Cases
+
+Suggestions
+
+Implemented Suggestions
+
+Facebook Reviews
+
+Video Testimonials
+
+All based on selected period.
+
+==================================================
+PART 19 — CLIENT EXPERIENCE TREND
+==================================================
+
+If chart library already exists and adding this is low-risk:
+
+Create ONE clean trend chart.
+
+Options:
+
+Average Rating by Month
+
+or:
+
+Reviews / Confirmed Complaints by Month
+
+Do not add 10 useless charts.
+
+If charting infrastructure is unreliable:
+
+Skip chart and use metrics/tables.
+
+==================================================
+PART 20 — COMPLAINTS PAGE FURTHER IMPROVEMENT
+==================================================
+
+Audit Complaints Management again.
+
+Keep current business workflow:
+
+New
+Confirmed
+Dismissed
+Resolved
+Refunded
+
+Top metrics:
+
+All Complaints
+
+New
+
+Confirmed
+
+Dismissed
+
+Resolved
+
+Refunded
+
+If space is limited:
+
+Use 5 cards and provide New through status filter.
+
+But ensure status overview remains clear.
+
+==================================================
+COMPLAINT TABLE
+==================================================
+
+Improve columns:
+
+Complaint ID
+
+Date
+
+Client
+
+Order ID
+
+Designer
+
+Category
+
+Status
+
+Reported By — ADMIN ONLY
+
+Click Complaint ID:
+Open canonical Complaint Details drawer.
+
+Click Order ID:
+Open Order Details.
+
+==================================================
+COMPLAINT FILTERS
+==================================================
+
+Filters:
+
+Month
+
+Year
+
+Status
+
+Category
+
+Designer — Admin
+
+Search
+
+Do not show Designer filter to Designer role when unnecessary.
+
+==================================================
+COMPLAINT PAGE UX
+==================================================
+
+Make filters and search visually consistent with:
+
+Orders
+
+Feedback
+
+Payments
+
+Use same positioning and dimensions.
+
+==================================================
+PART 21 — REVIEWS PAGE FURTHER IMPROVEMENT
+==================================================
+
+Reviews Page is a RECORDING/ANALYSIS page, not workflow.
+
+Top metrics:
+
+All Reviews
+
+Average Rating
+
+WhatsApp Feedback
+
+Facebook Reviews
+
+Video Testimonials
+
+These are good.
+
+Improve alignment and visual hierarchy.
+
+==================================================
+REVIEW TABLE
+==================================================
+
+Columns:
+
+Review ID
+
+Date
+
+Client
+
+Designer
+
+Order ID
+
+Rating
+
+Channels
+
+Recorded By — Admin where appropriate
+
+Use star/rating display cleanly.
+
+==================================================
+CHANNEL BADGES
+==================================================
+
+Current WhatsApp/Facebook/Video badges are okay but refine them.
+
+Only display channels that are actually received.
+
+Do not show three badges automatically when values are false.
+
+==================================================
+REVIEW ROW CLICK
+==================================================
+
+Review ID:
+canonical Review drawer.
+
+Order ID:
+canonical Order drawer.
+
+==================================================
+PART 22 — SUGGESTIONS PAGE FURTHER IMPROVEMENT
+==================================================
+
+Statuses:
+
+New
+
+Implemented
+
+Rejected
+
+Top cards:
+
+All Suggestions
+
+New
+
+Implemented
+
+Rejected
+
+No:
+
+Under Review
+
+Accepted
+
+==================================================
+SUGGESTION TABLE
+==================================================
+
+Columns:
+
+Suggestion ID
+
+Date
+
+Client
+
+Designer
+
+Order ID
+
+Category
+
+Status
+
+Recorded By — Admin where useful
+
+Click IDs appropriately.
+
+==================================================
+PART 23 — FEEDBACK PAGE TAB DESIGN
+==================================================
+
+Keep:
+
+Reviews
+Suggestions
+
+Improve tab clarity.
+
+Selected tab should be obvious without oversized visual treatment.
+
+Keep page title:
+
+Client Feedback
+
+Subtitle:
+
+Track client reviews, testimonials and improvement suggestions.
+
+==================================================
+PART 24 — ADD DESIGNER FILTER TO FEEDBACK
+==================================================
+
+Admin:
+
+All Designers
+
+Designer:
+
+Do not show unnecessary All Designers selector.
+
+Designer should automatically see authorized data.
+
+Support:
+
+Follow existing permission rules.
+
+==================================================
+PART 25 — CROSS-CONNECTION FROM ANALYTICS
+==================================================
+
+Analytics should not become a dead end.
+
+Click:
+
+Review metric
+→ Feedback / Reviews filtered to Designer.
+
+Click:
+
+Confirmed Complaints
+→ Complaints filtered to Designer + confirmed.
+
+Click:
+
+Suggestions
+→ Feedback / Suggestions filtered to Designer.
+
+Click:
+
+Completed Orders
+→ Orders filtered to Designer.
+
+==================================================
+PART 26 — DESIGNER DRILL-DOWN URL STATE
+==================================================
+
+If safe support:
+
+/stats?tab=designer&designer=<USER_ID>&month=9&year=2026
+
+Opening URL should restore:
+
+Designer Performance tab
+
+Selected Designer detail drawer
+
+Selected month/year
+
+Do not make routing overly complicated if current architecture does not support it easily.
+
+==================================================
+PART 27 — ANALYTICS PDF EXPORT
+==================================================
+
+Current Export PDF must be improved.
+
+Do NOT export a screenshot of the dark CRM.
+
+Generate clean white PDF.
+
+Name:
+
+Pixely_Careers_Designer_Performance_September_2026.pdf
+
+==================================================
+DESIGNER ANALYTICS REPORT
+==================================================
+
+Include:
+
+Period
+
+Team Summary
+
+Designer Performance Table
+
+Client Experience Summary
+
+Per Designer:
+
+Completed
+
+Active
+
+Canceled
+
+Reviews
+
+Average Rating
+
+Confirmed Complaints
+
+Suggestions
+
+Do not include raw database JSON.
+
+==================================================
+PART 28 — DESIGNER INDIVIDUAL EXPORT
+==================================================
+
+Inside Designer Detail drawer optionally add:
+
+Export Designer Report
+
+This report may contain:
+
+Designer
+
+Period
+
+Orders Summary
+
+Client Experience Summary
+
+Reviews
+
+Complaints
+
+Suggestions
+
+Do not implement if it significantly risks this task.
+
+Prioritize the Analytics UI first.
+
+==================================================
+PART 29 — REMOVE REDUNDANT OVERALL SECTION
+==================================================
+
+Current page has:
+
+Monthly Designer Performance
+
+then another giant:
+
+Overall Designer Performance
+
+This makes the page repetitive.
+
+Replace with:
+
+Period View = Selected Month / All Time
+
+ONE primary performance table.
+
+If management wants all-time view:
+
+switch Period View to All Time.
+
+This will make the page far cleaner.
+
+==================================================
+PART 30 — CURRENT MONTH LABEL
+==================================================
+
+Current text like:
+
+"0 completed orders"
+
+beside month/year filters is unnecessary and visually weak.
+
+Replace it with something meaningful or remove it.
+
+The Completed Orders metric card already communicates this.
+
+==================================================
+PART 31 — PAGE SPACING
+==================================================
+
+Current Analytics contains excessive vertical empty space.
+
+Tighten:
+
+top padding
+
+section gaps
+
+card margins
+
+table margins
+
+But retain breathable professional layout.
+
+==================================================
+PART 32 — TABLE EMPTY STATES
+==================================================
+
+Instead of rows full of 0s being visually dominant:
+
+When no data exists for selected period show:
+
+"No completed orders were recorded for this period."
+
+But still show Designers where useful for comparison.
+
+Use judgment based on table purpose.
+
+==================================================
+PART 33 — DASHBOARD CONNECTION
+==================================================
+
+The Dashboard and Analytics should use the same metric definitions.
+
+Example:
+
+Dashboard Confirmed Complaints
+
+must equal Analytics Confirmed Complaints for the same filter/time period.
+
+Do not implement separate conflicting queries.
+
+==================================================
+PART 34 — CENTRALIZED ANALYTICS SERVICE
+==================================================
+
+Where technically reasonable create/extend a centralized metrics service.
+
+Conceptually:
+
+getDesignerPerformance({
+  designerId,
+  startDate,
+  endDate
+})
+
+returns:
+
+completedOrders
+activeOrders
+canceledOrders
+refundedOrders
+averageRating
+reviews
+confirmedComplaints
+resolvedComplaints
+dismissedComplaints
+suggestions
+implementedSuggestions
+
+Do not duplicate calculations independently across 5 pages.
+
+==================================================
+PART 35 — IMPORTANT FINANCE / CANCELLATION RULES
+==================================================
+
+Do NOT change previously approved cancellation accounting.
+
+Canceled + refunded:
+
+Collected contribution = 0
+Remaining = 0
+
+Canceled + advance retained:
+
+Collected contribution = retained advance
+Remaining = 0
+
+Analytics canceled/refunded metrics should reflect actual state.
+
+Do not alter historical amounts.
+
+==================================================
+PART 36 — ROLE PERMISSIONS IN ANALYTICS
+==================================================
+
+ADMIN:
+
+Can see team-wide Designer Analytics.
+
+Can open every Designer detail.
+
+Can see full Complaint management information where normal permissions permit.
+
+==================================================
+DESIGNER
+==================================================
+
+If Designer is allowed Analytics:
+
+They should see primarily THEIR OWN performance.
+
+Do not expose all Designers' confidential performance unless existing business rules explicitly permit it.
+
+Designer can view:
+
+own Orders
+own Reviews
+own Suggestions
+own complaint metrics according to existing Complaint permission rules
+
+==================================================
+SUPPORT
+==================================================
+
+Support should not receive full confidential Designer Analytics unless current business policy allows it.
+
+Support has separate:
+
+Support Performance
+
+tab.
+
+==================================================
+PART 37 — CANONICAL DETAILS COMPONENTS
+==================================================
+
+This remains mandatory.
+
+Complaint opened from Analytics:
+
+same ComplaintDetails component.
+
+Review from Analytics:
+
+same ReviewDetails component.
+
+Suggestion from Analytics:
+
+same SuggestionDetails component.
+
+Order:
+
+same OrderDetails.
+
+Do not create Analytics-specific mini detail pages.
+
+==================================================
+PART 38 — DETAIL NAVIGATION STACK
+==================================================
+
+Example:
+
+Analytics
+→ Designer Details
+→ Review Details
+
+Back:
+Designer Details.
+
+Analytics remains background.
+
+Same:
+
+Designer → Complaint → Back
+
+Designer → Order → Back
+
+Do not navigate away unnecessarily.
+
+==================================================
+PART 39 — STATUS COLOR CONSISTENCY
+==================================================
+
+Use same status colors everywhere.
+
+Complaint:
+
+New
+Confirmed
+Dismissed
+Resolved
+Refunded
+
+Suggestion:
+
+New
+Implemented
+Rejected
+
+Order statuses:
+
+existing canonical colors.
+
+Do not use different colors for the same status on different pages.
+
+==================================================
+PART 40 — CONTENT WRITING
+==================================================
+
+Remove software-like language.
+
+Use clear business wording.
+
+Bad:
+
+"All-time performance — approved orders only. Status locks at Ready/Delivered and cannot be reversed."
+
+Better:
+
+"Performance based on completed client orders."
+
+Bad:
+
+"Avg Daily Rate"
+
+If it means orders completed/day, use:
+
+Average Daily Output
+
+or:
+
+Avg. Orders / Day
+
+Use labels normal staff can understand.
+
+==================================================
+PART 41 — IMPROVE DESIGNER TABLE LABELS
+==================================================
+
+Recommended:
+
+Designer
+
+Completed
+
+Active
+
+Canceled
+
+Avg. Rating
+
+Reviews
+
+Confirmed Complaints
+
+Suggestions
+
+instead of:
+
+Completed Today
+Completed This Month
+Total Completed
+Pending
+Cancelled
+Avg Daily Rate
+
+Selected-period filters already define the timeframe.
+
+==================================================
+PART 42 — TOOLTIP DEFINITIONS
+==================================================
+
+Use small info icons where useful.
+
+Example:
+
+Confirmed Complaints:
+
+"Complaints reviewed by management and confirmed as genuine."
+
+Avg Rating:
+
+"Average numerical client rating recorded during the selected period."
+
+Do not put long paragraphs directly under section titles.
+
+==================================================
+PART 43 — ANALYTICS SEARCH
+==================================================
+
+Add small Designer search if team becomes larger.
+
+Search:
+
+Designer name.
+
+Do not build if current team is only a few people and it makes UI cluttered.
+
+Can be optional.
+
+==================================================
+PART 44 — SORTING
+==================================================
+
+Allow table sorting by:
+
+Completed
+
+Average Rating
+
+Reviews
+
+Confirmed Complaints
+
+Canceled
+
+Do not automatically rank Designers.
+
+Sorting is enough.
+
+==================================================
+PART 45 — CLIENT EXPERIENCE QUALITY INDICATORS
+==================================================
+
+Within Designer Detail, use raw transparent metrics.
+
+DO NOT penalize Suggestions.
+
+Suggestions are improvement information, not inherently negative.
+
+Do NOT treat:
+
+Rejected Suggestion
+
+as Designer failure.
+
+Complaints:
+
+only Confirmed should be quality concern.
+
+Dismissed should be informational.
+
+==================================================
+PART 46 — REVISION DATA
+==================================================
+
+If reliable revision data already exists:
+
+Designer detail may include:
+
+Revision Rounds
+
+Designer-error revisions
+
+Client-preference revisions
+
+ONLY if the data is currently tracked correctly.
+
+Do NOT infer it from text.
+
+If not available:
+
+Do not add metric yet.
+
+==================================================
+PART 47 — FUTURE-READY PERFORMANCE SCORE
+==================================================
+
+Prepare Analytics structure so a future:
+
+Designer Experience Score
+
+can later be added.
+
+But do NOT calculate it yet.
+
+Future score may use:
+
+Quality
+Client Rating
+Confirmed Complaint Rate
+On-Time Delivery
+Review Collection
+Response Time
+
+Do not hardcode weights now.
+
+==================================================
+PART 48 — SUPPORT PERFORMANCE VISUAL CONSISTENCY
+==================================================
+
+Do not deeply redesign Support business metrics unless required.
+
+But ensure Support Performance page uses same:
+
+Header
+
+Period selectors
+
+Metric cards
+
+Tables
+
+Drawer styles
+
+Spacing
+
+as Designer Performance.
+
+Do not leave Support page looking like an old system.
+
+==================================================
+PART 49 — MARKETING ANALYTICS VISUAL CONSISTENCY
+==================================================
+
+Same principle.
+
+Do not change Marketing formulas unless required.
+
+But make tabs/pages visually cohesive.
+
+==================================================
+PART 50 — ANALYTICS NAVIGATION
+==================================================
+
+Current tabs:
+
+Designer Performance
+Marketing Analytics
+Support Performance
+
+Keep them.
+
+Make selected state cleaner.
+
+Use consistent widths/padding.
+
+Do not allow tab labels to dominate page.
+
+==================================================
+PART 51 — MOBILE / TABLET
+==================================================
+
+Analytics must remain usable.
+
+Desktop:
+
+cards + full table.
+
+Tablet:
+
+cards wrap.
+
+Mobile:
+
+cards one/two columns.
+
+Designer table can horizontally scroll or convert to compact cards using existing responsive pattern.
+
+Drawer:
+full width on mobile.
+
+==================================================
+PART 52 — LOADING STATES
+==================================================
+
+Add professional loading skeletons.
+
+Do not flash:
+
+0
+0
+0
+
+before metrics load.
+
+Metrics should distinguish:
+
+Loading
+
+from actual zero.
+
+==================================================
+PART 53 — ERROR STATES
+==================================================
+
+Example:
+
+"Unable to load Designer performance. Please try again."
+
+Do not display raw Supabase errors.
+
+==================================================
+PART 54 — PERFORMANCE
+==================================================
+
+Do not execute separate database query for every Designer × every metric if avoidable.
+
+Avoid N+1 query architecture.
+
+Use aggregated/server-side queries/RPCs where appropriate.
+
+Analytics should remain fast as the team grows.
+
+==================================================
+PART 55 — DATABASE SAFETY
+==================================================
+
+Most of this task should not require major schema changes.
+
+Do not add unnecessary tables.
+
+Use existing:
+
+Orders
+Reviews
+Complaints
+Suggestions
+Users
+
+If indexes are needed for analytics:
+
+add safely.
+
+Potential useful indexes:
+
+orders.assigned_designer_id
+orders.created_at
+orders.status
+
+reviews.review_for_designer_id
+reviews.created_at
+
+complaints.complaint_against_user_id
+complaints.status
+complaints.created_at
+
+suggestions.related_designer_id
+suggestions.created_at
+
+Check existing indexes first.
+
+==================================================
+PART 56 — TEST CURRENT DESIGNERS
+==================================================
+
+Use current existing Designers visible in CRM such as:
+
+Muhammad Hamza
+Muhammad Anas
+Safwan Masood
+
+Test Analytics with actual records.
+
+Do not hardcode these names.
+
+==================================================
+PART 57 — TEST MONTH FILTER
+==================================================
+
+September 2026.
+
+Expected:
+
+Only relevant September metrics.
+
+Switch month.
+
+Expected:
+
+all cards
+table
+designer drawer
+client experience
+
+update consistently.
+
+==================================================
+PART 58 — TEST ALL TIME
+==================================================
+
+Select:
+
+All Time.
+
+Expected:
+
+full history.
+
+No month-related wording remains.
+
+==================================================
+PART 59 — TEST DESIGNER DETAILS
+==================================================
+
+Click Muhammad Anas.
+
+Expected:
+
+Designer drawer opens.
+
+Overview metrics.
+
+Orders tab.
+
+Client Experience.
+
+Click Review.
+
+Same canonical Review drawer.
+
+Back:
+
+Designer detail.
+
+==================================================
+PART 60 — TEST COMPLAINT METRICS
+==================================================
+
+If Designer has:
+
+2 Dismissed
+
+1 Confirmed
+
+1 Resolved
+
+Confirmed Complaint quality metric should correctly reflect confirmed/valid underlying cases according to current lifecycle logic.
+
+Do not simply count every Complaint row.
+
+==================================================
+PART 61 — TEST REVIEWS
+==================================================
+
+Average Rating:
+
+only rated Reviews.
+
+All review counts must match Feedback Page.
+
+==================================================
+PART 62 — TEST SUGGESTIONS
+==================================================
+
+Suggestion counts match Feedback Page.
+
+Statuses:
+
+New
+Implemented
+Rejected
+
+No legacy Accepted/Under Review appears.
+
+==================================================
+PART 63 — TEST CANONICAL DETAILS
+==================================================
+
+Open same Complaint from:
+
+Complaints Page
+
+Analytics → Designer
+
+Order → Client Experience
+
+Expected:
+
+SAME Complaint Details component.
+
+Do same for Reviews/Suggestions.
+
+==================================================
+PART 64 — EXPORT PDF TEST
+==================================================
+
+Analytics export:
+
+Clean white PDF.
+
+No dark webpage screenshot.
+
+No raw JSON.
+
+No overflow.
+
+No technical enum names.
+
+Correct period.
+
+Correct Designer metrics.
+
+==================================================
+PART 65 — REGRESSION TEST
+==================================================
+
+After implementation test:
+
+Dashboard
+
+Orders
+
+Order Details
+
+Payments
+
+Complaints
+
+Complaint Details
+
+Feedback
+
+Reviews
+
+Review Details
+
+Suggestions
+
+Suggestion Details
+
+Analytics
+
+Designer Details
+
+Support Performance
+
+Marketing Analytics
+
+Notifications
+
+Client Case Report
+
+Cloudinary
+
+Supabase
+
+Role permissions
+
+Finance metrics
+
+Build
+
+Console
+
+Server logs
+
+==================================================
+PART 66 — FINAL UI AUDIT
+==================================================
+
+Before finishing, visually compare:
+
+Orders
+Complaints
+Feedback
+Analytics
+Payments
+Dashboard
+
+They should feel like ONE application.
+
+Check:
+
+headings
+
+spacing
+
+cards
+
+tables
+
+filters
+
+drawers
+
+typography
+
+status chips
+
+empty states
+
+hover states
+
+buttons
+
+Do not make random global design changes.
+
+==================================================
+PART 67 — FINAL REPLIT REPORT
+==================================================
+
+After implementation report:
+
+1. Analytics components changed
+2. Designer metrics added
+3. Client Experience metrics added
+4. Designer Detail drawer added/improved
+5. Complaint page improvements
+6. Review page improvements
+7. Suggestion page improvements
+8. Cross-navigation added
+9. Permission checks
+10. Query/aggregation changes
+11. PDF changes
+12. Tests completed
+13. Performance optimizations
+14. Any limitations
+
+Explicitly confirm:
+
+Complaint metrics use Confirmed cases rather than all filed complaints for quality indicators.
+
+Dismissed complaints do not negatively count against Designers.
+
+Reviews have no workflow/progress system.
+
+Suggestions use only New / Implemented / Rejected.
+
+Canonical Complaint/Review/Suggestion components are reused everywhere.
+
+Existing data was preserved.
+
+==================================================
+FINAL PRODUCT PRINCIPLE
+==================================================
+
+ANALYTICS SHOULD ANSWER:
+
+How much work is each Designer completing?
+
+What is currently pending?
+
+How satisfied are their clients?
+
+How many Reviews are they receiving?
+
+How many genuine/confirmed complaints are occurring?
+
+How many cases were resolved or refunded?
+
+What Suggestions are being recorded?
+
+What specific Orders/Reviews/Complaints are behind those numbers?
+
+Do not make Analytics a collection of zeros and tables.
+
+Make it a MANAGEMENT TOOL.
+
+The user should be able to start at:
+
+Designer Performance
+
+then:
+
+click a Designer
+
+then:
+
+see their work + client experience
+
+then:
+
+click an Order / Complaint / Review / Suggestion
+
+and inspect the exact underlying record without leaving the Analytics workspace.
+
+Everything must be connected.
