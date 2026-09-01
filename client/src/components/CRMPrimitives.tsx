@@ -16,8 +16,8 @@ export function MetricCard({ label, value, note, icon: Icon = Activity, tone = "
   label: string; value: string | number; note?: string; icon?: React.ElementType; tone?: "cyan" | "success" | "warning" | "danger"; onClick?: () => void; className?: string; testId?: string;
 }) {
   const toneClass = { cyan: "text-cyan-300", success: "text-emerald-300", warning: "text-amber-300", danger: "text-rose-300" }[tone];
-  const content = <><div className="flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-[.13em] text-slate-500">{label}</span><Icon className={cn("h-4 w-4", toneClass)} /></div><p className="mt-2 text-[1.45rem] font-semibold tracking-tight text-slate-100">{value}</p>{note && <p className="mt-0.5 text-[11px] text-slate-500">{note}</p>}</>;
-  const classes = cn("glass-panel w-full rounded-lg p-3.5 text-left transition-colors hover:border-cyan-400/30", onClick && "cursor-pointer", className);
+  const content = <><div className="flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-[.13em] text-slate-500">{label}</span><Icon aria-hidden="true" className={cn("h-[15px] w-[15px] stroke-[1.7]", toneClass)} /></div><p className="mt-2 text-[1.4rem] font-semibold tracking-tight text-slate-100">{value}</p>{note && <p className="mt-0.5 text-[11px] text-slate-500">{note}</p>}</>;
+  const classes = cn("glass-panel w-full rounded-[.42rem] p-3.5 text-left transition-colors hover:border-cyan-400/30", onClick && "cursor-pointer focus-visible:ring-2 focus-visible:ring-ring", className);
   return onClick ? <button type="button" onClick={onClick} className={classes} data-testid={testId}>{content}</button> : <div className={classes} data-testid={testId}>{content}</div>;
 }
 
@@ -30,5 +30,5 @@ export function SearchInput({ value, onChange, placeholder = "Search records" }:
 }
 
 export function EmptyState({ title, description, icon: Icon = Activity }: { title: string; description?: string; icon?: React.ElementType }) {
-  return <div className="flex flex-col items-center justify-center px-5 py-12 text-center"><Icon className="mb-3 h-5 w-5 text-cyan-300/70" /><p className="text-sm font-medium text-slate-300">{title}</p>{description && <p className="mt-1 max-w-sm text-xs text-slate-500">{description}</p>}</div>;
+  return <div className="flex flex-col items-center justify-center px-5 py-12 text-center"><Icon className="mb-3 h-5 w-5 stroke-[1.5] text-slate-500" /><p className="text-sm font-medium text-slate-300">{title}</p>{description && <p className="mt-1 max-w-sm text-xs text-slate-500">{description}</p>}</div>;
 }

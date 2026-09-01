@@ -95,17 +95,17 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   };
 
   return (
-    <aside className="flex flex-col w-64 bg-[hsl(222,39%,9%)] border-r border-slate-800/80 h-screen">
-      <div className="p-5">
-        <div className="flex items-center gap-3 mb-7">
-          <img src={logoUrl} alt="PixelCRM" className="h-8 w-auto" />
-          <h1 className="text-[15px] font-bold font-display tracking-tight text-slate-100 flex-1">Pixely_CRM</h1>
+    <aside className="flex flex-col w-64 bg-[hsl(222,34%,9%)] border-r border-border h-[100dvh]">
+      <div className="p-4">
+        <div className="flex items-center gap-3 mb-8">
+          <img src={logoUrl} alt="PixelCRM" className="h-7 w-auto" />
+          <h1 className="text-[14px] font-semibold tracking-tight text-slate-100 flex-1">Pixely_CRM</h1>
           <NotificationBell align="sidebar" />
         </div>
 
         <div className="flex flex-col gap-6">
           <div className="space-y-1">
-            <p className="px-3 text-[10px] font-bold text-slate-600 uppercase tracking-[.16em] mb-2">Workspace</p>
+             <p className="px-3 text-[10px] font-bold text-slate-600 uppercase tracking-[.16em] mb-2">Workspace</p>
             {allowedLinks.map((link) => {
               const Icon = link.icon;
               const isActive = location === link.href;
@@ -117,13 +117,13 @@ export function Sidebar({ onNavigate }: SidebarProps) {
                   href={link.href} 
                   onClick={handleLinkClick}
                   className={cn(
-                    "flex items-center gap-3 px-3 py-2 rounded-md text-[13px] font-medium transition-colors duration-200 group",
+                     "flex items-center gap-3 px-3 py-2 rounded-[.38rem] text-[13px] font-medium transition-colors duration-200 group",
                     isActive 
                       ? "bg-cyan-400/10 text-cyan-200 border border-cyan-400/10"
                       : "text-slate-400 hover:text-slate-100 hover:bg-slate-900/80"
                   )}
                 >
-                   <Icon className={cn("w-4 h-4", isActive ? "text-cyan-300" : "text-slate-500 group-hover:text-slate-300")} />
+                    <Icon className={cn("w-[15px] h-[15px] stroke-[1.7]", isActive ? "text-cyan-300" : "text-slate-500 group-hover:text-slate-300")} />
                   <span className="flex-1">{link.label}</span>
                   {showBadge && (
                     <Badge 
@@ -140,7 +140,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
           </div>
         </div>
       </div>
-      <div className="mt-auto p-5 border-t border-slate-800/80">
+       <div className="mt-auto p-4 border-t border-border">
         <input 
           type="file" 
           ref={fileInputRef}
@@ -156,7 +156,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
             data-testid="button-change-avatar"
             title="Click to change profile photo"
           >
-             <Avatar className="w-9 h-9 border border-slate-700">
+             <Avatar className="w-8 h-8 border border-slate-700">
               {user.avatar ? (
                 <AvatarImage src={user.avatar} alt={user.name} />
               ) : null}
@@ -174,16 +174,16 @@ export function Sidebar({ onNavigate }: SidebarProps) {
             )}
           </button>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-white truncate">{user.name}</p>
+             <p className="text-[13px] font-medium text-slate-200 truncate">{user.name}</p>
             <p className="text-xs text-slate-500 truncate capitalize">{user.role}</p>
           </div>
         </div>
         
         <button 
           onClick={() => logoutMutation.mutate()}
-           className="flex items-center gap-3 w-full px-3 py-2 rounded-md text-[13px] font-medium text-rose-300 hover:bg-rose-950/20 transition-colors"
+            className="flex items-center gap-3 w-full px-3 py-2 rounded-[.38rem] text-[13px] font-medium text-rose-300 hover:bg-rose-950/20 transition-colors focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <LogOut className="w-5 h-5" />
+           <LogOut className="w-[15px] h-[15px]" />
           Sign Out
         </button>
       </div>

@@ -5,13 +5,13 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0" +
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[.38rem] text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-[15px] [&_svg]:shrink-0" +
   " hover-elevate active-elevate-2",
   {
     variants: {
       variant: {
-        default:
-          "bg-primary text-primary-foreground border border-primary/70 hover:bg-primary/90",
+         default:
+           "bg-primary text-primary-foreground border border-primary/70 hover:bg-primary/90",
         destructive:
           "bg-destructive text-destructive-foreground border border-destructive-border",
         outline:
@@ -26,10 +26,10 @@ const buttonVariants = cva(
       // inside buttons. With a min-height they will look appropriate with small amounts of content,
       // but will expand to fit large amounts of content.
       size: {
-      default: "min-h-9 px-3.5 py-2",
-      sm: "min-h-8 rounded-md px-2.5 text-xs",
-        lg: "min-h-10 rounded-md px-8",
-        icon: "h-9 w-9",
+       default: "min-h-9 px-3.5 py-2",
+       sm: "min-h-8 rounded-[.35rem] px-2.5 text-xs",
+         lg: "min-h-10 rounded-[.4rem] px-8",
+         icon: "h-9 w-9",
       },
     },
     defaultVariants: {

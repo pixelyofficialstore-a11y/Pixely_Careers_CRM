@@ -13,8 +13,8 @@ export function Layout({ children }: { children: ReactNode }) {
   // If loading or strictly on auth page, render simple layout or spinner
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        <div className="min-h-[100dvh] bg-background flex items-center justify-center">
+          <div className="flex items-center gap-3 text-xs uppercase tracking-[.16em] text-muted-foreground"><span className="h-2 w-2 rounded-full bg-primary" />Loading workspace</div>
       </div>
     );
   }
@@ -27,7 +27,7 @@ export function Layout({ children }: { children: ReactNode }) {
   return (
       <div className="min-h-[100dvh] bg-background text-foreground flex overflow-hidden">
       {/* Mobile Navigation Bar */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 h-14 bg-slate-950 border-b border-slate-800 flex items-center justify-between px-4">
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 h-14 bg-[hsl(var(--card))] border-b border-border flex items-center justify-between px-4">
         <div className="flex items-center gap-3">
           <Button 
             variant="ghost" 
@@ -37,7 +37,7 @@ export function Layout({ children }: { children: ReactNode }) {
           >
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </Button>
-          <span className="text-lg font-bold text-white">Pixely CRM</span>
+           <span className="text-[15px] font-semibold tracking-tight text-foreground">Pixely CRM</span>
         </div>
       </div>
 

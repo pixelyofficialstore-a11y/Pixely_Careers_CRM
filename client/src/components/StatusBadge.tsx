@@ -3,14 +3,14 @@ import { cn } from "@/lib/utils";
 const orderStatusConfig: Record<string, { color: string; label: string }> = {
   pending_payment: { color: "bg-amber-500/10 text-amber-300 border-amber-500/20", label: "Pending Payment" },
   pending: { color: "bg-amber-500/10 text-amber-300 border-amber-500/20", label: "Pending" },
-  new: { color: "bg-cyan-500/10 text-cyan-200 border-cyan-500/20", label: "New" },
-  working: { color: "bg-sky-500/10 text-sky-300 border-sky-500/20", label: "Working" },
+  new: { color: "bg-slate-500/10 text-slate-300 border-slate-500/20", label: "New" },
+  working: { color: "bg-cyan-500/10 text-cyan-200 border-cyan-500/20", label: "Working" },
   ready: { color: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20", label: "Ready" },
   delivered: { color: "bg-slate-500/10 text-slate-400 border-slate-500/20", label: "Delivered" },
 };
 
 const chatStatusConfig: Record<string, { color: string; label: string }> = {
-  new: { color: "bg-cyan-500/10 text-cyan-200 border-cyan-500/20", label: "New" },
+  new: { color: "bg-slate-500/10 text-slate-300 border-slate-500/20", label: "New" },
   changes: { color: "bg-amber-500/10 text-amber-300 border-amber-500/20", label: "Changes" },
   satisfied: { color: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20", label: "Satisfied" },
   issues: { color: "bg-rose-500/10 text-rose-300 border-rose-500/20", label: "Issues" },
@@ -59,8 +59,8 @@ export function PriorityBadge({ priority }: { priority: string }) {
   
   return (
     <span className={cn(
-      "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider",
-      isUrgent ? "bg-red-500 text-white" : "bg-orange-500/10 text-orange-500"
+      "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border",
+      isUrgent ? "border-rose-500/25 bg-rose-500/10 text-rose-300" : "border-amber-500/20 bg-amber-500/10 text-amber-300"
     )}>
       {priority}
     </span>

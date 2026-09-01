@@ -103,15 +103,15 @@ function notifIcon(type: string, priority: string, title: string) {
 
 function notifColor(type: string, priority: string, title: string) {
   const t = (title || "").toLowerCase();
-  if (priority === "action_required") return "text-red-400 bg-red-500/10";
+  if (priority === "action_required") return "text-rose-300 bg-rose-500/10";
   if (priority === "confirmation" || t.includes("approved") || t.includes("delivered")) {
-    return "text-green-400 bg-green-500/10";
+    return "text-emerald-300 bg-emerald-500/10";
   }
-  if (type === "order") return "text-blue-400 bg-blue-500/10";
-  if (type === "payment") return "text-yellow-400 bg-yellow-500/10";
-  if (type === "assignment") return "text-purple-400 bg-purple-500/10";
-  if (type === "complaint") return "text-red-400 bg-red-500/10";
-  if (type === "user") return "text-cyan-400 bg-cyan-500/10";
+  if (type === "order") return "text-cyan-300 bg-cyan-500/10";
+  if (type === "payment") return "text-amber-300 bg-amber-500/10";
+  if (type === "assignment") return "text-slate-300 bg-slate-500/10";
+  if (type === "complaint") return "text-rose-300 bg-rose-500/10";
+  if (type === "user") return "text-cyan-300 bg-cyan-500/10";
   return "text-slate-400 bg-slate-500/10";
 }
 
@@ -305,12 +305,12 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
         zIndex: 9999,
         width: 340,
       }}
-      className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden"
+       className="bg-[hsl(var(--popover))] border border-border rounded-[.45rem] shadow-2xl shadow-slate-950/40 overflow-hidden"
     >
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
         <div className="flex items-center gap-2">
-          <Bell className="w-4 h-4 text-blue-400" />
-          <span className="text-sm font-semibold text-white">Notifications</span>
+          <Bell className="w-4 h-4 text-cyan-300" />
+           <span className="text-sm font-semibold text-slate-100">Notifications</span>
           {unreadCount > 0 && (
             <span className="text-xs bg-red-500 text-white px-1.5 py-0.5 rounded-full font-bold">
               {unreadCount}
