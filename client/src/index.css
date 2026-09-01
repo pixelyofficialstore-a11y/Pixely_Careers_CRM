@@ -100,6 +100,18 @@
     border: 1px solid hsl(var(--border) / .9);
     box-shadow: 0 6px 18px hsl(222 45% 3% / .12);
   }
+
+  .auth-page {
+    background:
+      radial-gradient(circle at 18% 12%, hsl(226 72% 22% / .42), transparent 34rem),
+      radial-gradient(circle at 82% 84%, hsl(211 77% 18% / .36), transparent 32rem),
+      hsl(232 55% 3%);
+  }
+
+  .auth-card {
+    background: hsl(230 43% 8% / .88);
+    border-color: hsl(224 31% 18% / .9);
+  }
   
   .text-gradient {
     @apply bg-clip-text text-transparent;
