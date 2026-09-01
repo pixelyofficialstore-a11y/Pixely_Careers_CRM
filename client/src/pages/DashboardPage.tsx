@@ -1,10 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { 
   ShoppingCart, 
   DollarSign, 
   ArrowUpRight,
+  ArrowUp,
+  ArrowDown,
   Clock,
   CheckCircle2,
   XCircle,
@@ -39,13 +41,11 @@ interface DashboardStats {
     };
   };
   complaints?: {
-    total: number;
-    thisMonth: number;
-    new: number;
-    underReview: number;
+    all: number;
     valid: number;
     invalid: number;
     resolved: number;
+    refund: number;
   };
 }
 
@@ -149,23 +149,163 @@ function CashFlowCard({
 function ComplaintStatsGrid({
   stats,
   totalTitle,
+  canReorder = false,
 }: {
   stats: NonNullable<DashboardStats["complaints"]> | undefined;
   totalTitle: string;
+  canReorder?: boolean;
 }) {
-  const values = stats ?? { total: 0, thisMonth: 0, new: 0, underReview: 0, valid: 0, invalid: 0, resolved: 0 };
+  const defaultOrder = ["all", "valid", "invalid", "resolved", "refund"] as const;
+  type ComplaintMetric = typeof defaultOrder[number];
+  const [order, setOrder] = useState<ComplaintMetric[]>([...defaultOrder]);
+  const values = stats ?? { all: 0, valid: 0, invalid: 0, resolved: 0, refund: 0 };
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem("pixelcrm.dashboard.complaints.order");
+      if (!stored) return;
+      const parsed: unknown = JSON.parse(stored);
+      if (
+        Array.isArray(parsed) &&
+        parsed.length === defaultOrder.length &&
+        parsed.every((item): item is ComplaintMetric => typeof item === "string" && defaultOrder.includes(item as ComplaintMetric)) &&
+        new Set(parsed).size === defaultOrder.length
+      ) {
+        setOrder(parsed);
+      }
+    } catch {
+      // A corrupt or unavailable preference should never break the dashboard.
+    }
+  }, []);
+
+  const metrics: Record<ComplaintMetric, {
+    title: string;
+    value: number;
+    description: string;
+    icon: typeof FileWarning;
+    iconClass: string;
+    valueClass: string;
+  }> = {
+    all: {
+      title: totalTitle,
+      value: values.all,
+      description: "All complaints in the current dashboard view",
+      icon: FileWarning,
+      iconClass: "bg-red-500/10 text-red-400",
+      valueClass: "text-red-300",
+    },
+    valid: {
+      title: "Valid",
+      value: values.valid,
+      description: "Complaints confirmed for action",
+      icon: ShieldAlert,
+      iconClass: "bg-orange-500/10 text-orange-400",
+      valueClass: "text-orange-300",
+    },
+    invalid: {
+      title: "Invalid",
+      value: values.invalid,
+      description: "Complaints closed without action",
+      icon: XCircle,
+      iconClass: "bg-slate-500/10 text-slate-400",
+      valueClass: "text-slate-300",
+    },
+    resolved: {
+      title: "Resolved",
+      value: values.resolved,
+      description: "Complaints completed by the team",
+      icon: ClipboardCheck,
+      iconClass: "bg-emerald-500/10 text-emerald-400",
+      valueClass: "text-emerald-300",
+    },
+    refund: {
+      title: "Refund",
+      value: values.refund,
+      description: "Closed complaints with a refund outcome",
+      icon: DollarSign,
+      iconClass: "bg-violet-500/10 text-violet-400",
+      valueClass: "text-violet-300",
+    },
+  };
+
+  const moveMetric = (metric: ComplaintMetric, direction: -1 | 1) => {
+    setOrder(current => {
+      const index = current.indexOf(metric);
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= current.length) return current;
+      const next = [...current];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      try {
+        window.localStorage.setItem("pixelcrm.dashboard.complaints.order", JSON.stringify(next));
+      } catch {
+        // The visual order still works when browser storage is unavailable.
+      }
+      return next;
+    });
+  };
+
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
         <FileWarning className="w-5 h-5 text-red-400" />
         <h2 className="text-lg font-semibold text-white">Complaint Overview</h2>
+        </div>
+        {canReorder && (
+          <span className="text-xs text-slate-500">
+            Hover a row to reorder
+          </span>
+        )}
       </div>
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard title={totalTitle} value={values.total} icon={FileWarning} color="red" testId="stat-complaints-total" />
-        <StatCard title="Under Review" value={values.underReview} icon={Clock} color="blue" testId="stat-complaints-review" />
-        <StatCard title="Valid" value={values.valid} icon={ShieldAlert} color="orange" testId="stat-complaints-valid" />
-        <StatCard title="Invalid" value={values.invalid} icon={XCircle} color="green" testId="stat-complaints-invalid" />
-        <StatCard title="Resolved" value={values.resolved} icon={ClipboardCheck} color="purple" testId="stat-complaints-resolved" />
+      <div className="space-y-3">
+        {order.map((metricKey, index) => {
+          const metric = metrics[metricKey];
+          const Icon = metric.icon;
+          return (
+            <div
+              key={metricKey}
+              className="group relative flex items-center justify-between gap-4 rounded-xl border border-slate-800 bg-slate-950/50 p-4 transition-all hover:border-slate-700 hover:bg-slate-900/70"
+              data-testid={`stat-complaints-${metricKey}`}
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <div className={cn("rounded-lg p-2.5", metric.iconClass)}>
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-medium text-slate-200">{metric.title}</p>
+                  <p className="truncate text-xs text-slate-500">{metric.description}</p>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-3">
+                <p className={cn("text-2xl font-bold font-display", metric.valueClass)}>{metric.value}</p>
+                {canReorder && (
+                  <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                    <button
+                      type="button"
+                      aria-label={`Move ${metric.title} up`}
+                      title={`Move ${metric.title} up`}
+                      disabled={index === 0}
+                      onClick={() => moveMetric(metricKey, -1)}
+                      className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-30"
+                    >
+                      <ArrowUp className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Move ${metric.title} down`}
+                      title={`Move ${metric.title} down`}
+                      disabled={index === order.length - 1}
+                      onClick={() => moveMetric(metricKey, 1)}
+                      className="rounded-md border border-slate-700 p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-30"
+                    >
+                      <ArrowDown className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -476,7 +616,7 @@ export default function DashboardPage() {
         />
       </div>
 
-      <ComplaintStatsGrid stats={dashboardStats?.complaints} totalTitle="Total Complaints" />
+      <ComplaintStatsGrid stats={dashboardStats?.complaints} totalTitle="All Complaints" canReorder={isAdmin} />
 
       {/* Finance Section - Admin Only */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
