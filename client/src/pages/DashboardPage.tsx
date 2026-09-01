@@ -27,6 +27,7 @@ import { getMillisecondsUntilNextBusinessDay } from "@shared/business-time";
 import { getOrderAccounting } from "@shared/order-accounting";
 import { DashboardSkeleton } from "@/components/PageSkeleton";
 import { CompactMetric, EmptyState, MetricCard as CRMMetricCard, PageHeader, SectionCard } from "@/components/CRMPrimitives";
+import { Button } from "@/components/ui/button";
 
 const titleCase = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, letter => letter.toUpperCase());
 
@@ -332,6 +333,14 @@ function AdminDashboard({
     { label: "Confirmed complaints", value: complaints.confirmed, icon: FileWarning, tone: "warning" as const, onClick: () => setLocation("/complaints") },
     { label: "Implemented suggestions", value: feedbackStats?.suggestions.implemented ?? 0, icon: Lightbulb, tone: "success" as const, onClick: () => openFeedback("suggestions") },
   ];
+  const orderPipeline = [
+    { label: "New", status: "new", count: orders.filter(order => order.status === "new").length, color: "bg-amber-300", text: "text-amber-300" },
+    { label: "In progress", status: "working", count: orders.filter(order => order.status === "working").length, color: "bg-cyan-300", text: "text-cyan-300" },
+    { label: "Ready", status: "ready", count: orders.filter(order => order.status === "ready").length, color: "bg-emerald-300", text: "text-emerald-300" },
+    { label: "Delivered", status: "delivered", count: orders.filter(order => order.status === "delivered").length, color: "bg-emerald-500", text: "text-emerald-400" },
+    { label: "Canceled", status: "canceled", count: orders.filter(order => order.status === "canceled").length, color: "bg-rose-300", text: "text-rose-300" },
+  ];
+  const pipelineTotal = orderPipeline.reduce((total, item) => total + item.count, 0);
 
   return <div className="crm-page space-y-5">
     <PageHeader eyebrow="Operations overview" title="Admin Dashboard" description="Monitor orders, financial activity and client experience from one place." actions={<div className="text-right"><p className="text-[10px] font-bold uppercase tracking-[.13em] text-slate-500">Today</p><p className="mt-1 text-sm font-medium text-slate-200">{format(new Date(), "MMM dd, yyyy")}</p></div>} />
@@ -347,8 +356,43 @@ function AdminDashboard({
     </section>
 
     <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-      <SectionCard title="Order Operations" eyebrow="Operations" description="Monthly workload and delivery position.">
-        <div className="p-4"><DashboardRow label="Monthly orders" value={monthlyOrders.length} /><DashboardRow label="Completed" value={readyThisMonth.length} tone="success" /><DashboardRow label="Active" value={activeOrders.length} /><DashboardRow label="Canceled" value={canceledOrders.length} tone="danger" /></div>
+      <SectionCard title="Order Operations" eyebrow="Operations" description="Monthly workload and delivery position." className="flex h-full flex-col">
+        <div className="flex flex-1 flex-col p-4">
+          <div>
+            <DashboardRow label="Monthly orders" value={monthlyOrders.length} />
+            <DashboardRow label="Completed" value={readyThisMonth.length} tone="success" />
+            <DashboardRow label="Active" value={activeOrders.length} />
+            <DashboardRow label="Canceled" value={canceledOrders.length} tone="danger" />
+          </div>
+          <div className="mt-5 border-t border-slate-800/70 pt-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[.13em] text-cyan-300">Current pipeline</p>
+                <p className="mt-1 text-[11px] text-slate-500">Live order distribution across the workspace.</p>
+              </div>
+              <span className="font-mono text-xs text-slate-400">{pipelineTotal} total</span>
+            </div>
+            <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-slate-800" aria-label="Current order pipeline">
+              {orderPipeline.filter(item => item.count > 0).map(item => (
+                <span key={item.status} className={cn(item.color, "h-full transition-all")} style={{ width: `${(item.count / Math.max(pipelineTotal, 1)) * 100}%` }} />
+              ))}
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3">
+              {orderPipeline.map(item => (
+                <div key={item.status} className="flex items-center justify-between gap-3">
+                  <span className="flex min-w-0 items-center gap-2 text-xs text-slate-400">
+                    <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", item.color)} />
+                    <span className="truncate">{item.label}</span>
+                  </span>
+                  <span className={cn("font-mono text-xs", item.text)}>{item.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <Button variant="outline" className="mt-auto w-full border-slate-700 text-slate-300 hover:border-cyan-400/40 hover:bg-cyan-400/[.04] hover:text-cyan-200" onClick={() => setLocation("/orders")}>
+            Open order operations <ArrowUpRight className="ml-2 h-4 w-4" />
+          </Button>
+        </div>
       </SectionCard>
        <SectionCard title="Financial Overview" eyebrow="Finance" description="Current month accounting position.">
          <div className="p-4">
