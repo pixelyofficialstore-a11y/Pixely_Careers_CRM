@@ -441,7 +441,7 @@ function FeedbackFilters({ designers, showDesignerFilter, value, onChange, statu
 
  function FeedbackResultsHeader({ title, count, month, year, setYear, monthValue, setMonth }: { title: string; count: number; month: string; year: string; setYear: (value: string) => void; monthValue: string; setMonth: (value: string) => void }) {
   const now = new Date();
-   return <div className="flex flex-col items-start justify-between gap-4 border-b border-slate-800 p-6 sm:flex-row sm:items-center">
+    return <div className="flex flex-col items-start justify-between gap-4 rounded-t-lg border border-slate-800 bg-[hsl(var(--card))] p-6 sm:flex-row sm:items-center">
      <div><h3 className="text-lg font-bold text-white">{title}</h3><p className="text-sm text-slate-500">{count} {title.toLowerCase().replace(/s$/, "")}{count === 1 ? "" : "s"} for {month}</p></div>
      <div className="flex flex-wrap gap-2">
       <Select value={year} onValueChange={setYear}><SelectTrigger className="w-24 border-slate-800 bg-slate-900 text-white"><SelectValue /></SelectTrigger><SelectContent className="border-slate-800 bg-slate-900 text-white">{[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(value => <SelectItem key={value} value={String(value)}>{value}</SelectItem>)}</SelectContent></Select>
