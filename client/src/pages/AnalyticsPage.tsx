@@ -32,7 +32,7 @@ type Order = {
   services?: { serviceType: string; quantity: number }[];
 };
 type User = { id: number; name: string; username: string; role: string; isActive: boolean };
-type Complaint = { id: number; complaintNumber: string; orderId: number; complaintAgainstUserId?: number | null; complaintTargetType?: "designer" | "client"; complaintAgainst?: User; category: string; description: string; status: string; resolutionOutcome?: string | null; createdAt?: string | Date | null };
+type Complaint = { id: number; complaintNumber: string; orderId: number; complaintAgainstUserId?: number | null; complaintAgainst?: User; category: string; description: string; status: string; resolutionOutcome?: string | null; createdAt?: string | Date | null };
 type Review = { id: number; reviewNumber: string; orderId: number; orderNumber?: string | null; clientName: string; reviewForDesigner?: User | null; rating: number | null; feedbackText: string; whatsappFeedbackReceived: boolean; facebookReviewReceived: boolean; videoReviewReceived: boolean; marketingPermission: string; createdAt: string | Date | null; updatedAt: string | Date | null };
 type Suggestion = { id: number; suggestionNumber: string; orderId: number; orderNumber?: string | null; clientName: string; relatedDesigner?: User | null; suggestionText: string; status: "new" | "implemented" | "rejected"; createdAt: string | Date | null; updatedAt?: string | Date | null };
 
@@ -83,7 +83,7 @@ export default function AnalyticsPage() {
     const assigned = orders.filter(o => o.assignedToId === d.id && inPeriod(o.createdAt));
     const completedOrders = orders.filter(o => o.assignedToId === d.id && completed(o) && inPeriod(o.readyDate || o.createdAt));
     const canceledOrders = orders.filter(o => o.assignedToId === d.id && o.status === "canceled" && inPeriod(o.canceledAt || o.createdAt));
-    const confirmed = complaints.filter(c => c.complaintTargetType !== "client" && c.complaintAgainstUserId === d.id && c.status === "confirmed" && inPeriod(c.createdAt));
+    const confirmed = complaints.filter(c => c.complaintAgainstUserId === d.id && c.status === "confirmed" && inPeriod(c.createdAt));
     const designerReviews = reviews.filter(r => r.reviewForDesigner?.id === d.id && inPeriod(r.createdAt));
     const rated = designerReviews.filter(r => r.rating != null);
     const designerSuggestions = suggestions.filter(s => s.relatedDesigner?.id === d.id && inPeriod(s.createdAt));
@@ -93,7 +93,7 @@ export default function AnalyticsPage() {
   const scopedOrders = orders.filter(o => inPeriod(o.createdAt));
   const scopedCompletedOrders = orders.filter(o => completed(o) && inPeriod(o.readyDate || o.createdAt));
   const avgRating = rows.flatMap(r => reviews.filter(v => v.reviewForDesigner?.id === r.designer.id && v.rating != null && inPeriod(v.createdAt)).map(v => Number(v.rating))).reduce((a, v, _, arr) => a + v / (arr.length || 1), 0);
-  const confirmedCount = complaints.filter(c => c.complaintTargetType !== "client" && c.status === "confirmed" && c.complaintAgainstUserId != null && inPeriod(c.createdAt)).length;
+  const confirmedCount = complaints.filter(c => c.status === "confirmed" && c.complaintAgainstUserId != null && inPeriod(c.createdAt)).length;
   const implemented = suggestions.filter(s => s.status === "implemented" && inPeriod(s.createdAt)).length;
   const selectedDesigner = designers.find(d => d.id === designerId);
   const selectedMetrics = selectedDesigner ? metrics(selectedDesigner) : null;
@@ -196,7 +196,7 @@ function FilterBar({ month, year, setMonth, setYear, count, day, setDay, maxDay 
 function SectionTitle({ icon: Icon, title: heading, copy }: { icon: typeof Megaphone; title: string; copy: string }) { return <div className="border-b border-slate-800 p-5"><h2 className="flex items-center gap-2 font-semibold text-slate-200"><Icon className="h-4 w-4 text-cyan-300" />{heading}</h2><p className="mt-1 text-xs text-slate-500">{copy}</p></div>; }
 function Experience({ designer, complaints, reviews, suggestions, inPeriod, openCase }: { designer: User; complaints: Complaint[]; reviews: Review[]; suggestions: Suggestion[]; inPeriod: (v?: string | Date | null) => boolean; openCase: (type: "complaint" | "review" | "suggestion", id: number) => void }) {
   const [feedbackView, setFeedbackView] = useState<"reviews" | "suggestions" | "complaints">("reviews");
-  const cs = complaints.filter(c => c.complaintTargetType !== "client" && c.complaintAgainstUserId === designer.id && c.status === "confirmed" && inPeriod(c.createdAt));
+  const cs = complaints.filter(c => c.complaintAgainstUserId === designer.id && c.status === "confirmed" && inPeriod(c.createdAt));
   const rs = reviews.filter(r => r.reviewForDesigner?.id === designer.id && inPeriod(r.createdAt));
   const ss = suggestions.filter(s => s.relatedDesigner?.id === designer.id && inPeriod(s.createdAt));
 

@@ -1188,7 +1188,7 @@ export default function OrdersPage() {
       )}
       <TableCell className="text-right">
         <div className="flex justify-end gap-1">
-           {(isAdmin || isSupport || isDesigner) && (
+           {(isAdmin || isSupport) && (
             <Button
               variant="ghost"
               size="icon"
@@ -1755,7 +1755,7 @@ export default function OrdersPage() {
                   <section className="rounded-xl border border-slate-800 bg-slate-950 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <div><h4 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Complaints</h4><p className="mt-1 text-xs text-slate-600">{selectedOrderComplaints.filter(item => item.status === "confirmed").length} currently confirmed</p></div>
-                      {(isAdmin || isSupport || isDesigner) && <Button size="sm" variant="outline" disabled={!selectedOrder.assignedToId} onClick={() => setComplaintDialogOpen(true)}><FileWarning className="mr-2 h-4 w-4" />{isDesigner ? "Report Client Issue" : "Raise Complaint"}</Button>}
+                      {(isAdmin || isSupport) && <Button size="sm" variant="outline" disabled={!selectedOrder.assignedToId} onClick={() => setComplaintDialogOpen(true)}><FileWarning className="mr-2 h-4 w-4" />Raise Complaint</Button>}
                     </div>
                     <div className="mt-4 space-y-2">{selectedOrderComplaints.length ? selectedOrderComplaints.map(complaint => <button key={complaint.id} onClick={() => openNestedDrawer({ kind: "complaint", id: complaint.id })} className="flex w-full items-center justify-between rounded-lg border border-slate-800 bg-slate-900 p-3 text-left hover:border-slate-700"><div><p className="font-mono text-xs text-blue-400">{complaint.complaintNumber}</p><p className="mt-1 text-xs text-slate-500">{titleCase(complaint.category)}</p></div><ComplaintStatusBadge status={complaint.status} /></button>) : <p className="py-4 text-sm text-slate-500">No visible complaints.</p>}</div>
                   </section>

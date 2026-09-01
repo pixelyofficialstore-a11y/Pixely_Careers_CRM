@@ -15,3 +15,4 @@
 - [Case activity privacy](case-activity-privacy.md) — all case entry points share role checks; non-admin timelines retain complaint events but redact private note authors and values.
 - [Dashboard cash flow semantics](dashboard-cash-flow-semantics.md) — gross payment events and recorded refunds stay separate from retained accounting balances.
 - [Dashboard JSX repair discipline](dashboard-jsx-repair-discipline.md) — use unique block context when changing wrapper tags; nearby div/section patterns make broad replacements unsafe.
+- [Retired complaint targets](retired-complaint-targets.md) — preserve legacy client-target complaint data, but exclude it from active cases, metrics, notifications, and mutations.

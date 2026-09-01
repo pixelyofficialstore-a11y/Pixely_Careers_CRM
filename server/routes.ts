@@ -31,7 +31,7 @@ if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
 } else {
   console.warn("[push] VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY env vars are not set — background web push is disabled");
 }
-import { canAccessOrderCase, projectCaseActivity, projectSuggestionForRole, type CaseRole } from "@shared/case-access";
+import { canAccessOrderCase, isSupportedComplaintTarget, projectCaseActivity, projectSuggestionForRole, type CaseRole } from "@shared/case-access";
 
 const KNOWN_PUSH_HOSTS = [
   "fcm.googleapis.com",
@@ -91,11 +91,14 @@ async function notifyUser(
   }
 
   const result = await storage.createNotification(userId, type, title, message, priority, relatedId, relatedType);
+  const scopes = type === "complaint"
+    ? ["notifications", "complaints", "stats"]
+    : ["notifications"];
   if (result.created) {
     sendWebPushToUser(userId, title, message, priority).catch(() => {});
-    emitNotification(userId, { event: "notification", id: result.notification.id, count: 1 });
+    emitNotification(userId, { event: "notification", id: result.notification.id, count: 1, scopes });
   } else {
-    emitRealtime(userId, ["notifications"]);
+    emitRealtime(userId, scopes);
   }
   return result.notification;
 }
@@ -989,7 +992,7 @@ export async function registerRoutes(
     },
   }).single("screenshot");
 
-  app.post("/api/complaints/upload", requireRole(["admin", "support", "designer"]), (req, res) => {
+  app.post("/api/complaints/upload", requireRole(["admin", "support"]), (req, res) => {
     complaintUpload(req, res, async (err) => {
       if (err) return res.status(400).json({ message: err.message });
       if (!req.file) return res.status(400).json({ message: "A screenshot is required." });
@@ -1005,41 +1008,34 @@ export async function registerRoutes(
     });
   });
 
-  app.post(api.complaints.create.path, requireRole(["admin", "support", "designer"]), async (req, res) => {
+  app.post(api.complaints.create.path, requireRole(["admin", "support"]), async (req, res) => {
     try {
+      const requestedTargetType = req.body?.complaintTargetType
+        ?? req.body?.complaint_target_type
+        ?? req.body?.target_type
+        ?? req.body?.targetType;
+      if (requestedTargetType === "client") {
+        return res.status(400).json({ message: "Client-target complaints are no longer supported." });
+      }
       const input = api.complaints.create.input.parse(req.body);
       const user = req.user as User;
       const order = await storage.getOrder(input.orderId);
       if (!order) return res.status(400).json({ message: "The selected order could not be found." });
 
-      const targetType = input.complaintTargetType || (user.role === "designer" ? "client" : "designer");
-      let targetId: number | null = null;
-      if (targetType === "client") {
-        if (user.role !== "designer" || order.assignedToId !== user.id) {
-          return res.status(403).json({ message: "Designers can only file client complaints for their own assigned orders." });
-        }
-        if (input.complaintAgainstUserId) {
-          return res.status(400).json({ message: "Client complaints cannot target an internal user." });
-        }
-      } else {
-        targetId = order.assignedToId;
-        if (!targetId) {
-          return res.status(400).json({
-            message: "This order has no assigned designer. Assign a designer before raising a complaint.",
-          });
-        }
-        if (input.complaintAgainstUserId && input.complaintAgainstUserId !== targetId) {
-          return res.status(400).json({
-            message: "A complaint can only target the designer currently assigned to this order.",
-          });
-        }
-        const targetDesigner = await storage.getUser(targetId);
-        if (!targetDesigner || targetDesigner.role !== "designer") {
-          return res.status(400).json({ message: "The complaint must target a valid assigned designer." });
-        }
-        if (user.role === "designer") {
-          return res.status(403).json({ message: "Designers must target the client on their assigned order." });
-        }
+      const targetId = order.assignedToId;
+      if (!targetId) {
+        return res.status(400).json({
+          message: "This order has no assigned designer. Assign a designer before raising a complaint.",
+        });
+      }
+      if (input.complaintAgainstUserId && input.complaintAgainstUserId !== targetId) {
+        return res.status(400).json({
+          message: "A complaint can only target the designer currently assigned to this order.",
+        });
+      }
+      const targetDesigner = await storage.getUser(targetId);
+      if (!targetDesigner || targetDesigner.role !== "designer") {
+        return res.status(400).json({ message: "The complaint must target a valid assigned designer." });
       }
 
       const categoryConfigs = await storage.getComplaintCategoryConfigs();
@@ -1054,7 +1050,7 @@ export async function registerRoutes(
 
       const complaint = await storage.createComplaint({
         orderId: input.orderId,
-        complaintTargetType: targetType,
+        complaintTargetType: "designer",
         complaintAgainstUserId: targetId,
         filedByUserId: user.id,
         category: input.category,
@@ -1111,6 +1107,7 @@ export async function registerRoutes(
       const input = api.complaints.update.input.parse(req.body);
       const existing = await storage.getComplaintRecord(id);
       if (!existing) return res.sendStatus(404);
+      if (!isSupportedComplaintTarget(existing.complaintTargetType)) return res.sendStatus(404);
       const adminNote = input.adminNote?.trim() || input.adminNotes?.trim() || "";
       if (input.status === undefined && !adminNote && input.resolution === undefined && input.resolutionScreenshotUrl === undefined && input.dismissalReason === undefined) {
         return res.status(400).json({ message: "Provide a status, admin note, or decision details." });

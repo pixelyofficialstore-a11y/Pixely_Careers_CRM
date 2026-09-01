@@ -183,7 +183,12 @@ export const api = {
       path: "/api/complaints",
       input: z.object({
         orderId: z.number().int().positive(),
-        complaintTargetType: z.enum(["designer", "client"]).optional(),
+        // Kept as an optional compatibility field, but new complaints may
+        // only explicitly identify the supported team-member target.
+        complaintTargetType: z.literal("designer").optional(),
+        target_type: z.literal("designer").optional(),
+        targetType: z.literal("designer").optional(),
+        complaint_target_type: z.literal("designer").optional(),
         complaintAgainstUserId: z.number().int().positive().optional(),
         category: z.string().trim().min(1, "Category is required").max(100),
         description: z.string().trim().min(1, "Description is required").max(5000),

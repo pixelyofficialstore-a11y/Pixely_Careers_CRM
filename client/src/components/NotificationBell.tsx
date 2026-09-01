@@ -197,15 +197,16 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
         let payload: { event?: string; scopes?: string[] } = {};
         try { payload = JSON.parse(event.data); } catch (_) {}
         const scopes = payload.scopes || [];
-        if (payload.event === "sync" && scopes.length) {
-          if (scopes.includes("complaints")) queryClient.invalidateQueries({ queryKey: ["/api/complaints/actionable-count"] });
-          if (scopes.includes("payments")) {
-            queryClient.invalidateQueries({ queryKey: ["/api/payment-verifications/pending-count"] });
-            queryClient.invalidateQueries({ queryKey: ["/api/payment-verifications"] });
-          }
-          if (scopes.includes("orders")) queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
-          if (scopes.includes("stats")) queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+        if (scopes.includes("complaints")) {
+          queryClient.invalidateQueries({ queryKey: ["/api/complaints/actionable-count"] });
+          queryClient.invalidateQueries({ predicate: query => String(query.queryKey[0]).startsWith("/api/complaints") });
         }
+        if (scopes.includes("payments")) {
+          queryClient.invalidateQueries({ queryKey: ["/api/payment-verifications/pending-count"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/payment-verifications"] });
+        }
+        if (scopes.includes("orders")) queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+        if (scopes.includes("stats")) queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
         // Notification inserts and generic reconciliation both refresh the
         // server-owned bell state.
         queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
@@ -234,12 +235,18 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
   const { data: unreadData } = useQuery<{ count: number }>({
     queryKey: ["/api/notifications/unread-count"],
     retry: false,
+    refetchInterval: 5000,
+    refetchIntervalInBackground: true,
+    staleTime: 0,
   });
 
   const { data: notifsList = [] } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
     retry: false,
     enabled: open,
+    refetchInterval: open ? 5000 : false,
+    refetchIntervalInBackground: true,
+    staleTime: 0,
   });
 
   const markAllMutation = useMutation({

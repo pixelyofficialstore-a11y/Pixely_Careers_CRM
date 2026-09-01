@@ -1,0 +1,483 @@
+PIXELY CAREERS CRM
+TASK: REMOVE DESIGNER → CLIENT COMPLAINT FEATURE COMPLETELY FROM ACTIVE CRM
+
+IMPORTANT:
+The Designer → Client Complaint functionality was recently added, but we DO NOT want to use this feature right now.
+
+Remove it from the active CRM completely.
+
+We may build a separate Client Issue / Client Behavior module later.
+
+==================================================
+CRITICAL SAFETY
+==================================================
+
+Supabase is already connected and working.
+
+DO NOT:
+
+- reset Supabase
+- delete existing tables
+- drop columns
+- delete existing Orders
+- delete normal Complaints
+- modify existing Complaint workflow unnecessarily
+- change Supabase connection
+- change credentials
+- break Notifications
+- break Complaint badges
+- break Analytics
+- break Designer Dashboard
+- break Support Dashboard
+- break Admin Complaint management
+
+This should be a SAFE REMOVAL from active application behavior.
+
+==================================================
+1. REMOVE CLIENT AS COMPLAINT TARGET
+==================================================
+
+Remove the ability to select:
+
+Client
+
+as a Complaint target.
+
+Complaint creation should return to the normal existing team-member complaint workflow.
+
+Remove from:
+
+- Complaint creation form
+- Order Details
+- Designer Dashboard
+- Designer actions
+- Support actions
+- any context menu
+- any "Raise Complaint Against Client" button
+- any target-type selector
+
+Do NOT display:
+
+Complaint About:
+Client
+
+anywhere in the active UI.
+
+==================================================
+2. REMOVE DESIGNER → CLIENT COMPLAINT ACTION
+==================================================
+
+Designer should NOT currently be able to file a Complaint against a client.
+
+Remove that action from:
+
+Orders
+Order Details
+Designer Dashboard
+Client Experience
+Complaint creation form
+any quick action menu
+
+Designer may still use the existing Complaint system according to the previously approved team-member complaint permissions.
+
+==================================================
+3. RESTORE COMPLAINT MODEL TO TEAM COMPLAINTS
+==================================================
+
+The active Complaint system should again represent complaints related to employees/team members.
+
+Keep current statuses:
+
+New
+Confirmed
+Dismissed
+Resolved
+Refunded
+
+Do NOT redesign the existing Complaint workflow.
+
+==================================================
+4. REMOVE CLIENT-TARGET COMPLAINT LOGIC
+==================================================
+
+Remove active application logic that was added specifically for:
+
+complaint_target_type = client
+
+or equivalent client-target behavior.
+
+This includes:
+
+- client-target form handling
+- client-target validation
+- client-target notification generation
+- client-target analytics
+- client-target badges
+- client-target permission branches
+- client-target dashboard metrics
+- client-target detail rendering
+
+Do NOT remove shared Complaint functionality.
+
+==================================================
+5. DATABASE SAFETY
+==================================================
+
+IMPORTANT:
+
+If database columns were recently added such as:
+
+complaint_target_type
+complaint_against_client_id
+client_target_id
+or similar
+
+DO NOT DROP THEM.
+
+Leave them in Supabase for now.
+
+They may be useful when we build the feature properly later.
+
+The current application should simply stop using them for new Complaints.
+
+Do not perform destructive schema migration.
+
+==================================================
+6. EXISTING CLIENT-TARGET TEST RECORDS
+==================================================
+
+There may already be Complaints created while testing this feature.
+
+DO NOT automatically delete database records.
+
+Identify Complaints where:
+
+target_type = client
+
+or equivalent.
+
+These legacy/test Client-target Complaints must NOT affect current active CRM metrics.
+
+Exclude them from:
+
+- All Complaints count
+- New Complaint badge
+- Confirmed Complaint count
+- Designer Analytics
+- Dashboard Complaint counts
+- Notifications requiring action
+- Support/Designer Complaint counts
+- Client Case performance metrics
+
+They should not distort the normal Complaint system.
+
+==================================================
+LEGACY RECORD HANDLING
+==================================================
+
+If technically simple:
+
+Admin may still be able to access a legacy client-target Complaint through direct historical data for audit purposes.
+
+But it should NOT appear in normal active Complaint management lists.
+
+Do not build a special UI for them.
+
+If hiding them safely is difficult, clearly report the existing records to me instead of deleting them.
+
+==================================================
+7. FIX COMPLAINT COUNTS AFTER REMOVAL
+==================================================
+
+Recalculate Complaint metrics using ONLY active supported team-member Complaints.
+
+Check:
+
+All Complaints
+New
+Confirmed
+Dismissed
+Resolved
+Refunded
+
+The sidebar Complaint red badge should count only:
+
+supported New Complaints awaiting management decision.
+
+Client-target legacy/test Complaints must not increase the badge.
+
+==================================================
+8. FIX NOTIFICATIONS
+==================================================
+
+Remove notifications specifically created for Designer → Client Complaints.
+
+Do not create:
+
+"Complaint against client recorded"
+
+notifications anymore.
+
+Keep normal Complaint notifications:
+
+ADMIN:
+New Complaint recorded → notification.
+
+DESIGNER:
+Complaint recorded against Designer → notification.
+
+Designer notification must continue hiding reporter identity.
+
+==================================================
+9. DESIGNER ANALYTICS
+==================================================
+
+Remove all special logic added for:
+
+Complaints created by Designer against Client.
+
+Designer Analytics should continue using genuine complaints AGAINST the Designer.
+
+Confirmed/Resolved/Refunded genuine Designer complaints may contribute according to existing approved logic.
+
+Dismissed complaints should not negatively affect Designer performance.
+
+==================================================
+10. DESIGNER DASHBOARD
+==================================================
+
+Remove:
+
+Client Complaints I Filed
+Raise Complaint Against Client
+Client Complaint updates
+
+from Designer Dashboard.
+
+Keep:
+
+Complaints Against Me
+Complaints I am authorized to see
+normal Order/client experience data
+
+Do not redesign the Dashboard again.
+
+==================================================
+11. SUPPORT DASHBOARD
+==================================================
+
+Remove any Client Complaint-specific sections/actions that were added.
+
+Keep the currently improved Support Dashboard structure.
+
+Do not change unrelated Support permissions.
+
+==================================================
+12. ORDER DETAILS
+==================================================
+
+Remove any option such as:
+
+Raise Complaint Against Client
+
+from Order Details.
+
+Normal Complaint functionality should remain only where allowed by the approved Complaint rules.
+
+Do not break:
+
+Reviews
+Suggestions
+Client Experience
+Activity
+Order Details
+nested drawers
+
+==================================================
+13. COMPLAINT DETAILS UI
+==================================================
+
+Remove conditional rendering created only for:
+
+Client target
+
+from the canonical Complaint Details component.
+
+Return to the standard fields such as:
+
+Complaint Against
+Designer / Team Member
+Category
+Complaint Details
+Evidence
+Management Decision
+Admin Notes
+Case History
+
+Do not create multiple Complaint Detail versions.
+
+==================================================
+14. SECURITY CLEANUP
+==================================================
+
+Remove API/server permissions that were added specifically to let Designers create Complaints against clients.
+
+Do NOT weaken normal Complaint security.
+
+Retain:
+
+Admin full Complaint management.
+
+Designer visibility according to existing approved rules.
+
+Support visibility according to existing approved rules.
+
+Admin Notes remain Admin-only.
+
+Reporter identity remains hidden from Designer when Complaint is against them.
+
+==================================================
+15. DO NOT DELETE SCHEMA JUST TO CLEAN CODE
+==================================================
+
+This is important.
+
+If a database field exists only because this feature was tested:
+
+leave it.
+
+We may use it later.
+
+Remove the feature from:
+
+frontend
+API creation logic
+permissions
+analytics
+notifications
+counts
+
+but do not destructively alter Supabase.
+
+==================================================
+16. TEST NORMAL COMPLAINT FLOW
+==================================================
+
+After removal test:
+
+Admin creates Complaint against Designer.
+
+Expected:
+
+Complaint created.
+
+Admin notification/count correct.
+
+Designer receives notification.
+
+Designer cannot see reporter identity.
+
+Admin can:
+
+Confirm
+Dismiss
+Resolve
+Refund
+
+==================================================
+17. TEST DESIGNER
+==================================================
+
+Login as Designer.
+
+Expected:
+
+NO "Complaint Against Client" option.
+
+Designer cannot create client-target complaint through UI.
+
+Manually trying to submit:
+
+target_type = client
+
+through API must be rejected.
+
+==================================================
+18. TEST COUNTS
+==================================================
+
+Verify:
+
+Complaint page count
+
+Complaint metric cards
+
+Sidebar red badge
+
+Dashboard metrics
+
+Analytics metrics
+
+all ignore old Client-target test records.
+
+==================================================
+19. TEST NOTIFICATIONS
+==================================================
+
+Ensure removal does not break:
+
+Admin New Complaint notification.
+
+Designer Complaint Against Me notification.
+
+Complaint unread notifications.
+
+Complaint actionable badge.
+
+No duplicate notifications.
+
+==================================================
+20. FINAL REPORT
+==================================================
+
+After completion tell me:
+
+1. Client Complaint UI removed
+2. Client Complaint API creation removed
+3. Client Complaint notifications removed
+4. Client Complaint metrics removed
+5. Client Complaint Dashboard items removed
+6. Legacy records found, if any
+7. How legacy records are excluded
+8. Schema columns retained
+9. Files changed
+10. Tests performed
+
+Explicitly confirm:
+
+- No Supabase tables were deleted.
+- No columns were dropped.
+- Existing records were not automatically deleted.
+- Normal Complaint system still works.
+- Complaint badges remain accurate.
+- Normal notifications still work.
+- Designer can no longer file Complaint against Client.
+- Designer Analytics is not affected by legacy Client Complaints.
+- Existing Supabase connection remained unchanged.
+- Production build passes.
+
+==================================================
+FINAL RULE
+==================================================
+
+For now:
+
+COMPLAINTS = INTERNAL TEAM / SERVICE QUALITY COMPLAINT SYSTEM.
+
+Do not support Client-target Complaints.
+
+Later we will separately design a proper:
+
+CLIENT ISSUE / CLIENT BEHAVIOR / CLIENT ESCALATION
+
+workflow once the Production Team rules are finalized.

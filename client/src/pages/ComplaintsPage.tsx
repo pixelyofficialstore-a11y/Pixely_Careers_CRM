@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
 import { format } from "date-fns";
-import { AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, ClipboardCheck, Download, FileWarning, Filter, Loader2, Search, X, XCircle, DollarSign } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, ClipboardCheck, Clock, Download, FileWarning, Filter, Loader2, Search, X, XCircle, DollarSign } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { complaintCategories, complaintStatuses, type ComplaintHistoryEntry, type ComplaintCategoryConfig, type ComplaintResponse, type ComplaintStats, type OrderWithServices } from "@shared/schema";
@@ -92,7 +92,7 @@ export function ComplaintDetails({ id, open, onOpenChange, onBack }: { id: numbe
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Complaint Summary</p>
         <dl className="mt-5 grid grid-cols-2 gap-x-5 gap-y-5">
           <div className="col-span-2"><dt className="text-xs text-slate-500">Category</dt><dd className="mt-2"><Badge variant="outline" className="border-blue-500/30 bg-blue-500/10 text-blue-200">{titleCase(complaint.category)}</Badge></dd></div>
-           <div><dt className="text-xs text-slate-500">Complaint Against</dt><dd className="mt-1 text-sm font-medium text-white">{complaint.complaintTargetName || complaint.complaintAgainst?.name || "—"} <span className="text-xs font-normal text-slate-500">· {complaint.complaintTargetType === "client" ? "Client" : "Designer"}</span></dd></div>
+            <div><dt className="text-xs text-slate-500">Complaint Against</dt><dd className="mt-1 text-sm font-medium text-white">{complaint.complaintAgainst?.name || complaint.complaintTargetName || "—"} <span className="text-xs font-normal text-slate-500">· Designer</span></dd></div>
           <div><dt className="text-xs text-slate-500">Client</dt><dd className="mt-1 text-sm font-medium text-white">{complaint.clientName || "—"}</dd></div>
           <div><dt className="text-xs text-slate-500">Date Reported</dt><dd className="mt-1 text-sm text-slate-300">{caseDate(complaint.createdAt)}</dd></div>
           {isAdmin && complaint.filedBy && <div><dt className="text-xs text-slate-500">Reported By</dt><dd className="mt-1 text-sm text-slate-300">{complaint.filedBy.name} <span className="text-slate-500">· {titleCase(complaint.filedBy.role)}</span></dd></div>}
@@ -144,8 +144,27 @@ export default function ComplaintsPage() {
   const [search, setSearch] = useState(""); const [status, setStatus] = useState("all"); const [outcome, setOutcome] = useState(""); const [category, setCategory] = useState("all"); const [designerId, setDesignerId] = useState("all"); const [createOpen, setCreateOpen] = useState(false); const [selectedId, setSelectedId] = useState<number | null>(routeParams?.id ? Number(routeParams.id) : null);
   const now = new Date(); const [month, setMonth] = useState(String(now.getMonth() + 1)); const [year, setYear] = useState(String(now.getFullYear()));
   const query = new URLSearchParams({ month, year, ...(search || deepComplaintNumber ? { search: search || deepComplaintNumber || "" } : {}), ...(status !== "all" ? { status } : {}), ...(category !== "all" ? { category } : {}), ...(designerId !== "all" ? { designerId } : {}) }).toString();
-  const { data: complaints = [], isLoading, isError, refetch } = useQuery<ComplaintResponse[]>({ queryKey: [`/api/complaints?${query}`] });
-  const { data: statsResponse } = useQuery<{ complaints: ComplaintStats }>({ queryKey: [`/api/stats?month=${month}&year=${year}${designerId !== "all" ? `&designerId=${designerId}` : ""}`] });
+  const complaintsUrl = `/api/complaints?${query}`;
+  const statsUrl = `/api/stats?month=${month}&year=${year}${designerId !== "all" ? `&designerId=${designerId}` : ""}`;
+  const fetchJson = async <T,>(url: string): Promise<T> => {
+    const response = await fetch(url, { credentials: "include" });
+    if (!response.ok) throw new Error(`${response.status}: ${await response.text()}`);
+    return response.json();
+  };
+  const { data: complaints = [], isLoading, isError, refetch } = useQuery<ComplaintResponse[]>({
+    queryKey: ["/api/complaints", query],
+    queryFn: () => fetchJson<ComplaintResponse[]>(complaintsUrl),
+    refetchInterval: 10000,
+    refetchIntervalInBackground: true,
+    staleTime: 0,
+  });
+  const { data: statsResponse } = useQuery<{ complaints: ComplaintStats }>({
+    queryKey: ["/api/stats", statsUrl],
+    queryFn: () => fetchJson<{ complaints: ComplaintStats }>(statsUrl),
+    refetchInterval: 10000,
+    refetchIntervalInBackground: true,
+    staleTime: 0,
+  });
   const { data: categories = [] } = useQuery<ComplaintCategoryConfig[]>({ queryKey: ["/api/complaint-categories"], staleTime: 300000 });
   const { data: teamMembers = [] } = useQuery<{ id: number; name: string; role: string; isActive: boolean }[]>({ queryKey: ["/api/users"], enabled: user?.role === "admin" || user?.role === "support", staleTime: 300000 });
   const { data: orders = [] } = useQuery<OrderWithServices[]>({ queryKey: ["/api/orders"], enabled: user?.role === "admin" || user?.role === "support" });
@@ -153,6 +172,7 @@ export default function ComplaintsPage() {
   const categoryOptions = categories.length ? categories.filter(c => c.isActive) : complaintCategories.map(key => ({ key, label: complaintCategoryLabels[key] }));
   const cards = [
     { key: "all", label: "All Complaints", value: stats?.all ?? complaints.length, icon: FileWarning, iconClass: "bg-blue-500/10 text-blue-500", testId: "stat-complaints-all" },
+    { key: "new", label: "New", value: stats?.new ?? complaints.filter(c => c.status === "new").length, icon: Clock, iconClass: "bg-amber-500/10 text-amber-400", testId: "stat-complaints-new" },
     { key: "confirmed", label: "Confirmed", value: stats?.confirmed ?? complaints.filter(c => c.status === "confirmed").length, icon: CheckCircle2, iconClass: "bg-amber-500/10 text-amber-400", testId: "stat-complaints-valid" },
     { key: "dismissed", label: "Dismissed", value: stats?.dismissed ?? complaints.filter(c => c.status === "dismissed").length, icon: XCircle, iconClass: "bg-slate-500/10 text-slate-400", testId: "stat-complaints-invalid" },
     { key: "resolved", label: "Resolved", value: stats?.resolved ?? complaints.filter(c => c.status === "resolved").length, icon: ClipboardCheck, iconClass: "bg-emerald-500/10 text-emerald-400", testId: "stat-complaints-resolved" },
@@ -329,7 +349,7 @@ export default function ComplaintsPage() {
       </div>
     </div>
     {deepLinkMessage && <div className="flex items-center justify-between gap-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100"><span>{deepLinkMessage}</span><Button variant="ghost" size="sm" onClick={() => { setDeepLinkMessage(null); setLocation("/complaints"); }}>Clear link</Button></div>}
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">{cards.map(card => <CRMMetricCard key={card.key} label={card.label} value={card.value} icon={card.icon} testId={card.testId} tone={card.key === "confirmed" ? "warning" : card.key === "resolved" ? "success" : card.key === "refund" ? "danger" : "cyan"} />)}</div>
+     <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-6">{cards.map(card => <CRMMetricCard key={card.key} label={card.label} value={card.value} icon={card.icon} testId={card.testId} tone={card.key === "new" || card.key === "confirmed" ? "warning" : card.key === "resolved" ? "success" : card.key === "refund" ? "danger" : "cyan"} />)}</div>
      {isLoading ? <div className="glass-panel p-16 text-center"><Loader2 className="mx-auto animate-spin text-cyan-300" /></div> : isError ? <div className="glass-panel p-12 text-center"><AlertTriangle className="mx-auto mb-3 text-rose-400" /><p className="text-white">Could not load complaints</p><Button variant="outline" className="mt-4" onClick={() => refetch()}>Try Again</Button></div> : !filteredComplaints.length ? <div className="crm-section"><EmptyState title="No complaints found" description="Try another month or filter." icon={ClipboardCheck} /></div> : <div className="crm-section">
       <div className="flex flex-col items-start justify-between gap-4 border-b border-slate-800 p-6 sm:flex-row sm:items-center">
         <div><h3 className="text-lg font-bold text-white">Complaints</h3><p className="text-sm text-slate-500">{filteredComplaints.length} complaint{filteredComplaints.length === 1 ? "" : "s"} for {format(new Date(Number(year), Number(month) - 1, 1), "MMMM yyyy")}</p></div>

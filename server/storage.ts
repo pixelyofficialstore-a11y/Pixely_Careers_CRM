@@ -18,7 +18,7 @@ import { db } from "./db";
 import { eq, ne, desc, sql, and, isNotNull, inArray, asc } from "drizzle-orm";
 import { getStartOfBusinessDay, getStartOfBusinessMonth } from "@shared/business-time";
 import { getOrderAccounting } from "@shared/order-accounting";
-import { canAccessComplaintCase, canAccessOrderCase, type CaseRole } from "@shared/case-access";
+import { canAccessComplaintCase, canAccessOrderCase, isSupportedComplaintTarget, type CaseRole } from "@shared/case-access";
 
 export type ComplaintListFilters = {
   search?: string;
@@ -312,9 +312,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getNotifications(userId: number): Promise<Notification[]> {
-    return await db.select().from(notifications)
+    const rows = await db.select().from(notifications)
       .where(eq(notifications.userId, userId))
       .orderBy(desc(notifications.createdAt));
+    const complaintIds = rows
+      .filter(notification => notification.relatedType === "complaint" && notification.relatedId)
+      .map(notification => notification.relatedId as number);
+    if (!complaintIds.length) return rows;
+    const legacyComplaints = await db.select({ id: complaints.id })
+      .from(complaints)
+      .where(and(eq(complaints.complaintTargetType, "client"), inArray(complaints.id, complaintIds)));
+    const legacyIds = new Set(legacyComplaints.map(complaint => complaint.id));
+    return rows.filter(notification => !(notification.relatedType === "complaint" && notification.relatedId && legacyIds.has(notification.relatedId)));
   }
 
   async markNotificationRead(id: number, userId: number): Promise<Notification | undefined> {
@@ -578,7 +587,7 @@ export class DatabaseStorage implements IStorage {
     const against = complaint.complaintAgainstUserId
       ? this.complaintUserSummary(usersById.get(complaint.complaintAgainstUserId))
       : undefined;
-    if (!order || (complaint.complaintTargetType === "designer" && !against)) return undefined;
+    if (!order || !against) return undefined;
 
     const response: ComplaintResponse = {
       id: complaint.id,
@@ -602,8 +611,8 @@ export class DatabaseStorage implements IStorage {
           refundAmount: order.refundAmount,
         } : {}),
       },
-      complaintTargetType: complaint.complaintTargetType || "designer",
-      complaintTargetName: complaint.complaintTargetType === "client" ? order.clientName : (against?.name || "Assigned designer"),
+      complaintTargetType: "designer",
+      complaintTargetName: against.name || "Assigned designer",
       ...(against ? { complaintAgainst: against } : {}),
       category: complaint.category,
       description: complaint.description,
@@ -637,6 +646,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createComplaint(data: InsertComplaint, actorId: number): Promise<Complaint> {
+    if (data.complaintTargetType && data.complaintTargetType !== "designer") {
+      throw new Error("Client-target complaints are no longer supported.");
+    }
     return await db.transaction(async (tx) => {
       const result = await tx.execute(sql`SELECT nextval('complaint_number_seq') AS value`);
       const suffix = Number((result as any).rows?.[0]?.value ?? (result as any)[0]?.value);
@@ -667,6 +679,7 @@ export class DatabaseStorage implements IStorage {
 
   async getComplaints(role: string, userId: number, filters: ComplaintListFilters = {}): Promise<ComplaintResponse[]> {
     let visible = (await db.select().from(complaints).orderBy(desc(complaints.createdAt)))
+      .filter(complaint => isSupportedComplaintTarget(complaint.complaintTargetType))
       .filter(complaint => canAccessComplaintCase(
         role as CaseRole,
         userId,
@@ -892,6 +905,7 @@ export class DatabaseStorage implements IStorage {
     const rows = await this.getComplaints(role, userId, filters);
     return {
       all: rows.length,
+      new: rows.filter(row => row.status === "new").length,
       confirmed: rows.filter(row => row.status === "confirmed").length,
       dismissed: rows.filter(row => row.status === "dismissed").length,
       resolved: rows.filter(row => row.status === "resolved").length,
@@ -908,7 +922,7 @@ export class DatabaseStorage implements IStorage {
       complaintTargetType: complaints.complaintTargetType,
       status: complaints.status,
     }).from(complaints).where(eq(complaints.status, "new"));
-    return rows.filter(row => canAccessComplaintCase(
+    return rows.filter(row => isSupportedComplaintTarget(row.complaintTargetType)).filter(row => canAccessComplaintCase(
       role as CaseRole,
       userId,
       row.filedByUserId,
@@ -1069,11 +1083,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUnreadNotificationCount(userId: number): Promise<number> {
-    const result = await db
-      .select({ count: sql<number>`count(*)::int` })
+    const rows = await db
+      .select({ id: notifications.id, relatedId: notifications.relatedId, relatedType: notifications.relatedType })
       .from(notifications)
       .where(and(eq(notifications.userId, userId), eq(notifications.read, false)));
-    return result[0]?.count || 0;
+    const complaintIds = rows
+      .filter(notification => notification.relatedType === "complaint" && notification.relatedId)
+      .map(notification => notification.relatedId as number);
+    if (!complaintIds.length) return rows.length;
+    const legacyComplaints = await db.select({ id: complaints.id })
+      .from(complaints)
+      .where(and(eq(complaints.complaintTargetType, "client"), inArray(complaints.id, complaintIds)));
+    const legacyIds = new Set(legacyComplaints.map(complaint => complaint.id));
+    return rows.filter(notification => !(notification.relatedType === "complaint" && notification.relatedId && legacyIds.has(notification.relatedId))).length;
   }
 
   async getPendingPaymentCount(): Promise<number> {

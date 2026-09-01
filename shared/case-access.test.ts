@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   canAccessComplaintCase,
   canAccessOrderCase,
+  isSupportedComplaintTarget,
   projectSuggestionForRole,
   projectCaseActivity,
 } from "./case-access";
@@ -15,11 +16,11 @@ test("standalone complaints enforce the same role ownership used by nested cases
   assert.equal(canAccessComplaintCase("designer", 5, 2, 3), false);
 });
 
-test("client-target complaints are visible to their filer but never to an unrelated designer", () => {
-  assert.equal(canAccessComplaintCase("designer", 7, 7, null, "client"), true);
-  assert.equal(canAccessComplaintCase("designer", 8, 7, null, "client"), false);
-  assert.equal(canAccessComplaintCase("support", 7, 7, null, "client"), true);
-  assert.equal(canAccessComplaintCase("admin", 8, 7, null, "client"), true);
+test("client-target complaints are not supported in active case access", () => {
+  assert.equal(isSupportedComplaintTarget("client"), false);
+  assert.equal(canAccessComplaintCase("designer", 7, 7, null, "client"), false);
+  assert.equal(canAccessComplaintCase("support", 7, 7, null, "client"), false);
+  assert.equal(canAccessComplaintCase("admin", 8, 7, null, "client"), false);
 });
 
 test("designer-target complaints remain visible to the assigned designer", () => {

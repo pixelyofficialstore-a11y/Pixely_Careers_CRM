@@ -544,6 +544,7 @@ export type ComplaintHistoryEntry = {
 
 export type ComplaintStats = {
   all: number;
+  new?: number;
   confirmed: number;
   dismissed: number;
   resolved: number;

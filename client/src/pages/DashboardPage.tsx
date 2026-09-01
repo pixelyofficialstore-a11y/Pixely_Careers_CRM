@@ -54,6 +54,7 @@ interface DashboardStats {
   };
   complaints?: {
     all: number;
+    new?: number;
     confirmed: number;
     dismissed: number;
     resolved: number;
@@ -153,9 +154,9 @@ function ComplaintStatsGrid({
   stats: NonNullable<DashboardStats["complaints"]> | undefined;
   totalTitle: string;
 }) {
-  const defaultOrder = ["all", "confirmed", "dismissed", "resolved", "refund"] as const;
+  const defaultOrder = ["all", "new", "confirmed", "dismissed", "resolved", "refund"] as const;
   type ComplaintMetric = typeof defaultOrder[number];
-  const values = stats ?? { all: 0, confirmed: 0, dismissed: 0, resolved: 0, refund: 0 };
+  const values = stats ?? { all: 0, new: 0, confirmed: 0, dismissed: 0, resolved: 0, refund: 0 };
 
   const metrics: Record<ComplaintMetric, {
     title: string;
@@ -172,6 +173,14 @@ function ComplaintStatsGrid({
       icon: FileWarning,
       iconClass: "bg-red-500/10 text-red-400",
       valueClass: "text-red-300",
+    },
+    new: {
+      title: "New",
+      value: values.new ?? 0,
+      description: "New complaints awaiting review",
+      icon: Clock,
+      iconClass: "bg-amber-500/10 text-amber-400",
+      valueClass: "text-amber-300",
     },
     confirmed: {
       title: "Confirmed",
@@ -208,7 +217,7 @@ function ComplaintStatsGrid({
   };
 
   return <SectionCard title="Complaint Summary" eyebrow="Service quality" description="Current complaint outcomes.">
-    <div className="grid grid-cols-2 gap-x-6 gap-y-1 p-4 sm:grid-cols-5">
+    <div className="grid grid-cols-2 gap-x-6 gap-y-1 p-4 sm:grid-cols-6">
       {defaultOrder.map(metricKey => {
         const metric = metrics[metricKey];
         return <div key={metricKey} className="border-b border-slate-800/70 py-3 last:border-0 sm:border-b-0 sm:border-r sm:px-3 sm:first:pl-0 sm:last:border-r-0" data-testid={`stat-complaints-${metricKey}`}>
@@ -468,8 +477,9 @@ export default function DashboardPage() {
   const { data: dashboardStats, refetch: refetchDashboardStats } = useQuery<DashboardStats>({
     queryKey: ["/api/stats"],
     enabled: Boolean(user),
-    refetchInterval: 60 * 1000,
-    staleTime: 30 * 1000,
+    refetchInterval: 10 * 1000,
+    refetchIntervalInBackground: true,
+    staleTime: 0,
   });
 
   const currentMonth = new Date().getMonth() + 1;
@@ -550,7 +560,7 @@ export default function DashboardPage() {
     const designerOrders = approvedOrders;
     const designerCompleted = designerOrders.filter(order => order.status === "ready" || order.status === "delivered");
     const designerActive = designerOrders.filter(order => order.status === "new" || order.status === "working");
-    const designerNewComplaints = Math.max(0, (dashboardStats?.complaints?.all || 0) - (dashboardStats?.complaints?.confirmed || 0) - (dashboardStats?.complaints?.dismissed || 0) - (dashboardStats?.complaints?.resolved || 0) - (dashboardStats?.complaints?.refund || 0));
+    const designerNewComplaints = dashboardStats?.complaints?.new ?? Math.max(0, (dashboardStats?.complaints?.all || 0) - (dashboardStats?.complaints?.confirmed || 0) - (dashboardStats?.complaints?.dismissed || 0) - (dashboardStats?.complaints?.resolved || 0) - (dashboardStats?.complaints?.refund || 0));
     const designerAttention = [
       { label: "New orders assigned", value: designerOrders.filter(order => order.status === "new").length, tone: "warning" as const },
       { label: "Confirmed complaints", value: dashboardStats?.complaints?.confirmed ?? 0, tone: "danger" as const },
@@ -601,7 +611,7 @@ export default function DashboardPage() {
   // Support Dashboard
   if (isSupport) {
     const supportOrders = approvedOrders;
-    const supportNewComplaints = Math.max(0, (dashboardStats?.complaints?.all || 0) - (dashboardStats?.complaints?.confirmed || 0) - (dashboardStats?.complaints?.dismissed || 0) - (dashboardStats?.complaints?.resolved || 0) - (dashboardStats?.complaints?.refund || 0));
+    const supportNewComplaints = dashboardStats?.complaints?.new ?? Math.max(0, (dashboardStats?.complaints?.all || 0) - (dashboardStats?.complaints?.confirmed || 0) - (dashboardStats?.complaints?.dismissed || 0) - (dashboardStats?.complaints?.resolved || 0) - (dashboardStats?.complaints?.refund || 0));
     const supportActive = supportOrders.filter(order => order.status === "new" || order.status === "working");
     const supportCompleted = supportOrders.filter(order => order.status === "ready" || order.status === "delivered");
     const supportAttention = [

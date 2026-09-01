@@ -1,5 +1,9 @@
 export type CaseRole = "admin" | "support" | "designer";
 
+export function isSupportedComplaintTarget(targetType: string | null | undefined): boolean {
+  return !targetType || targetType === "designer";
+}
+
 export type CaseActivity = {
   activityType: string;
   actor?: unknown;
@@ -36,9 +40,10 @@ export function canAccessComplaintCase(
   complaintAgainstUserId: number | null | undefined,
   complaintTargetType: "designer" | "client" = "designer",
 ): boolean {
+  if (complaintTargetType !== "designer") return false;
   if (role === "admin") return true;
   if (role === "support") return filedByUserId === userId;
-  return filedByUserId === userId || (complaintTargetType === "designer" && complaintAgainstUserId === userId);
+  return filedByUserId === userId || complaintAgainstUserId === userId;
 }
 
 function isPrivateSuggestionActivity(activity: CaseActivity): boolean {

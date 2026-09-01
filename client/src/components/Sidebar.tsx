@@ -42,6 +42,9 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   const { data: actionableComplaintData } = useQuery<{ count: number }>({
     queryKey: ["/api/complaints/actionable-count"],
     retry: false,
+    refetchInterval: 5000,
+    refetchIntervalInBackground: true,
+    staleTime: 0,
   });
   const pendingPaymentCount = pendingPaymentData?.count ?? 0;
   const actionableComplaintCount = actionableComplaintData?.count ?? 0;
