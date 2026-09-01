@@ -171,45 +171,91 @@ export default function ComplaintsPage() {
     const suffix = `${year}-${String(month).padStart(2, "0")}`;
     doc.save(`complaints-${suffix}.pdf`);
   };
-  return <div className="p-4 md:p-8 space-y-6">
-    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-      <div>
-        <div className="flex items-center gap-3"><FileWarning className="w-7 h-7 text-rose-300" /><h1 className="text-2xl md:text-3xl font-bold font-display text-white">{isAdmin ? "Complaints Management" : user?.role === "designer" ? "Complaints About My Work" : "Complaints I Filed"}</h1></div>
-        <p className="text-slate-400 mt-2">Review order-linked complaints for {format(new Date(Number(year), Number(month) - 1, 1), "MMMM yyyy")}.</p>
-      </div>
-      <div className="flex items-center gap-3 flex-wrap w-full md:w-auto">
-        <div className="relative w-full md:w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-          <Input placeholder="Search Complaint ID or Client..." className="pl-10 bg-slate-900 border-slate-800 text-white" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} data-testid="input-search-complaints" />
-          {isLoading && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 animate-spin" />}
+  const complaintTableHead = (
+    <TableHeader className="bg-slate-900/50">
+      <TableRow className="border-slate-800 hover:bg-transparent">
+        <TableHead className="whitespace-nowrap text-slate-400">Complaint ID</TableHead>
+        <TableHead className="whitespace-nowrap text-slate-400">Date Placed</TableHead>
+        <TableHead className="whitespace-nowrap text-slate-400">Order</TableHead>
+        <TableHead className="text-slate-400">Client</TableHead>
+        <TableHead className="text-slate-400">Category</TableHead>
+        <TableHead className="text-slate-400">Designer</TableHead>
+        {isAdmin && <TableHead className="text-slate-400">Placed By</TableHead>}
+        <TableHead className="text-slate-400">Status</TableHead>
+      </TableRow>
+    </TableHeader>
+  );
+  const complaintTableColSpan = isAdmin ? 8 : 7;
+  const renderComplaintRow = (complaint: ComplaintResponse) => (
+    <TableRow key={complaint.id} onClick={() => openComplaint(complaint.id)} className="cursor-pointer border-slate-800 hover:bg-slate-900/50" data-testid={`row-complaint-${complaint.id}`}>
+      <TableCell className="whitespace-nowrap font-mono text-xs text-blue-400">{complaint.complaintNumber || "—"}</TableCell>
+      <TableCell className="whitespace-nowrap text-xs text-slate-400">{complaint.createdAt ? format(new Date(complaint.createdAt), "MMM dd, yyyy") : "Not Specified"}</TableCell>
+      <TableCell className="whitespace-nowrap font-medium text-white">#{complaint.orderNumber || complaint.orderId}</TableCell>
+      <TableCell className="text-sm font-medium text-white">{complaint.clientName || "Not Specified"}</TableCell>
+      <TableCell className="text-sm text-slate-300">{categoryOptions.find(item => item.key === complaint.category)?.label || titleCase(complaint.category)}</TableCell>
+      <TableCell>
+        <div className="flex items-center gap-2 whitespace-nowrap">
+          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-800 text-[10px] text-slate-400">{complaint.complaintAgainst?.name?.charAt(0) || "?"}</div>
+          <span className="text-sm text-slate-300">{complaint.complaintAgainst?.name || "Unassigned"}</span>
         </div>
-        <div className="flex items-center gap-2 flex-wrap" data-testid="complaint-filters">
-          <Filter className="w-4 h-4 text-slate-500 hidden md:block" aria-hidden="true" />
+      </TableCell>
+      {isAdmin && <TableCell>
+        <div className="min-w-28">
+          <p className="text-sm font-medium text-white">{complaint.filedBy?.name || "Not Specified"}</p>
+          <p className="text-xs text-slate-500">{complaint.filedBy?.role || ""}</p>
+        </div>
+      </TableCell>}
+      <TableCell><ComplaintStatusBadge status={complaint.status} /></TableCell>
+    </TableRow>
+  );
+  return <div className="space-y-4 p-4 md:space-y-8 md:p-8">
+    <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+      <div className="max-w-md">
+        <div className="flex items-start gap-3"><FileWarning className="mt-1 h-7 w-7 shrink-0 text-rose-300" /><div><h1 className="text-2xl font-bold leading-tight text-white md:text-3xl">{isAdmin ? "Complaints Management" : user?.role === "designer" ? "Complaints About My Work" : "Complaints I Filed"}</h1><p className="mt-2 text-slate-400">Review order-linked complaints for {format(new Date(Number(year), Number(month) - 1, 1), "MMMM yyyy")}.</p></div></div>
+      </div>
+      <div className="flex w-full flex-col gap-3 xl:w-auto xl:min-w-[680px]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1 sm:min-w-[280px]">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            <Input placeholder="Search Complaint ID or Client..." className="h-10 bg-slate-900 pl-10 text-white" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} data-testid="input-search-complaints" />
+            {isLoading && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-500" />}
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            {isAdmin && <Button variant="outline" onClick={exportComplaintsPDF} data-testid="button-export-complaints"><Download className="mr-2 h-4 w-4" />Export PDF</Button>}
+            {canCreate && <Button onClick={() => setCreateOpen(true)} className="bg-primary" data-testid="button-create-complaint"><CheckCircle2 className="mr-2 h-4 w-4" />New Complaint</Button>}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2" data-testid="complaint-filters">
+          <Filter className="mr-1 hidden h-4 w-4 text-slate-500 md:block" aria-hidden="true" />
           <Select value={status} onValueChange={v => { setStatus(v); setOutcome(""); setPage(1); }}>
-            <SelectTrigger className="w-36 bg-slate-900 border-slate-800 text-white" data-testid="select-complaint-status-filter"><SelectValue placeholder="All statuses" /></SelectTrigger>
+            <SelectTrigger className="w-36 bg-slate-900 text-white" data-testid="select-complaint-status-filter"><SelectValue placeholder="All statuses" /></SelectTrigger>
             <SelectContent className="bg-slate-900 border-slate-800 text-white"><SelectItem value="all">All statuses</SelectItem>{complaintStatuses.map(value => <SelectItem key={value} value={value}>{titleCase(value)}</SelectItem>)}</SelectContent>
           </Select>
           <Select value={category} onValueChange={v => { setCategory(v); setPage(1); }}>
-            <SelectTrigger className="w-44 bg-slate-900 border-slate-800 text-white" data-testid="select-complaint-category-filter"><SelectValue placeholder="All categories" /></SelectTrigger>
+            <SelectTrigger className="w-44 bg-slate-900 text-white" data-testid="select-complaint-category-filter"><SelectValue placeholder="All categories" /></SelectTrigger>
             <SelectContent className="bg-slate-900 border-slate-800 text-white"><SelectItem value="all">All categories</SelectItem>{categoryOptions.map(item => <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>)}</SelectContent>
           </Select>
           {(isAdmin || user?.role === "support") && <Select value={designerId} onValueChange={v => { setDesignerId(v); setPage(1); }}>
-            <SelectTrigger className="w-40 bg-slate-900 border-slate-800 text-white" data-testid="select-complaint-designer-filter"><SelectValue placeholder="All designers" /></SelectTrigger>
+            <SelectTrigger className="w-40 bg-slate-900 text-white" data-testid="select-complaint-designer-filter"><SelectValue placeholder="All designers" /></SelectTrigger>
             <SelectContent className="bg-slate-900 border-slate-800 text-white"><SelectItem value="all">All designers</SelectItem>{designerOptions.map(designer => <SelectItem key={designer.id} value={String(designer.id)}>{designer.name}{!designer.isActive ? " (Inactive)" : ""}</SelectItem>)}</SelectContent>
           </Select>}
-          {hasActiveFilters && <Button type="button" variant="ghost" size="sm" onClick={clearFilters} className="text-slate-400 hover:text-white" data-testid="button-clear-complaint-filters"><X className="w-4 h-4 mr-1" />Clear</Button>}
+          {hasActiveFilters && <Button type="button" variant="ghost" size="sm" onClick={clearFilters} className="text-slate-400 hover:text-white" data-testid="button-clear-complaint-filters"><X className="mr-1 h-4 w-4" />Clear</Button>}
         </div>
-        {isAdmin && <Button variant="outline" onClick={exportComplaintsPDF} data-testid="button-export-complaints"><Download className="w-4 h-4 mr-2" />Export PDF</Button>}
-        {canCreate && <Button onClick={() => setCreateOpen(true)} className="bg-primary" data-testid="button-create-complaint"><CheckCircle2 className="w-4 h-4 mr-2" />New Complaint</Button>}
       </div>
     </div>
-    <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">{cards.map(card => { const Icon = card.icon; return <div key={card.key} className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3" data-testid={card.testId}><div className={`p-2 rounded-lg ${card.iconClass}`}><Icon className="w-5 h-5" /></div><div><p className="text-xs text-slate-500">{card.label}</p><p className="font-bold text-white">{card.value}</p></div></div>; })}</div>
-    <div className="flex flex-wrap items-center gap-3">
-      <Select value={month} onValueChange={v => { setMonth(v); setPage(1); }}><SelectTrigger className="w-40 bg-slate-900 border-slate-800 text-white"><CalendarDays className="w-4 h-4 mr-2" /><SelectValue /></SelectTrigger><SelectContent className="bg-slate-900 border-slate-800 text-white">{Array.from({ length: 12 }, (_, i) => <SelectItem key={i + 1} value={String(i + 1)}>{format(new Date(2024, i, 1), "MMMM")}</SelectItem>)}</SelectContent></Select>
-      <Select value={year} onValueChange={v => { setYear(v); setPage(1); }}><SelectTrigger className="w-28 bg-slate-900 border-slate-800 text-white"><SelectValue /></SelectTrigger><SelectContent className="bg-slate-900 border-slate-800 text-white">{[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(v => <SelectItem key={v} value={String(v)}>{v}</SelectItem>)}</SelectContent></Select>
-      {outcome === "refund" && <Button type="button" variant="secondary" size="sm" onClick={() => { setOutcome(""); setPage(1); }}>Refund only <X className="w-3 h-3 ml-1" /></Button>}
-    </div>
-    {isLoading ? <div className="glass-panel p-16 text-center"><Loader2 className="mx-auto animate-spin text-blue-400" /></div> : isError ? <div className="glass-panel p-12 text-center"><AlertTriangle className="mx-auto text-rose-400 mb-3" /><p className="text-white">Could not load complaints</p><Button variant="outline" className="mt-4" onClick={() => refetch()}>Try Again</Button></div> : !visible.length ? <div className="glass-panel p-12 text-center"><ClipboardCheck className="w-12 h-12 text-slate-600 mx-auto mb-4" /><p className="text-white font-semibold">No complaints found</p><p className="text-sm text-slate-500 mt-2">Try another month or filter.</p></div> : <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden"><div className="p-5 border-b border-slate-800"><h2 className="font-bold text-white">Complaints</h2><p className="text-sm text-slate-500">{complaints.length} shown</p></div><div className="table-scroll-wrapper"><Table><TableHeader className="bg-slate-900/50"><TableRow className="border-slate-800 hover:bg-transparent"><TableHead>Complaint ID</TableHead><TableHead>Order</TableHead><TableHead>Client</TableHead><TableHead>Category</TableHead><TableHead>Complaint Against</TableHead>{isAdmin && <TableHead>Placed By</TableHead>}<TableHead>Status</TableHead><TableHead>Date</TableHead></TableRow></TableHeader><TableBody>{visible.map(c => <TableRow key={c.id} onClick={() => openComplaint(c.id)} className="border-slate-800 hover:bg-slate-900/50 cursor-pointer"><TableCell className="font-mono text-xs text-blue-300">{c.complaintNumber}</TableCell><TableCell className="text-sm text-white">#{c.orderNumber || c.orderId}</TableCell><TableCell className="text-sm text-slate-300">{c.clientName}</TableCell><TableCell className="text-sm text-slate-400">{categoryOptions.find(x => x.key === c.category)?.label || titleCase(c.category)}</TableCell><TableCell className="text-sm text-slate-300">{c.complaintAgainst?.name || "—"}</TableCell>{isAdmin && <TableCell className="text-sm text-slate-300">{c.filedBy?.name || "—"}</TableCell>}<TableCell><ComplaintStatusBadge status={c.status} /></TableCell><TableCell className="text-xs text-slate-500 whitespace-nowrap">{c.createdAt ? format(new Date(c.createdAt), "MMM dd, yyyy") : "—"}</TableCell></TableRow>)}</TableBody></Table></div><div className="flex items-center justify-between p-4 border-t border-slate-800 text-sm text-slate-500"><span>Page {page} of {pages}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Previous</Button><Button size="sm" variant="outline" disabled={page >= pages} onClick={() => setPage(p => p + 1)}>Next</Button></div></div></div>}
+    <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5">{cards.map(card => { const Icon = card.icon; return <div key={card.key} className="glass-panel flex items-center gap-3 rounded-xl border border-slate-800 p-4" data-testid={card.testId}><div className={`rounded-lg p-2 ${card.iconClass}`}><Icon className="h-5 w-5" /></div><div><p className="text-xs text-slate-500">{card.label}</p><p className="font-bold text-white">{card.value}</p></div></div>; })}</div>
+    {isLoading ? <div className="glass-panel p-16 text-center"><Loader2 className="mx-auto animate-spin text-blue-400" /></div> : isError ? <div className="glass-panel p-12 text-center"><AlertTriangle className="mx-auto mb-3 text-rose-400" /><p className="text-white">Could not load complaints</p><Button variant="outline" className="mt-4" onClick={() => refetch()}>Try Again</Button></div> : !visible.length ? <div className="glass-panel p-12 text-center"><ClipboardCheck className="mx-auto mb-4 h-12 w-12 text-slate-600" /><p className="font-semibold text-white">No complaints found</p><p className="mt-2 text-sm text-slate-500">Try another month or filter.</p></div> : <div className="glass-panel overflow-hidden rounded-2xl border border-slate-800">
+      <div className="flex flex-col items-start justify-between gap-4 border-b border-slate-800 p-6 sm:flex-row sm:items-center">
+        <div><h3 className="text-lg font-bold text-white">Complaints</h3><p className="text-sm text-slate-500">{filteredComplaints.length} complaint{filteredComplaints.length === 1 ? "" : "s"} for {format(new Date(Number(year), Number(month) - 1, 1), "MMMM yyyy")}</p></div>
+        <div className="flex flex-wrap gap-2">
+          <Select value={year} onValueChange={v => { setYear(v); setPage(1); }}><SelectTrigger className="w-24 bg-slate-900 text-white" data-testid="select-year"><SelectValue /></SelectTrigger><SelectContent className="bg-slate-900 border-slate-800 text-white">{[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(v => <SelectItem key={v} value={String(v)}>{v}</SelectItem>)}</SelectContent></Select>
+          <Select value={month} onValueChange={v => { setMonth(v); setPage(1); }}><SelectTrigger className="w-36 bg-slate-900 text-white" data-testid="select-month"><CalendarDays className="mr-2 h-4 w-4" /><SelectValue /></SelectTrigger><SelectContent className="bg-slate-900 border-slate-800 text-white">{Array.from({ length: 12 }, (_, i) => <SelectItem key={i + 1} value={String(i + 1)}>{format(new Date(2024, i, 1), "MMMM")}</SelectItem>)}</SelectContent></Select>
+          {outcome === "refund" && <Button type="button" variant="secondary" size="sm" onClick={() => { setOutcome(""); setPage(1); }}>Refund only <X className="ml-1 h-3 w-3" /></Button>}
+        </div>
+      </div>
+      <div className="table-scroll-wrapper"><Table className="min-w-[900px]">{complaintTableHead}<TableBody>{visible.map(renderComplaintRow)}</TableBody></Table></div>
+      <div className="flex items-center justify-between border-t border-slate-800 p-4 text-sm text-slate-500"><span>Page {page} of {pages}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Previous</Button><Button size="sm" variant="outline" disabled={page >= pages} onClick={() => setPage(p => p + 1)}>Next</Button></div></div>
+    </div>}
     <ComplaintDrawer id={selectedId} open={selectedId !== null} onOpenChange={open => { if (!open) { setSelectedId(null); setLocation("/complaints"); } }} /><ComplaintDialog order={null} orders={orders} open={createOpen} onOpenChange={setCreateOpen} />
   </div>;
 }
