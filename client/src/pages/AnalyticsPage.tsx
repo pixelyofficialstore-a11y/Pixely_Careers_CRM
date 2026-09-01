@@ -241,35 +241,16 @@ function Experience({ designer, complaints, reviews, suggestions, inPeriod, open
             <h3 className="text-sm font-medium text-slate-300">Client feedback</h3>
             <p className="mt-1 text-xs text-slate-600">Choose which feedback records to review for this designer.</p>
           </div>
-          <div className="grid w-full grid-cols-3 rounded-lg border border-slate-700/80 bg-slate-950/80 p-1 shadow-inner shadow-black/20 sm:w-auto" role="group" aria-label="Client experience type">
-            <button
-              type="button"
-              data-testid="button-designer-feedback-reviews"
-              aria-pressed={feedbackView === "reviews"}
-              onClick={() => setFeedbackView("reviews")}
-              className={cn("whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 sm:px-3 sm:text-sm", feedbackView === "reviews" ? "bg-cyan-500/20 text-cyan-200 shadow-sm ring-1 ring-cyan-400/20" : "text-slate-500 hover:bg-slate-800/70 hover:text-slate-300")}
-            >
-              Reviews ({rs.length})
-            </button>
-            <button
-              type="button"
-              data-testid="button-designer-feedback-suggestions"
-              aria-pressed={feedbackView === "suggestions"}
-              onClick={() => setFeedbackView("suggestions")}
-              className={cn("whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 sm:px-3 sm:text-sm", feedbackView === "suggestions" ? "bg-cyan-500/20 text-cyan-200 shadow-sm ring-1 ring-cyan-400/20" : "text-slate-500 hover:bg-slate-800/70 hover:text-slate-300")}
-            >
-              Suggestions ({ss.length})
-            </button>
-            <button
-              type="button"
-              data-testid="button-designer-feedback-complaints"
-              aria-pressed={feedbackView === "complaints"}
-              onClick={() => setFeedbackView("complaints")}
-              className={cn("whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 sm:px-3 sm:text-sm", feedbackView === "complaints" ? "bg-cyan-500/20 text-cyan-200 shadow-sm ring-1 ring-cyan-400/20" : "text-slate-500 hover:bg-slate-800/70 hover:text-slate-300")}
-            >
-              Complaints ({cs.length})
-            </button>
-          </div>
+          <Select value={feedbackView} onValueChange={(value) => setFeedbackView(value as "reviews" | "suggestions" | "complaints")}>
+            <SelectTrigger className="w-full border-slate-700 bg-slate-950/80 text-slate-200 shadow-inner shadow-black/20 sm:w-[180px]" aria-label="Choose client experience type">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="border-slate-700 bg-slate-900 text-slate-200">
+              <SelectItem value="reviews">Reviews ({rs.length})</SelectItem>
+              <SelectItem value="suggestions">Suggestions ({ss.length})</SelectItem>
+              <SelectItem value="complaints">Complaints ({cs.length})</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </section>
 
