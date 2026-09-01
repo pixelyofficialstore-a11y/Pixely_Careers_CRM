@@ -7,8 +7,8 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-import { type User, userRoles, type InsertActivityLog, type ClientReview, type InsertClientSuggestion, orders, activityLogs } from "@shared/schema";
-import { and, eq, ne } from "drizzle-orm";
+import { type User, userRoles, type InsertActivityLog, type ClientReview, type InsertClientSuggestion, orders, paymentVerifications, activityLogs } from "@shared/schema";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { db, pool } from "./db";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
@@ -20,6 +20,7 @@ import sharp from "sharp";
 import { isCloudinaryConfigured, uploadToCloudinary } from "./cloudinary";
 import webpush from "web-push";
 import { addSseClient, removeSseClient, emitNotification } from "./sse";
+import { getPaymentApprovalConflict } from "@shared/order-accounting";
 
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
   webpush.setVapidDetails(
@@ -1120,13 +1121,6 @@ export async function registerRoutes(
           },
         });
       }
-      if (status === "refunded" && status !== existing.status) {
-        historyEvents.push({
-          orderId: existing.orderId, actorId: actor.id, activityType: "status_change",
-          previousValue: "active", newValue: "canceled",
-          details: { complaintId: existing.id, complaintNumber: existing.complaintNumber, refundRecorded: true },
-        });
-      }
       if (input.resolution !== undefined && (input.resolution?.trim() || null) !== existing.resolution) {
         historyEvents.push({
           orderId: existing.orderId,
@@ -1161,7 +1155,13 @@ export async function registerRoutes(
           ? { resolvedByUserId: actor.id, resolvedAt: new Date() }
           : {}),
         ...(status === "refunded" ? { resolutionOutcome: "refund" } : {}),
-      }, historyEvents, status === "refunded" && status !== existing.status);
+      }, historyEvents, status === "refunded" && status !== existing.status ? {
+        reason: `Refunded after complaint ${existing.complaintNumber}: ${input.resolution?.trim() || existing.resolution || "Client refund"}`,
+        advanceRefunded: true,
+        actorId: actor.id,
+        complaintId: existing.id,
+        complaintNumber: existing.complaintNumber,
+      } : undefined);
       if (!updated) {
         return res.status(409).json({
           message: "This complaint changed while you were reviewing it. Reload and try again.",
@@ -1190,6 +1190,9 @@ export async function registerRoutes(
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0]?.message || "Invalid complaint update" });
+      }
+      if (err instanceof Error && err.message === "Unable to cancel the related order") {
+        return res.status(409).json({ message: "The related order was already canceled. Reload this complaint before continuing." });
       }
       throw err;
     }
@@ -1458,46 +1461,11 @@ export async function registerRoutes(
     if (!existing) return res.sendStatus(404);
     if (existing.status === "canceled") return res.status(409).json({ message: "This order is already canceled." });
     const refundAmount = input.advanceRefunded ? Number(existing.advanceAmount || 0) : 0;
-    const now = new Date();
-    const updated = await db.transaction(async tx => {
-      const [order] = await tx.update(orders).set({
-        status: "canceled",
-        cancellationReason: input.reason,
-        canceledByUserId: actor.id,
-        canceledAt: now,
-        advanceRefunded: input.advanceRefunded,
-        refundAmount,
-        refundRecordedByUserId: input.advanceRefunded ? actor.id : null,
-        refundRecordedAt: input.advanceRefunded ? now : null,
-      }).where(and(eq(orders.id, orderId), ne(orders.status, "canceled"))).returning();
-      if (!order) return undefined;
-      await tx.insert(activityLogs).values([
-        {
-          orderId,
-          actorId: actor.id,
-          activityType: "status_change",
-          previousValue: existing.status,
-          newValue: "canceled",
-          details: { cancellationReason: input.reason, advanceRefunded: input.advanceRefunded, refundAmount },
-        },
-        {
-          orderId,
-          actorId: actor.id,
-          activityType: "payment_change",
-          previousValue: "advance_received",
-          newValue: input.advanceRefunded ? "refunded" : "retained",
-          details: { amount: Number(existing.advanceAmount || 0), cancellation: true },
-        },
-        {
-          orderId,
-          actorId: actor.id,
-          activityType: "payment_change",
-          previousValue: "remaining_receivable",
-          newValue: "canceled",
-          details: { amount: Number(existing.remainingAmount || 0), cancellation: true },
-        },
-      ]);
-      return order;
+    const updated = await storage.cancelOrder(orderId, {
+      reason: input.reason,
+      advanceRefunded: input.advanceRefunded,
+      actorId: actor.id,
+      expectedStatus: existing.status,
     });
     if (!updated) return res.status(409).json({ message: "This order was already canceled." });
 
@@ -1680,6 +1648,9 @@ export async function registerRoutes(
       
       const order = await storage.getOrder(Number(orderId));
       if (!order) return res.status(400).json({ error: "Order not found" });
+      if (order.status === "canceled") {
+        return res.status(409).json({ error: "Canceled orders cannot receive payment requests" });
+      }
       
       // Admin orders are auto-approved — admin should never need to submit advance/full payment verifications
       if (user.role === 'admin' && (paymentType === 'advance' || paymentType === 'full')) {
@@ -1800,41 +1771,104 @@ export async function registerRoutes(
     const verifications = await storage.getPaymentVerifications("admin", 0);
     const verification = verifications.find(v => v.id === verificationId);
     if (!verification) return res.sendStatus(404);
-    
-    await storage.updatePaymentVerification(verificationId, {
-      status: "approved",
-      reviewedById: user.id,
-      reviewedAt: new Date(),
-      notes,
-    });
-    await storage.createActivityLog({
-      orderId: verification.orderId, actorId: user.id, activityType: "payment_change",
-      previousValue: "pending_confirmation", newValue: "approved",
-      details: { paymentVerificationId: verificationId, paymentType: verification.paymentType, amount: verification.amount },
-    });
-    
+    if (verification.status !== "pending_confirmation") {
+      return res.status(409).json({ error: `This payment is already ${verification.status}` });
+    }
     const order = await storage.getOrder(verification.orderId);
     if (!order) return res.sendStatus(404);
-    
-    const currentAdvance = order.advanceAmount || 0;
-    const currentRemaining = order.remainingAmount || 0;
-    
-    if (verification.paymentType === 'advance') {
-      const orderNumber = await storage.generateOrderNumber();
-      
-      const newAdvance = currentAdvance + verification.amount;
-      const newRemaining = Math.max(0, (order.totalPrice || 0) - newAdvance);
-      await storage.updateOrder(order.id, {
-        orderNumber,
-        advanceAmount: newAdvance,
-        remainingAmount: newRemaining,
-        paymentStatus: newRemaining === 0 ? "paid" : "pending",
-        advancePaymentStatus: "approved",
-        assignedToId: order.intendedDesignerId,
-        status: "new",
-        paymentDate: new Date(),
+    if (order.status === "canceled") {
+      return res.status(409).json({ error: "Canceled orders cannot receive approved payments" });
+    }
+
+    const orderNumber = verification.paymentType === "advance" || verification.paymentType === "full"
+      ? await storage.generateOrderNumber()
+      : order.orderNumber;
+
+    const approval = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT id FROM orders WHERE id = ${order.id} FOR UPDATE`);
+      const [lockedOrder] = await tx.select().from(orders).where(eq(orders.id, order.id));
+      if (!lockedOrder) {
+        throw new Error("ORDER_CANCELED_DURING_APPROVAL");
+      }
+      const approvalConflict = getPaymentApprovalConflict(lockedOrder, {
+        paymentType: verification.paymentType,
+        amount: verification.amount,
       });
-      
+      if (approvalConflict) throw new Error(`PAYMENT_APPROVAL_CONFLICT:${approvalConflict}`);
+
+      const [approvedVerification] = await tx.update(paymentVerifications).set({
+        status: "approved",
+        reviewedById: user.id,
+        reviewedAt: new Date(),
+        notes,
+      }).where(and(
+        eq(paymentVerifications.id, verificationId),
+        eq(paymentVerifications.status, "pending_confirmation"),
+      )).returning();
+      if (!approvedVerification) return null;
+
+      const currentAdvance = lockedOrder.advanceAmount || 0;
+      const currentRemaining = lockedOrder.remainingAmount || 0;
+      const newRemaining = verification.paymentType === "advance"
+        ? Math.max(0, (lockedOrder.totalPrice || 0) - (currentAdvance + verification.amount))
+        : verification.paymentType === "remaining"
+          ? Math.max(0, currentRemaining - verification.amount)
+          : 0;
+      const isFullyPaid = newRemaining <= 0;
+      const orderUpdates = verification.paymentType === "advance" ? {
+        orderNumber,
+        advanceAmount: currentAdvance + verification.amount,
+        remainingAmount: newRemaining,
+        paymentStatus: isFullyPaid ? "paid" : "pending",
+        advancePaymentStatus: "approved" as const,
+        assignedToId: order.intendedDesignerId,
+        status: "new" as const,
+        paymentDate: new Date(),
+      } : verification.paymentType === "full" ? {
+        orderNumber,
+        advanceAmount: lockedOrder.totalPrice,
+        remainingAmount: 0,
+        paymentStatus: "paid",
+        advancePaymentStatus: "approved" as const,
+        assignedToId: order.intendedDesignerId,
+        status: "new" as const,
+        paymentDate: new Date(),
+      } : {
+        advanceAmount: currentAdvance + verification.amount,
+        remainingAmount: newRemaining,
+        paymentStatus: isFullyPaid ? "paid" : "pending",
+        ...(isFullyPaid ? { status: "delivered" as const, deliveredAt: new Date(), paymentDate: new Date() } : {}),
+      };
+      const [updatedOrder] = await tx.update(orders).set(orderUpdates)
+        .where(and(eq(orders.id, order.id), ne(orders.status, "canceled")))
+        .returning();
+      if (!updatedOrder) throw new Error("ORDER_CANCELED_DURING_APPROVAL");
+
+      await tx.insert(activityLogs).values({
+        orderId: verification.orderId,
+        actorId: user.id,
+        activityType: "payment_change",
+        previousValue: "pending_confirmation",
+        newValue: "approved",
+        details: { paymentVerificationId: verificationId, paymentType: verification.paymentType, amount: verification.amount },
+      });
+      return { approvedVerification, updatedOrder, newRemaining, isFullyPaid };
+    }).catch(error => {
+      if (error instanceof Error && error.message === "ORDER_CANCELED_DURING_APPROVAL") return null;
+      if (error instanceof Error && error.message.startsWith("PAYMENT_APPROVAL_CONFLICT:")) {
+        return { conflict: error.message.slice("PAYMENT_APPROVAL_CONFLICT:".length) };
+      }
+      throw error;
+    });
+    if (!approval) {
+      return res.status(409).json({ error: "This payment or order changed while you were reviewing it. Reload and try again." });
+    }
+    if ("conflict" in approval) {
+      return res.status(409).json({ error: approval.conflict });
+    }
+    const { newRemaining, isFullyPaid } = approval;
+
+    if (verification.paymentType === 'advance') {
       if (order.intendedDesignerId && order.intendedDesignerId !== user.id) {
         await notifyUser(
           order.intendedDesignerId, "assignment",
@@ -1867,19 +1901,6 @@ export async function registerRoutes(
         ["support"]
       );
     } else if (verification.paymentType === 'full') {
-      const orderNumber = await storage.generateOrderNumber();
-      
-      await storage.updateOrder(order.id, {
-        orderNumber,
-        advanceAmount: order.totalPrice,
-        remainingAmount: 0,
-        paymentStatus: "paid",
-        advancePaymentStatus: "approved",
-        assignedToId: order.intendedDesignerId,
-        status: "new",
-        paymentDate: new Date(),
-      });
-      
       if (order.intendedDesignerId && order.intendedDesignerId !== user.id) {
         await notifyUser(
           order.intendedDesignerId, "assignment",
@@ -1911,16 +1932,6 @@ export async function registerRoutes(
         ["support"]
       );
     } else if (verification.paymentType === 'remaining') {
-      const newRemaining = Math.max(0, currentRemaining - verification.amount);
-      const isFullyPaid = newRemaining <= 0;
-
-      await storage.updateOrder(order.id, {
-        advanceAmount: currentAdvance + verification.amount,
-        remainingAmount: newRemaining,
-        paymentStatus: isFullyPaid ? "paid" : "pending",
-        ...(isFullyPaid ? { status: "delivered", deliveredAt: new Date(), paymentDate: new Date() } : {}),
-      });
-
       // Notify admins plus the assigned designer and the payment requester.
       const remainingAdmins = await storage.getAdmins();
       const balanceNote = isFullyPaid

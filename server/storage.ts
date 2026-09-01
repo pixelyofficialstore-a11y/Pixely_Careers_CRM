@@ -17,6 +17,7 @@ import {
 import { db } from "./db";
 import { eq, ne, desc, sql, and, isNotNull, inArray, asc } from "drizzle-orm";
 import { getStartOfBusinessDay, getStartOfBusinessMonth } from "@shared/business-time";
+import { getOrderAccounting } from "@shared/order-accounting";
 
 export type ComplaintListFilters = {
   search?: string;
@@ -26,6 +27,15 @@ export type ComplaintListFilters = {
   designerId?: number;
   month?: number;
   year?: number;
+};
+
+export type OrderCancellation = {
+  reason: string;
+  advanceRefunded: boolean;
+  actorId: number;
+  expectedStatus?: string;
+  complaintId?: number;
+  complaintNumber?: string;
 };
 
 export interface IStorage {
@@ -39,6 +49,7 @@ export interface IStorage {
   getOrders(role: string, userId: number): Promise<OrderWithServices[]>;
   createOrder(order: InsertOrder, services?: Omit<InsertOrderService, 'orderId'>[]): Promise<Order>;
   updateOrder(id: number, updates: Partial<InsertOrder>): Promise<Order>;
+  cancelOrder(id: number, cancellation: OrderCancellation): Promise<Order | undefined>;
   getOrderServices(orderId: number): Promise<OrderService[]>;
   createOrderService(service: InsertOrderService): Promise<OrderService>;
   replaceOrderServices(orderId: number, services: Omit<InsertOrderService, 'orderId'>[]): Promise<void>;
@@ -108,7 +119,7 @@ export interface IStorage {
     expectedStatus: Complaint["status"],
     updates: Partial<InsertComplaint>,
     historyEvents: InsertActivityLog[],
-    cancelOrder?: boolean,
+    cancellation?: OrderCancellation,
   ): Promise<Complaint | undefined>;
   getComplaintHistory(id: number): Promise<ComplaintHistoryEntry[]>;
   getComplaintNotes(id: number): Promise<ComplaintNoteResponse[]>;
@@ -182,6 +193,71 @@ export class DatabaseStorage implements IStorage {
   async updateOrder(id: number, updates: Partial<InsertOrder>): Promise<Order> {
     const [updatedOrder] = await db.update(orders).set(updates).where(eq(orders.id, id)).returning();
     return updatedOrder;
+  }
+
+  async cancelOrder(id: number, cancellation: OrderCancellation): Promise<Order | undefined> {
+    return db.transaction(async tx => {
+      await tx.execute(sql`SELECT id FROM orders WHERE id = ${id} FOR UPDATE`);
+      const [existing] = await tx.select().from(orders).where(eq(orders.id, id));
+      if (!existing || existing.status === "canceled") return undefined;
+      if (cancellation.expectedStatus && existing.status !== cancellation.expectedStatus) return undefined;
+
+      const now = new Date();
+      const advanceAmount = Math.max(0, Number(existing.advanceAmount || 0));
+      const refundAmount = cancellation.advanceRefunded ? advanceAmount : 0;
+      const [updated] = await tx.update(orders).set({
+        status: "canceled",
+        cancellationReason: cancellation.reason,
+        canceledByUserId: cancellation.actorId,
+        canceledAt: now,
+        advanceRefunded: cancellation.advanceRefunded,
+        refundAmount,
+        refundRecordedByUserId: cancellation.advanceRefunded ? cancellation.actorId : null,
+        refundRecordedAt: cancellation.advanceRefunded ? now : null,
+      }).where(and(eq(orders.id, id), ne(orders.status, "canceled"))).returning();
+      if (!updated) return undefined;
+
+      const complaintDetails = cancellation.complaintId ? {
+        complaintId: cancellation.complaintId,
+        complaintNumber: cancellation.complaintNumber,
+      } : {};
+      await tx.insert(activityLogs).values([
+        {
+          orderId: id,
+          actorId: cancellation.actorId,
+          activityType: "status_change",
+          previousValue: existing.status,
+          newValue: "canceled",
+          details: {
+            ...complaintDetails,
+            cancellationReason: cancellation.reason,
+            advanceRefunded: cancellation.advanceRefunded,
+            refundAmount,
+          },
+        },
+        {
+          orderId: id,
+          actorId: cancellation.actorId,
+          activityType: "payment_change",
+          previousValue: "advance_received",
+          newValue: cancellation.advanceRefunded ? "refunded" : "retained",
+          details: { ...complaintDetails, amount: advanceAmount, cancellation: true },
+        },
+        {
+          orderId: id,
+          actorId: cancellation.actorId,
+          activityType: "payment_change",
+          previousValue: "remaining_receivable",
+          newValue: "canceled",
+          details: {
+            ...complaintDetails,
+            amount: Math.max(0, Number(existing.remainingAmount || 0)),
+            cancellation: true,
+          },
+        },
+      ]);
+      return updated;
+    });
   }
 
   async getOrderServices(orderId: number): Promise<OrderService[]> {
@@ -262,11 +338,9 @@ export class DatabaseStorage implements IStorage {
   async getStats(role: string, userId: number, complaintFilters: ComplaintListFilters = {}): Promise<any> {
     const allOrdersRaw = await db.select().from(orders);
     const allOrders = allOrdersRaw.filter(o => o.advancePaymentStatus === 'approved');
-    // Canceled orders retain their original amounts for audit, but never count
-    // in active revenue, collected, outstanding, or cash-flow metrics.
-    const activeFinancialOrders = allOrders.filter(o => o.status !== "canceled");
-    const collectedFinancialOrders = allOrders.filter(o => o.status !== "canceled" || o.advanceRefunded === false);
-    const collectedOrderIds = new Set(collectedFinancialOrders.map(order => order.id));
+    // Canceled orders retain original amounts for audit. Their accounting
+    // projection decides whether an advance was refunded or retained.
+    const collectedOrderIds = new Set(allOrders.filter(order => getOrderAccounting(order).netCollected > 0).map(order => order.id));
     const allPaymentVerifications = await db.select().from(paymentVerifications);
     const allUsers = await db.select().from(users);
     
@@ -286,8 +360,8 @@ export class DatabaseStorage implements IStorage {
       canceled: allOrders.filter(o => o.status === 'canceled').length,
     };
 
-    const totalRevenue = collectedFinancialOrders.reduce((acc, curr) => acc + (curr.advanceAmount || 0) - (curr.refundAmount || 0), 0);
-    const pendingPayments = activeFinancialOrders.reduce((acc, curr) => acc + (curr.remainingAmount || 0), 0);
+    const totalRevenue = allOrders.reduce((acc, order) => acc + getOrderAccounting(order).netCollected, 0);
+    const pendingPayments = allOrders.reduce((acc, order) => acc + getOrderAccounting(order).remainingReceivable, 0);
     const adminUserIds = new Set(allUsers.filter(user => user.role === "admin").map(user => user.id));
     const approvedPaymentsToday = allPaymentVerifications.filter(payment =>
       payment.status === "approved" &&
@@ -300,14 +374,15 @@ export class DatabaseStorage implements IStorage {
     const verifiedAdvanceOrderIdsToday = new Set(approvedAdvancePaymentsToday.map(payment => payment.orderId));
     const verifiedAdvanceToday = approvedAdvancePaymentsToday
       .reduce((sum, payment) => sum + (payment.amount || 0), 0);
-    const directAdminAdvanceToday = activeFinancialOrders
+    const directAdminAdvanceToday = allOrders
       .filter(order =>
         adminUserIds.has(order.createdById || -1) &&
         order.createdAt &&
         new Date(order.createdAt) >= today &&
+        getOrderAccounting(order).netCollected > 0 &&
         !verifiedAdvanceOrderIdsToday.has(order.id)
       )
-      .reduce((sum, order) => sum + (order.advanceAmount || 0), 0);
+      .reduce((sum, order) => sum + getOrderAccounting(order).netCollected, 0);
     const remainingReceivedToday = approvedPaymentsToday
       .filter(payment => payment.paymentType === "remaining")
       .reduce((sum, payment) => sum + (payment.amount || 0), 0);
@@ -318,7 +393,7 @@ export class DatabaseStorage implements IStorage {
       complaints: await this.getComplaintStats(role, userId, complaintFilters),
       finance: {
         totalRevenue,
-          monthlyRevenue: monthlyOrders.filter(order => order.status !== "canceled" || order.advanceRefunded === false).reduce((acc, curr) => acc + (curr.advanceAmount || 0) - (curr.refundAmount || 0), 0),
+        monthlyRevenue: monthlyOrders.reduce((acc, order) => acc + getOrderAccounting(order).netCollected, 0),
         pendingPayments,
         todayCashFlow: {
           advance: advanceReceivedToday,
@@ -404,7 +479,7 @@ export class DatabaseStorage implements IStorage {
     ]);
     const usersById = new Map(usersList.map(user => [user.id, user]));
     return notes.map(note => {
-      const author = usersById.get(note.createdByUserId);
+      const author = note.createdByUserId ? usersById.get(note.createdByUserId) : undefined;
       return { ...note, createdBy: author ? { id: author.id, name: author.name, role: author.role } : null };
     });
   }
@@ -451,6 +526,8 @@ export class DatabaseStorage implements IStorage {
           advanceAmount: order.advanceAmount,
           remainingAmount: order.remainingAmount,
           discountAmount: order.discountAmount,
+          advanceRefunded: order.advanceRefunded,
+          refundAmount: order.refundAmount,
         } : {}),
       },
       complaintAgainst: against,
@@ -591,7 +668,7 @@ export class DatabaseStorage implements IStorage {
     expectedStatus: Complaint["status"],
     updates: Partial<InsertComplaint>,
     historyEvents: InsertActivityLog[],
-    cancelOrder = false,
+    cancellation?: OrderCancellation,
   ): Promise<Complaint | undefined> {
     return await db.transaction(async (tx) => {
       const [updated] = await tx.update(complaints)
@@ -602,14 +679,73 @@ export class DatabaseStorage implements IStorage {
       if (historyEvents.length > 0) {
         await tx.insert(activityLogs).values(historyEvents);
       }
-      if (cancelOrder) {
+      if (cancellation) {
+        const now = new Date();
+        await tx.execute(sql`SELECT id FROM orders WHERE id = ${updated.orderId} FOR UPDATE`);
+        const [existingOrder] = await tx.select().from(orders).where(eq(orders.id, updated.orderId));
+        if (!existingOrder || existingOrder.status === "canceled") {
+          throw new Error("Unable to cancel the related order");
+        }
+        const advanceAmount = Math.max(0, Number(existingOrder.advanceAmount || 0));
+        const refundAmount = cancellation.advanceRefunded ? advanceAmount : 0;
         const [updatedOrder] = await tx.update(orders)
-          .set({ status: "canceled" })
-          .where(eq(orders.id, updated.orderId))
+          .set({
+            status: "canceled",
+            cancellationReason: cancellation.reason,
+            canceledByUserId: cancellation.actorId,
+            canceledAt: now,
+            advanceRefunded: cancellation.advanceRefunded,
+            refundAmount,
+            refundRecordedByUserId: cancellation.advanceRefunded ? cancellation.actorId : null,
+            refundRecordedAt: cancellation.advanceRefunded ? now : null,
+          })
+          .where(and(eq(orders.id, updated.orderId), ne(orders.status, "canceled")))
           .returning();
         if (!updatedOrder) {
           throw new Error("Unable to cancel the related order");
         }
+        await tx.insert(activityLogs).values([
+          {
+            orderId: updated.orderId,
+            actorId: cancellation.actorId,
+            activityType: "status_change",
+            previousValue: existingOrder.status,
+            newValue: "canceled",
+            details: {
+              complaintId: cancellation.complaintId,
+              complaintNumber: cancellation.complaintNumber,
+              cancellationReason: cancellation.reason,
+              advanceRefunded: cancellation.advanceRefunded,
+              refundAmount,
+            },
+          },
+          {
+            orderId: updated.orderId,
+            actorId: cancellation.actorId,
+            activityType: "payment_change",
+            previousValue: "advance_received",
+            newValue: cancellation.advanceRefunded ? "refunded" : "retained",
+            details: {
+              complaintId: cancellation.complaintId,
+              complaintNumber: cancellation.complaintNumber,
+              amount: advanceAmount,
+              cancellation: true,
+            },
+          },
+          {
+            orderId: updated.orderId,
+            actorId: cancellation.actorId,
+            activityType: "payment_change",
+            previousValue: "remaining_receivable",
+            newValue: "canceled",
+            details: {
+              complaintId: cancellation.complaintId,
+              complaintNumber: cancellation.complaintNumber,
+              amount: Math.max(0, Number(existingOrder.remainingAmount || 0)),
+              cancellation: true,
+            },
+          },
+        ]);
       }
       return updated;
     });

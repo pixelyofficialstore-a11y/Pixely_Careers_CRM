@@ -90,6 +90,7 @@ import { ComplaintDialog } from "@/components/ComplaintDialog";
 import { ComplaintStatusBadge } from "@/components/StatusBadge";
 import { ComplaintDetails } from "@/pages/ComplaintsPage";
 import { ReviewForm, ReviewDetails, SuggestionDetails, type Review } from "@/pages/FeedbackPage";
+import { getOrderAccounting } from "@shared/order-accounting";
 
 const FALLBACK_SERVICE_TYPES = [
   "ATS CV",
@@ -498,6 +499,7 @@ export default function OrdersPage() {
       ]));
 
       const canceled = order.status === "canceled";
+      const accounting = getOrderAccounting(order);
       const advanceWasRefunded = canceled && order.advanceRefunded === true;
       section("Financial Summary", canceled ? rows([
         ["Original Order Value", reportMoney(order.totalPrice)],
@@ -505,16 +507,16 @@ export default function OrdersPage() {
         ["Original Advance", reportMoney(order.advanceAmount)],
         ["Advance Disposition", advanceWasRefunded ? "Refunded" : "Retained"],
         ["Refunded Amount", reportMoney(order.refundAmount)],
-        ["Net Collected", reportMoney(advanceWasRefunded ? 0 : order.advanceAmount)],
+        ["Net Collected", reportMoney(accounting.netCollected)],
         ["Original Remaining", reportMoney(order.remainingAmount)],
-        ["Remaining Receivable", reportMoney(0)],
+        ["Remaining Receivable", reportMoney(accounting.remainingReceivable)],
         ["Order Status", "Canceled"],
       ]) : rows([
         ["Order Value", reportMoney(order.totalPrice)],
         ["Discount", reportMoney(order.discountAmount)],
         ["Advance Received", reportMoney(order.advanceAmount)],
-        ["Remaining Balance", reportMoney(order.remainingAmount)],
-        ["Net Collected", reportMoney(order.advanceAmount)],
+        ["Remaining Balance", reportMoney(accounting.remainingReceivable)],
+        ["Net Collected", reportMoney(accounting.netCollected)],
         ["Payment Status", order.paymentStatus === "paid" ? "Paid" : "Payment Pending"],
       ]));
 
@@ -768,14 +770,13 @@ export default function OrdersPage() {
   });
 
   // Approved monthly orders - same logic as dashboard (advancePaymentStatus === 'approved')
-  const approvedMonthlyOrders = monthlyOrders.filter(o => o.advancePaymentStatus === 'approved' && o.status !== 'canceled');
+  const approvedMonthlyOrders = monthlyOrders.filter(o => o.advancePaymentStatus === 'approved');
 
   // Monthly Revenue: total order value (full order amount) for all approved orders
   // placed in the selected month/year — distinct from Collected (advance received)
   // and Remaining (unpaid balance).
   const monthlyRevenue = approvedMonthlyOrders.reduce((sum, order) => {
-    const amount = Number(order.totalPrice ?? 0);
-    return sum + (Number.isFinite(amount) ? amount : 0);
+    return sum + getOrderAccounting(order).accountedTotal;
   }, 0);
 
   // Approved today's orders — for Total Revenue of the day
@@ -1409,17 +1410,17 @@ export default function OrdersPage() {
           </div>
           <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
             <div className="p-2 bg-green-500/10 rounded-lg text-green-500"><TrendingUp className="w-5 h-5" /></div>
-            <div><p className="text-xs text-slate-500">Collected</p><p className="font-bold text-white">₨{Math.round(approvedMonthlyOrders.reduce((acc, o) => acc + (o.advanceAmount || 0), 0) / 100).toLocaleString()}</p></div>
+            <div><p className="text-xs text-slate-500">Collected</p><p className="font-bold text-white">₨{Math.round(approvedMonthlyOrders.reduce((acc, o) => acc + getOrderAccounting(o).netCollected, 0) / 100).toLocaleString()}</p></div>
           </div>
           <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
             <div className="p-2 bg-red-500/10 rounded-lg text-red-500"><AlertCircle className="w-5 h-5" /></div>
-            <div><p className="text-xs text-slate-500">Remaining</p><p className="font-bold text-white">₨{Math.round(approvedMonthlyOrders.filter(o => o.status !== 'canceled').reduce((acc, o) => acc + (o.remainingAmount || 0), 0) / 100).toLocaleString()}</p></div>
+            <div><p className="text-xs text-slate-500">Remaining</p><p className="font-bold text-white">₨{Math.round(approvedMonthlyOrders.reduce((acc, o) => acc + getOrderAccounting(o).remainingReceivable, 0) / 100).toLocaleString()}</p></div>
           </div>
           <div className="glass-panel p-4 rounded-xl border border-slate-800 flex items-center gap-3">
             <div className="p-2 bg-purple-500/10 rounded-lg text-purple-500"><CalendarIcon className="w-5 h-5" /></div>
             <div>
               <p className="text-xs text-slate-500">Today's Revenue</p>
-              <p className="font-bold text-white">₨{Math.round(approvedTodayOrders.reduce((acc, o) => acc + (o.advanceAmount || 0) + (o.remainingAmount || 0), 0) / 100).toLocaleString()}</p>
+              <p className="font-bold text-white">₨{Math.round(approvedTodayOrders.reduce((acc, o) => acc + getOrderAccounting(o).accountedTotal, 0) / 100).toLocaleString()}</p>
             </div>
           </div>
         </div>

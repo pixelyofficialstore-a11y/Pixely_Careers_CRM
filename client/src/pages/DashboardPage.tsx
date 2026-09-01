@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { format, isToday, startOfMonth } from "date-fns";
 import type { OrderWithServices } from "@shared/schema";
 import { getMillisecondsUntilNextBusinessDay } from "@shared/business-time";
+import { getOrderAccounting } from "@shared/order-accounting";
 import { DashboardSkeleton } from "@/components/PageSkeleton";
 
 interface User {
@@ -355,14 +356,10 @@ export default function DashboardPage() {
   //   (canceled orders' remaining is excluded — not collected, not outstanding)
   const monthlyApprovedOrders = approvedOrders.filter(o => new Date(o.createdAt!) >= monthStart);
 
-  const nonCanceledApproved = approvedOrders.filter(o => o.status !== 'canceled');
-  const collectedApproved = approvedOrders.filter(o => o.status !== 'canceled' || o.advanceRefunded === false);
-  const totalCollected = collectedApproved.reduce((acc, o) => acc + (o.advanceAmount || 0) - (o.refundAmount || 0), 0);
-  const outstandingBalance = nonCanceledApproved.reduce((acc, o) => acc + (o.remainingAmount || 0), 0);
-  const monthlyCollected = monthlyApprovedOrders.filter(o => o.status !== 'canceled' || o.advanceRefunded === false).reduce((acc, o) => acc + (o.advanceAmount || 0) - (o.refundAmount || 0), 0);
-  const monthlyRemaining = monthlyApprovedOrders
-    .filter(o => o.status !== 'canceled')
-    .reduce((acc, o) => acc + (o.remainingAmount || 0), 0);
+  const totalCollected = approvedOrders.reduce((acc, o) => acc + getOrderAccounting(o).netCollected, 0);
+  const outstandingBalance = approvedOrders.reduce((acc, o) => acc + getOrderAccounting(o).remainingReceivable, 0);
+  const monthlyCollected = monthlyApprovedOrders.reduce((acc, o) => acc + getOrderAccounting(o).netCollected, 0);
+  const monthlyRemaining = monthlyApprovedOrders.reduce((acc, o) => acc + getOrderAccounting(o).remainingReceivable, 0);
 
   const todayCashFlow = dashboardStats?.finance?.todayCashFlow ?? {
     advance: 0,

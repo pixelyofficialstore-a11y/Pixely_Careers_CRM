@@ -20,13 +20,15 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { cn } from "@/lib/utils";
 import { ComplaintDetails } from "./ComplaintsPage";
 import { ReviewDetails, SuggestionDetails } from "./FeedbackPage";
+import { getOrderAccounting } from "@shared/order-accounting";
 
 type Order = {
   id: number; orderNumber?: string | null; clientName: string; status: string;
   assignedToId?: number | null; readyDate?: string | null; createdAt?: string | null;
   canceledAt?: string | null; advancePaymentStatus?: string | null; createdById?: number | null;
   platform?: string | null; campaign?: string | null; adSet?: string | null; creative?: string | null;
-  advanceAmount?: number; remainingAmount?: number; services?: { serviceType: string; quantity: number }[];
+  advanceAmount?: number; remainingAmount?: number; advanceRefunded?: boolean | null; refundAmount?: number | null;
+  services?: { serviceType: string; quantity: number }[];
 };
 type User = { id: number; name: string; username: string; role: string; isActive: boolean };
 type Complaint = { id: number; complaintNumber: string; orderId: number; complaintAgainstUserId?: number; complaintAgainst?: User; category: string; description: string; status: string; resolutionOutcome?: string | null; createdAt?: string | Date | null };
@@ -125,14 +127,13 @@ export default function AnalyticsPage() {
     const monthOrders = supportOrders.filter(o => o.createdById === agent.id);
     const dayOrders = supportDayOrders.filter(o => o.createdById === agent.id);
     const approved = monthOrders.filter(o => o.advancePaymentStatus === "approved");
-    const active = approved.filter(o => o.status !== "canceled");
     return {
       totalOrders: orders.filter(o => o.createdById === agent.id && o.advancePaymentStatus === "approved").length,
       monthOrders: approved.length,
       dayOrders: dayOrders.filter(o => o.advancePaymentStatus === "approved").length,
-      revenue: active.reduce((sum, o) => sum + (o.advanceAmount || 0) + (o.remainingAmount || 0), 0),
-      collected: active.reduce((sum, o) => sum + (o.advanceAmount || 0), 0),
-      pending: active.reduce((sum, o) => sum + (o.remainingAmount || 0), 0),
+      revenue: approved.reduce((sum, o) => sum + getOrderAccounting(o).accountedTotal, 0),
+      collected: approved.reduce((sum, o) => sum + getOrderAccounting(o).netCollected, 0),
+      pending: approved.reduce((sum, o) => sum + getOrderAccounting(o).remainingReceivable, 0),
     };
   };
   const exportTablePDF = (kind: "marketing" | "support") => {
@@ -188,7 +189,7 @@ export default function AnalyticsPage() {
       <TabsContent value="support" className="space-y-5">
         <FilterBar month={supportMonth} year={supportYear} setMonth={setSupportMonth} setYear={setSupportYear} count={`${supportOrders.length} orders`} day={supportDay} setDay={setSupportDay} maxDay={maxDay} />
         <div className="flex justify-end"><Button variant="outline" onClick={() => exportTablePDF("support")}><Download className="mr-2 h-4 w-4" />Export PDF</Button></div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3"><Metric icon={Package} label="Monthly orders" value={supportOrders.filter(o => o.advancePaymentStatus === "approved").length} note="Approved orders this month" /><Metric icon={MessageSquare} label="Monthly revenue" value={`Rs ${Math.round(supportOrders.filter(o => o.advancePaymentStatus === "approved" && o.status !== "canceled").reduce((s, o) => s + (o.advanceAmount || 0) + (o.remainingAmount || 0), 0) / 100).toLocaleString()}`} note="Collected + remaining" /><Metric icon={FileText} label="Selected-day orders" value={supportDayOrders.filter(o => o.advancePaymentStatus === "approved").length} note={`${months[Number(supportMonth)]} ${supportDay}, ${supportYear}`} /></div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3"><Metric icon={Package} label="Monthly orders" value={supportOrders.filter(o => o.advancePaymentStatus === "approved").length} note="Approved orders this month" /><Metric icon={MessageSquare} label="Monthly revenue" value={`Rs ${Math.round(supportOrders.filter(o => o.advancePaymentStatus === "approved").reduce((s, o) => s + getOrderAccounting(o).accountedTotal, 0) / 100).toLocaleString()}`} note="Collected + remaining" /><Metric icon={FileText} label="Selected-day orders" value={supportDayOrders.filter(o => o.advancePaymentStatus === "approved").length} note={`${months[Number(supportMonth)]} ${supportDay}, ${supportYear}`} /></div>
         <section className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/40"><SectionTitle icon={Headphones} title="Support agent monthly summary" copy="Approved orders placed by each support agent." /><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Agent</TableHead><TableHead>All approved</TableHead><TableHead>Month orders</TableHead><TableHead>Day orders</TableHead><TableHead>Revenue</TableHead><TableHead>Collected</TableHead><TableHead>Pending</TableHead></TableRow></TableHeader><TableBody>{supportAgents.map(agent => { const m = supportAgentMetrics(agent); return <TableRow key={agent.id}><TableCell className="font-medium">{agent.name}</TableCell><TableCell>{m.totalOrders}</TableCell><TableCell>{m.monthOrders}</TableCell><TableCell>{m.dayOrders}</TableCell><TableCell>Rs {Math.round(m.revenue / 100).toLocaleString()}</TableCell><TableCell className="text-emerald-300">Rs {Math.round(m.collected / 100).toLocaleString()}</TableCell><TableCell className="text-amber-300">Rs {Math.round(m.pending / 100).toLocaleString()}</TableCell></TableRow>; })}{!supportAgents.length && <TableRow><TableCell colSpan={7}><Empty title="No support agents found" copy="Support team activity will appear here when accounts are active." /></TableCell></TableRow>}</TableBody></Table></div></section>
         <section className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/40"><SectionTitle icon={FileText} title="Selected-day order activity" copy="Orders created on the selected day, with status and client context." /><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Order</TableHead><TableHead>Client</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead><TableHead>Agent</TableHead></TableRow></TableHeader><TableBody>{supportDayOrders.filter(o => o.advancePaymentStatus === "approved").map(o => <TableRow key={o.id}><TableCell className="font-mono text-cyan-200">{o.orderNumber || `#${o.id}`}</TableCell><TableCell>{o.clientName}</TableCell><TableCell><Badge variant="outline">{title(o.status)}</Badge></TableCell><TableCell>{dateLabel(o.createdAt)}</TableCell><TableCell>{users.find(u => u.id === o.createdById)?.name || "—"}</TableCell></TableRow>)}{!supportDayOrders.length && <TableRow><TableCell colSpan={5}><Empty title="No orders on this day" copy="Try another day or month to inspect support activity." /></TableCell></TableRow>}</TableBody></Table></div></section>
       </TabsContent>

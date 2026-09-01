@@ -494,6 +494,8 @@ export type ComplaintResponse = {
     advanceAmount?: number | null;
     remainingAmount?: number | null;
     discountAmount?: number | null;
+    advanceRefunded?: boolean | null;
+    refundAmount?: number | null;
   };
   complaintAgainst: ComplaintUserSummary;
   category: string;
