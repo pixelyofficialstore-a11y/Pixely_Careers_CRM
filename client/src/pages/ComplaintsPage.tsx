@@ -211,7 +211,7 @@ export default function ComplaintsPage() {
   return <div className="space-y-4 p-4 md:space-y-8 md:p-8">
     <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
       <div className="max-w-md">
-        <div className="flex items-start gap-3"><FileWarning className="mt-1 h-7 w-7 shrink-0 text-rose-300" /><div><h1 className="text-2xl font-bold leading-tight text-white md:text-3xl">{isAdmin ? "Complaints Management" : user?.role === "designer" ? "Complaints About My Work" : "Complaints I Filed"}</h1><p className="mt-2 text-slate-400">Review order-linked complaints for {format(new Date(Number(year), Number(month) - 1, 1), "MMMM yyyy")}.</p></div></div>
+        <div><h1 className="text-2xl font-bold leading-tight text-white md:text-3xl">{isAdmin ? "Complaints Management" : user?.role === "designer" ? "Complaints About My Work" : "Complaints I Filed"}</h1><p className="mt-2 text-slate-400">Review order-linked complaints for {format(new Date(Number(year), Number(month) - 1, 1), "MMMM yyyy")}.</p></div>
       </div>
       <div className="flex w-full flex-col gap-3 xl:w-auto xl:min-w-[680px]">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
