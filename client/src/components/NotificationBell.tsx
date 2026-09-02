@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Bell, ShoppingCart, CreditCard, User, UserCheck, UserX, CheckCheck, CheckCircle, XCircle, PackageCheck, AlertTriangle, X } from "lucide-react";
+import { Bell, ShoppingCart, CreditCard, User, UserCheck, UserX, CheckCheck, CheckCircle, XCircle, PackageCheck, AlertTriangle, MessageSquare, Lightbulb, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { format, differenceInMinutes, isToday } from "date-fns";
@@ -110,20 +110,24 @@ function notifIcon(type: string, priority: string, title: string) {
   if (type === "payment") return CreditCard;
   if (type === "assignment") return UserCheck;
   if (type === "complaint") return AlertTriangle;
+  if (type === "review") return MessageSquare;
+  if (type === "suggestion") return Lightbulb;
   if (type === "user") return User;
   return Bell;
 }
 
 function notifColor(type: string, priority: string, title: string) {
   const t = (title || "").toLowerCase();
+  if (type === "complaint") return "text-rose-300 bg-rose-500/10";
+  if (type === "payment") return "text-emerald-300 bg-emerald-500/10";
+  if (type === "review") return "text-blue-300 bg-blue-500/10";
+  if (type === "suggestion") return "text-purple-300 bg-purple-500/10";
   if (priority === "action_required") return "text-rose-300 bg-rose-500/10";
   if (priority === "confirmation" || t.includes("approved") || t.includes("delivered")) {
     return "text-emerald-300 bg-emerald-500/10";
   }
   if (type === "order") return "text-cyan-300 bg-cyan-500/10";
-  if (type === "payment") return "text-amber-300 bg-amber-500/10";
   if (type === "assignment") return "text-slate-300 bg-slate-500/10";
-  if (type === "complaint") return "text-rose-300 bg-rose-500/10";
   if (type === "user") return "text-cyan-300 bg-cyan-500/10";
   return "text-slate-400 bg-slate-500/10";
 }
@@ -227,13 +231,13 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
             const oldest = seenNotificationIds.current.values().next().value;
             if (typeof oldest === "number") seenNotificationIds.current.delete(oldest);
           }
-          const title = payload.title || "PixelCRM";
+           const title = payload.title || "Pixely CRM";
           const message = payload.message || "You have a new notification";
           toast({ title, description: message });
           if ("Notification" in window && Notification.permission === "granted") {
             try {
-              new Notification(title, {
-                body: message,
+               new Notification("Pixely CRM", {
+                 body: title === "Pixely CRM" ? message : `${title}: ${message}`,
                 tag: `pixelcrm-notification-${payload.id}`,
                 icon: "/favicon.ico",
               });
@@ -407,8 +411,8 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
                 className={cn(
                   "flex items-start gap-3 px-4 py-3 border-b border-slate-800/50 transition-colors cursor-pointer hover:bg-slate-800/40",
                   !notif.read && "bg-blue-500/5",
-                  isActionRequired && !notif.read && "border-l-2 border-l-red-500",
-                  isConfirmation && !notif.read && "border-l-2 border-l-green-500"
+                    isActionRequired && !notif.read && "border-l-2 border-l-red-500",
+                    isConfirmation && !notif.read && "border-l-2 border-l-green-500"
                 )}
                 onClick={() => handleNotifClick(notif)}
               >
@@ -431,7 +435,11 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
                 {!notif.read && (
                   <div className={cn(
                     "w-2 h-2 rounded-full flex-shrink-0 mt-1.5",
-                    isActionRequired ? "bg-red-500" : isConfirmation ? "bg-green-500" : "bg-blue-500"
+                     notif.type === "complaint" ? "bg-rose-500" :
+                     notif.type === "payment" ? "bg-emerald-500" :
+                     notif.type === "review" ? "bg-blue-500" :
+                     notif.type === "suggestion" ? "bg-purple-500" :
+                     isActionRequired ? "bg-red-500" : isConfirmation ? "bg-green-500" : "bg-blue-500"
                   )} />
                 )}
               </div>

@@ -26,8 +26,8 @@ export function ComplaintDialog({ order, orders = [], open, onOpenChange }: Prop
   const [selectedOrderId, setSelectedOrderId] = useState(order ? String(order.id) : "");
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
-  const [evidence, setEvidence] = useState<File | null>(null);
-  const [preview, setPreview] = useState("");
+  const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
+  const [evidencePreviews, setEvidencePreviews] = useState<string[]>([]);
   const { data: categoryConfigs = [] } = useQuery<ComplaintCategoryConfig[]>({ queryKey: ["/api/complaint-categories"], staleTime: 300000 });
   const availableCategories = categoryConfigs.length ? categoryConfigs.filter(item => item.isActive) : complaintCategories.map((key, i) => ({ id: -i - 1, key, label: complaintCategoryLabels[key], isActive: true, sortOrder: i, createdAt: null }));
   const eligibleOrders = useMemo(() => orders.filter(item => item.assignedToId), [orders]);
@@ -36,27 +36,30 @@ export function ComplaintDialog({ order, orders = [], open, onOpenChange }: Prop
   useEffect(() => {
     if (!open) return;
     setSelectedOrderId(order ? String(order.id) : "");
-    setCategory(""); setDescription(""); setEvidence(null); setPreview("");
+    setCategory(""); setDescription("");
+    setEvidencePreviews(previous => { previous.forEach(URL.revokeObjectURL); return []; });
+    setEvidenceFiles([]);
   }, [open, order?.id]);
-  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
 
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!selectedOrder) throw new Error("Select an order first.");
-      let screenshotUrl: string | undefined;
-      if (evidence) {
-        const form = new FormData(); form.append("screenshot", evidence);
+      let evidencePayload: Array<{ url: string; fileName: string; fileSize: number }> = [];
+      if (evidenceFiles.length) {
+        const form = new FormData();
+        evidenceFiles.forEach(file => form.append("screenshots", file, file.name));
         const upload = await fetch("/api/complaints/upload", { method: "POST", body: form, credentials: "include" });
         if (!upload.ok) throw new Error((await upload.text()) || "Evidence upload failed.");
-        const payload = await upload.json(); screenshotUrl = payload.screenshotUrl || payload.url;
-        if (!screenshotUrl) throw new Error("Evidence upload did not return a screenshot URL.");
+        const payload = await upload.json();
+        evidencePayload = payload.evidence || [];
+        if (!evidencePayload.length) throw new Error("Evidence upload did not return image URLs.");
       }
        const response = await apiRequest("POST", "/api/complaints", {
          orderId: selectedOrder.id,
          complaintAgainstUserId: selectedOrder.assignedToId,
          category,
          description: description.trim(),
-         ...(screenshotUrl ? { screenshotUrl } : {}),
+          ...(evidencePayload.length ? { evidence: evidencePayload } : {}),
        });
       return response.json();
     },
@@ -66,12 +69,23 @@ export function ComplaintDialog({ order, orders = [], open, onOpenChange }: Prop
     },
     onError: (error: Error) => toast({ title: "Could not raise complaint", description: errorText(error), variant: "destructive" }),
   });
-  const onFile = (file?: File) => {
-    if (!file) return;
-    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024) {
-      toast({ title: "Evidence not accepted", description: "Use a PNG, JPEG, or WebP image up to 5MB.", variant: "destructive" }); return;
+  const onFiles = (files: File[]) => {
+    const available = 5 - evidenceFiles.length;
+    const nextFiles = files.slice(0, available);
+    if (files.length > available) {
+      toast({ title: "Maximum evidence reached", description: "You can attach up to five images to one complaint.", variant: "destructive" });
     }
-    setEvidence(file); setPreview(URL.createObjectURL(file));
+    if (!nextFiles.length) return;
+    setEvidenceFiles(previous => [...previous, ...nextFiles]);
+    setEvidencePreviews(previous => [...previous, ...nextFiles.map(file => URL.createObjectURL(file))]);
+  };
+  const removeEvidence = (index: number) => {
+    setEvidenceFiles(previous => previous.filter((_, fileIndex) => fileIndex !== index));
+    setEvidencePreviews(previous => {
+      const removed = previous[index];
+      if (removed) URL.revokeObjectURL(removed);
+      return previous.filter((_, previewIndex) => previewIndex !== index);
+    });
   };
   const canSubmit = Boolean(selectedOrder?.assignedToId && category && description.trim());
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="bg-slate-900 border-slate-800 text-white sm:max-w-lg max-h-[90vh] overflow-y-auto">
@@ -82,9 +96,22 @@ export function ComplaintDialog({ order, orders = [], open, onOpenChange }: Prop
            <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-300">Complaint against <span className="font-medium text-white">{selectedOrder.assignee?.name || "Assigned designer"}</span><span className="ml-1 text-xs text-slate-500">(Designer)</span></div>}
       <div className="space-y-2"><Label htmlFor="complaint-category">Category</Label><Select value={category} onValueChange={setCategory}><SelectTrigger id="complaint-category" className="bg-slate-950 border-slate-700"><SelectValue placeholder="Select a category" /></SelectTrigger><SelectContent>{availableCategories.map(item => <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>)}</SelectContent></Select></div>
       <div className="space-y-2"><Label htmlFor="complaint-description">Description</Label><Textarea id="complaint-description" value={description} onChange={e => setDescription(e.target.value)} placeholder="Describe what happened and include the relevant facts." rows={5} maxLength={5000} className="bg-slate-950 border-slate-700 resize-none" /><p className="text-xs text-slate-500">{description.length}/5000</p></div>
-       <div className="space-y-2"><Label>Evidence <span className="text-slate-500">(optional)</span></Label>
-         {preview ? <div className="relative rounded-lg overflow-hidden border border-slate-700"><img src={preview} alt="Selected evidence preview" className="max-h-44 w-full object-contain bg-slate-950" /><Button type="button" variant="secondary" size="icon" className="absolute right-2 top-2" onClick={() => { setEvidence(null); setPreview(""); }}><X className="w-4 h-4" /></Button></div> : <ImageDropzone onFile={onFile} label="Add screenshot" description="Paste from clipboard or drag an image here" />}
-         <p className="text-xs text-slate-500">PNG, JPEG, or WebP · maximum 5MB</p></div>
+       <div className="space-y-3"><Label>Evidence <span className="text-slate-500">(optional · up to 5 images)</span></Label>
+          <ImageDropzone
+            values={evidenceFiles}
+            onFiles={onFiles}
+            maxFiles={Math.max(1, 5 - evidenceFiles.length)}
+            disabled={evidenceFiles.length >= 5 || createMutation.isPending}
+            label={evidenceFiles.length >= 5 ? "Maximum evidence attached" : "Add screenshots"}
+            description="Paste from clipboard or drag images here"
+          />
+          {evidenceFiles.length > 0 && <div className="grid grid-cols-2 gap-3">
+            {evidenceFiles.map((file, index) => <div key={`${file.name}-${file.lastModified}-${index}`} className="overflow-hidden rounded-lg border border-slate-700 bg-slate-950">
+              <div className="relative"><img src={evidencePreviews[index]} alt={`Evidence preview ${index + 1}`} className="h-28 w-full object-cover" /><Button type="button" variant="secondary" size="icon" className="absolute right-2 top-2 h-7 w-7" onClick={() => removeEvidence(index)} disabled={createMutation.isPending}><X className="w-4 h-4" /></Button></div>
+              <div className="space-y-1 p-2"><p className="truncate text-xs text-slate-300">{file.name}</p><div className="flex items-center justify-between gap-2 text-[11px] text-slate-500"><span>{(file.size / 1024 / 1024).toFixed(2)} MB</span><span className={createMutation.isPending ? "text-amber-300" : "text-emerald-300"}>{createMutation.isPending ? "Uploading" : "Ready"}</span></div></div>
+            </div>)}
+          </div>}
+          <p className="text-xs text-slate-500">PNG, JPEG, or WebP · maximum 5MB each</p></div>
     </div>
     <DialogFooter><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button onClick={() => createMutation.mutate()} disabled={!canSubmit || createMutation.isPending} className="bg-red-600 hover:bg-red-500">{createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Raise Complaint</Button></DialogFooter>
   </DialogContent></Dialog>;

@@ -632,7 +632,7 @@ export async function registerRoutes(
             event: "order_created_by_admin",
             type: "order",
             title: "New Order",
-            message: `Order ${orderNumber} was created and assigned to ${intendedDesignerId ? (await storage.getUser(intendedDesignerId))?.name || "a designer" : "a designer"}.`,
+            message: "New order created by Admin.",
             priority: "update",
             relatedId: order.id,
             relatedType: "order",
@@ -647,7 +647,7 @@ export async function registerRoutes(
             recipientRole: "designer",
             type: "order",
             title: "New Order Assigned",
-            message: `Order ${orderNumber} has been assigned to you.`,
+            message: "New order assigned to you. Client details are available in CRM.",
             priority: "update",
             relatedId: order.id,
             relatedType: "order",
@@ -681,7 +681,7 @@ export async function registerRoutes(
           event: "payment_verification_requested",
           type: "payment",
           title: "Payment Verification Required",
-          message: `Order ${order.orderNumber || order.id} requires payment verification.`,
+          message: "New payment verification request received. Review payment details.",
           priority: "action_required",
           relatedId: order.id,
           relatedType: "order",
@@ -836,7 +836,7 @@ export async function registerRoutes(
   const feedbackUpload = multer({
     storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 },
     fileFilter: (_req, file, cb) => cb(null, ["image/png", "image/jpeg", "image/webp"].includes(file.mimetype)),
-  }).single("screenshot");
+  }).array("screenshots", 5);
   app.post("/api/feedback/upload", requireRole(["admin", "support", "designer"]), (req, res) => {
     feedbackUpload(req, res, async err => {
       if (err) return res.status(400).json({ message: "Invalid image upload." });
@@ -880,7 +880,7 @@ export async function registerRoutes(
             event: "review_created",
             type: "review",
             title: "New Client Review",
-            message: `Review ${review.reviewNumber} was recorded for Order ${order.orderNumber || order.id}.`,
+            message: "New client review received. Review feedback in CRM.",
             priority: "update",
             relatedId: review.id,
             relatedType: "review",
@@ -956,7 +956,7 @@ export async function registerRoutes(
            event: "suggestion_created",
            type: "suggestion",
            title: "New Suggestion",
-           message: `Suggestion ${suggestion.suggestionNumber} was recorded.`,
+           message: "New team suggestion submitted. Review and evaluate.",
            priority: "update",
            relatedId: suggestion.id,
            relatedType: "suggestion",
@@ -1054,13 +1054,18 @@ export async function registerRoutes(
   app.post("/api/complaints/upload", requireRole(["admin", "support"]), (req, res) => {
     complaintUpload(req, res, async (err) => {
       if (err) return res.status(400).json({ message: err.message });
-      if (!req.file) return res.status(400).json({ message: "A screenshot is required." });
+      const files = (req.files || []) as Express.Multer.File[];
+      if (files.length === 0) return res.status(400).json({ message: "At least one screenshot is required." });
       if (!isCloudinaryConfigured()) {
         return res.status(503).json({ message: "Complaint uploads require Cloudinary configuration." });
       }
       try {
-        const screenshotUrl = await uploadToCloudinary(req.file.buffer, "pixelcrm/complaints");
-        return res.json({ screenshotUrl });
+        const evidence = await Promise.all(files.map(async file => ({
+          url: await uploadToCloudinary(file.buffer, "pixelcrm/complaints"),
+          fileName: file.originalname,
+          fileSize: file.size,
+        })));
+        return res.json({ evidence, screenshotUrl: evidence[0]?.url });
       } catch {
         return res.status(502).json({ message: "Unable to upload the complaint screenshot." });
       }
@@ -1103,8 +1108,16 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Select an active complaint category." });
       }
 
+      const evidence = input.evidence || (input.screenshotUrl ? [{
+        url: input.screenshotUrl,
+        fileName: "Complaint evidence",
+        fileSize: 0,
+      }] : []);
       if (input.screenshotUrl && !isCloudinaryUrl(input.screenshotUrl)) {
         return res.status(400).json({ message: "Screenshot must be an HTTPS Cloudinary URL." });
+      }
+      if (evidence.length > 5 || evidence.some(item => !isCloudinaryUrl(item.url))) {
+        return res.status(400).json({ message: "Complaint evidence must contain up to five HTTPS Cloudinary image URLs." });
       }
 
       const complaint = await storage.createComplaint({
@@ -1118,10 +1131,10 @@ export async function registerRoutes(
         adminNotes: null,
         resolution: null,
         resolutionOutcome: null,
-        screenshotUrl: input.screenshotUrl || null,
+        screenshotUrl: input.screenshotUrl || evidence[0]?.url || null,
         resolvedByUserId: null,
         resolvedAt: null,
-      }, user.id);
+      }, user.id, evidence);
 
       const admins = await storage.getAdmins();
       const event = user.role === "support"
@@ -1134,8 +1147,8 @@ export async function registerRoutes(
           type: "complaint",
           title: "New Complaint",
           message: user.role === "support"
-            ? `New complaint ${complaint.complaintNumber} requires review.`
-            : `Complaint ${complaint.complaintNumber} was recorded.`,
+            ? "New complaint received from Support. Review required."
+            : "New complaint recorded by Admin. Review required.",
           priority: "action_required",
           relatedId: complaint.id,
           relatedType: "complaint",
@@ -1305,7 +1318,7 @@ export async function registerRoutes(
             recipientRole: "designer",
             type: "complaint",
             title: "Complaint Confirmed",
-            message: `Complaint ${existing.complaintNumber} for Order ${targetOrder?.orderNumber || existing.orderId} was confirmed.`,
+            message: "Complaint regarding your order has been confirmed. Please review and take required action.",
             priority: "update",
             relatedId: existing.id,
             relatedType: "complaint",
@@ -1772,14 +1785,13 @@ export async function registerRoutes(
 
       if (order.status !== 'pending_payment') {
         const admins = await storage.getAdmins();
-        const typeLabel = paymentType === 'remaining' ? 'remaining' : paymentType;
         await dispatchNotifications(
           admins.map(a => a.id),
            {
              event: "payment_verification_requested",
              type: "payment",
              title: "Payment Verification Required",
-             message: `${fmtRs(parsedAmount)} ${typeLabel} payment for Order ${order.orderNumber || order.id} requires verification.`,
+             message: "New payment verification request received. Review payment details.",
              priority: "action_required",
              relatedId: verification.id,
              relatedType: "payment_verification",
@@ -1913,7 +1925,7 @@ export async function registerRoutes(
           event: "order_approved",
           type: "order",
           title: "Order Approved",
-          message: `Order ${orderNumber} was approved and assigned to a designer.`,
+          message: "Order request approved. Review the order details.",
           priority: "confirmation",
           relatedId: order.id,
           relatedType: "order",
@@ -1928,7 +1940,7 @@ export async function registerRoutes(
           recipientRole: "support",
           type: "order",
           title: "Order Approved",
-          message: `Order ${orderNumber} was approved and is ready for production.`,
+          message: "Your order request has been approved.",
           priority: "confirmation",
           relatedId: order.id,
           relatedType: "order",
@@ -1943,7 +1955,7 @@ export async function registerRoutes(
           recipientRole: "designer",
           type: "order",
           title: "Order Approved",
-          message: `Order ${orderNumber} was approved and assigned to you.`,
+          message: "Your assigned order has been approved and production can start.",
           priority: "confirmation",
           relatedId: order.id,
           relatedType: "order",
@@ -2001,7 +2013,7 @@ export async function registerRoutes(
         recipientRole: "support",
         type: "order",
         title: "Order Disapproved",
-        message: `Order ${rejectedOrder.orderNumber || rejectedOrder.id} was disapproved. Please review the payment details.`,
+        message: "Your order request was not approved. Please review the details.",
         priority: "action_required",
         relatedId: rejectedOrder.id,
         relatedType: "order",

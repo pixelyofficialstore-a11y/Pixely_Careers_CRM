@@ -193,6 +193,11 @@ export const api = {
         category: z.string().trim().min(1, "Category is required").max(100),
         description: z.string().trim().min(1, "Description is required").max(5000),
         screenshotUrl: z.string().url().optional(),
+        evidence: z.array(z.object({
+          url: z.string().url(),
+          fileName: z.string().trim().min(1).max(255),
+          fileSize: z.number().int().nonnegative().max(5 * 1024 * 1024),
+        })).max(5).optional(),
       }),
       responses: {
         201: z.custom<ComplaintResponse>(),

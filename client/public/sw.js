@@ -9,12 +9,12 @@ self.addEventListener('push', (event) => {
     data = event.data ? event.data.json() : {};
   } catch (_) {}
 
-  const title = data.title || 'PixelCRM';
+  const notificationTitle = data.title || 'Pixely CRM';
   const body = data.body || '';
   const priority = data.priority || 'update';
 
   const options = {
-    body,
+    body: notificationTitle === 'Pixely CRM' ? body : `${notificationTitle}: ${body}`,
     icon: '/favicon.ico',
     badge: '/favicon.ico',
     tag: data.tag || 'pixelcrm-notification',
@@ -24,7 +24,7 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(title, options)
+    self.registration.showNotification('Pixely CRM', options)
   );
 });
 
@@ -35,7 +35,7 @@ self.addEventListener('message', (event) => {
   const { title, body, priority, url, tag } = data;
 
   const options = {
-    body: body || '',
+    body: title ? `${title}: ${body || ''}` : (body || ''),
     icon: '/favicon.ico',
     badge: '/favicon.ico',
     tag: tag || 'pixelcrm-notification',
@@ -45,7 +45,7 @@ self.addEventListener('message', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(title || 'PixelCRM', options)
+    self.registration.showNotification('Pixely CRM', options)
   );
 });
 

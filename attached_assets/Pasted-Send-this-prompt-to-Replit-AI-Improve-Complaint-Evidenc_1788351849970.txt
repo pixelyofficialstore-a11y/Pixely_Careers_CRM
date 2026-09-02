@@ -1,0 +1,302 @@
+Send this prompt to Replit AI:
+
+---
+
+## Improve Complaint Evidence Upload System + Notification Content
+
+We need to improve the Complaint Evidence/Image Upload system and Browser Push Notifications.
+
+### 1. Improve Image Upload Experience
+
+Current upload field is basic. Make it similar to modern apps like WhatsApp, Slack, Discord, etc.
+
+Required improvements:
+
+### Image Upload Area
+
+Replace the current "Browse" style upload with a modern drag and drop uploader.
+
+Features required:
+
+* User can drag and drop screenshots/images.
+* User can directly paste images from clipboard.
+
+Example:
+
+User presses:
+
+CTRL + V
+
+after taking a screenshot → image should automatically appear in upload preview.
+
+Support:
+
+* Screenshot paste
+* Clipboard images
+* Drag & Drop
+* Normal file selection
+
+### Upload Preview
+
+Before submitting complaint:
+
+Show uploaded images as preview cards.
+
+Each image should have:
+
+* Thumbnail
+* File name
+* File size
+* Remove button
+* Upload status
+
+Example:
+
+Screenshot_001.png
+
+2.4 MB
+
+✓ Ready
+
+### Multiple Images
+
+Allow multiple evidence screenshots.
+
+Maximum:
+
+5 images per complaint.
+
+### Upload Validation
+
+Allowed:
+
+PNG
+JPG
+JPEG
+WEBP
+
+Maximum:
+
+5MB each.
+
+### Upload UI
+
+Make it match Pixely CRM theme:
+
+* Dark theme
+* Clean borders
+* Cyan accent
+* Professional SaaS style
+
+---
+
+# 2. Improve Browser Push Notification Content
+
+Current notifications are too generic.
+
+Make them simple, professional and understandable.
+
+Every notification should clearly explain:
+
+WHAT happened
+
+WHO did it
+
+WHAT action is required
+
+Do not use technical wording.
+
+---
+
+# Notification Examples
+
+## Complaint Created
+
+Instead of:
+
+"Complaint CMP-2609-001 created"
+
+Use:
+
+"New complaint received from Support. Review required."
+
+Admin notification.
+
+---
+
+## Complaint Against Designer Confirmed
+
+Designer notification:
+
+"Complaint regarding your order has been confirmed. Please review and take required action."
+
+Do not reveal reporter identity.
+
+---
+
+## Payment Request
+
+Instead of:
+
+"Payment created"
+
+Use:
+
+"New payment verification request received. Review payment details."
+
+---
+
+## Order Created
+
+Designer:
+
+"New order assigned to you. Client details are available in CRM."
+
+Admin:
+
+"New order created by Support."
+
+---
+
+## Order Approved
+
+Designer:
+
+"Your assigned order has been approved and production can start."
+
+Support:
+
+"Your order request has been approved."
+
+---
+
+## Order Rejected
+
+Support:
+
+"Your order request was not approved. Please review the details."
+
+---
+
+## New Review
+
+Admin:
+
+"New client review received. Review feedback in CRM."
+
+---
+
+## New Suggestion
+
+Admin:
+
+"New team suggestion submitted. Review and evaluate."
+
+---
+
+# 3. Notification Design Improvements
+
+Browser notifications should include:
+
+Title:
+
+Pixely CRM
+
+Message:
+
+Short action-based message.
+
+Example:
+
+Title:
+Pixely CRM
+
+Message:
+New complaint requires review.
+
+---
+
+# 4. Notification Center Improvements
+
+Improve notification dropdown:
+
+Show:
+
+* Icon based on type
+* Title
+* Short message
+* Time
+* Read/unread status
+
+Colors:
+
+Complaint:
+Red indicator
+
+Payment:
+Green indicator
+
+Review:
+Blue indicator
+
+Suggestion:
+Purple indicator
+
+Do not overuse colors.
+
+---
+
+# 5. Real-Time Sync
+
+Ensure:
+
+* No notification delays
+* Supabase realtime sync works properly
+* Notification count updates instantly
+* Browser notification appears immediately
+
+Test:
+
+Open two browsers with different users and verify realtime updates.
+
+---
+
+# 6. Security Check
+
+Before implementing:
+
+Check existing Supabase schema.
+
+Do NOT modify existing tables unnecessarily.
+
+Only add missing columns if required.
+
+Do not delete existing data.
+
+Verify:
+
+* Storage permissions
+* Row Level Security
+* User role access
+
+---
+
+# 7. Final Requirement
+
+Keep the same Pixely CRM professional dark theme.
+
+Do not create a separate design.
+
+Everything should feel like one complete CRM system.
+
+Test:
+
+Admin
+Support
+Designer
+
+before completing changes.
+
+---
+
+**Important: I have already connected Supabase. Do not change existing database structure unless required. First check the current schema. If required, add only the necessary columns/storage policies. Do not remove or modify existing data.**

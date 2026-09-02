@@ -1,6 +1,6 @@
 import { 
   users, orders, notifications, orderServices, paymentVerifications, supportDesignerAssignments,
-  servicesCatalog, packageConfigs, platformsCatalog, complaintCategoryConfigs, pushSubscriptions, activityLogs, complaints, complaintNotes, clientReviews, clientSuggestions, suggestionNotes,
+  servicesCatalog, packageConfigs, platformsCatalog, complaintCategoryConfigs, pushSubscriptions, activityLogs, complaints, complaintEvidence, complaintNotes, clientReviews, clientSuggestions, suggestionNotes,
   type User, type InsertUser, type Order, type InsertOrder,
   type OrderService, type InsertOrderService, type OrderWithServices,
   type PaymentVerification, type InsertPaymentVerification, type PaymentVerificationWithUsers,
@@ -9,7 +9,7 @@ import {
   type PackageConfig, type InsertPackageConfig,
   type PlatformCatalogItem, type InsertPlatformCatalogItem,
   type ComplaintCategoryConfig, type InsertComplaintCategoryConfig,
-  type PushSubscription, type Complaint, type InsertComplaint, type ComplaintResponse, type ComplaintNote, type ComplaintNoteResponse,
+  type PushSubscription, type Complaint, type InsertComplaint, type ComplaintResponse, type ComplaintEvidence, type ComplaintNote, type ComplaintNoteResponse,
   type ComplaintHistoryEntry, type ComplaintStats,
   type InsertActivityLog, type ActivityLog,
   type ClientReview, type InsertClientReview, type ClientSuggestion, type InsertClientSuggestion, type ActivityLogWithActor, type SuggestionNote,
@@ -113,7 +113,11 @@ export interface IStorage {
   getClientSuggestion(id: number): Promise<ClientSuggestion | undefined>;
   createClientSuggestion(data: InsertClientSuggestion): Promise<ClientSuggestion>;
   updateClientSuggestion(id: number, updates: Partial<InsertClientSuggestion>): Promise<ClientSuggestion>;
-  createComplaint(data: InsertComplaint, actorId: number): Promise<Complaint>;
+  createComplaint(
+    data: InsertComplaint,
+    actorId: number,
+    evidence?: Array<Pick<ComplaintEvidence, "url" | "fileName" | "fileSize">>,
+  ): Promise<Complaint>;
   getComplaints(role: string, userId: number, filters?: ComplaintListFilters): Promise<ComplaintResponse[]>;
   getComplaintForUser(id: number, role: string, userId: number): Promise<ComplaintResponse | undefined>;
   getComplaintRecord(id: number): Promise<Complaint | undefined>;
@@ -583,6 +587,7 @@ export class DatabaseStorage implements IStorage {
     usersById: Map<number, User>,
     role: string,
     services: OrderService[] = [],
+    evidenceByComplaintId: Map<number, ComplaintEvidence[]> = new Map(),
   ): ComplaintResponse | undefined {
     const against = complaint.complaintAgainstUserId
       ? this.complaintUserSummary(usersById.get(complaint.complaintAgainstUserId))
@@ -623,6 +628,20 @@ export class DatabaseStorage implements IStorage {
       resolutionScreenshotUrl: complaint.resolutionScreenshotUrl,
       createdAt: complaint.createdAt,
       updatedAt: complaint.updatedAt,
+      evidence: (evidenceByComplaintId.get(complaint.id) || (complaint.screenshotUrl ? [{
+        id: 0,
+        complaintId: complaint.id,
+        url: complaint.screenshotUrl,
+        fileName: "Complaint evidence",
+        fileSize: 0,
+        createdAt: complaint.createdAt,
+      }] : [])).map(item => ({
+        id: item.id,
+        url: item.url,
+        fileName: item.fileName,
+        fileSize: item.fileSize,
+        createdAt: item.createdAt,
+      })),
     };
 
     // Filer identity and internal notes are deliberately admin-only. Designers
@@ -645,7 +664,11 @@ export class DatabaseStorage implements IStorage {
     return response;
   }
 
-  async createComplaint(data: InsertComplaint, actorId: number): Promise<Complaint> {
+  async createComplaint(
+    data: InsertComplaint,
+    actorId: number,
+    evidence: Array<Pick<ComplaintEvidence, "url" | "fileName" | "fileSize">> = [],
+  ): Promise<Complaint> {
     if (data.complaintTargetType && data.complaintTargetType !== "designer") {
       throw new Error("Client-target complaints are no longer supported.");
     }
@@ -662,6 +685,11 @@ export class DatabaseStorage implements IStorage {
         ...data,
         complaintNumber: `CMP-${yy}${mm}-${String(suffix).padStart(3, "0")}`,
       }).returning();
+      if (evidence.length > 0) {
+        await tx.insert(complaintEvidence).values(
+          evidence.map(item => ({ complaintId: created.id, ...item })),
+        );
+      }
       await tx.insert(activityLogs).values({
         orderId: created.orderId,
         actorId,
@@ -707,17 +735,24 @@ export class DatabaseStorage implements IStorage {
       visible = visible.filter(complaint => (complaint.createdAt?.getMonth() ?? -1) + 1 === filters.month);
     }
 
-    const [allOrders, allUsers, allServices] = await Promise.all([
+    const [allOrders, allUsers, allServices, allEvidence] = await Promise.all([
       db.select().from(orders),
       this.getUsers(),
       db.select().from(orderServices),
+      db.select().from(complaintEvidence).orderBy(asc(complaintEvidence.createdAt)),
     ]);
     const ordersById = new Map(allOrders.map(order => [order.id, order]));
     const usersById = new Map(allUsers.map(user => [user.id, user]));
+    const evidenceByComplaintId = new Map<number, ComplaintEvidence[]>();
+    for (const evidence of allEvidence) {
+      const items = evidenceByComplaintId.get(evidence.complaintId) || [];
+      items.push(evidence);
+      evidenceByComplaintId.set(evidence.complaintId, items);
+    }
     const search = filters.search?.trim().toLowerCase();
 
     return visible
-      .map(complaint => this.toComplaintResponse(complaint, ordersById.get(complaint.orderId), usersById, role, allServices))
+      .map(complaint => this.toComplaintResponse(complaint, ordersById.get(complaint.orderId), usersById, role, allServices, evidenceByComplaintId))
       .filter((response): response is ComplaintResponse => {
         if (!response) return false;
         if (!search) return true;

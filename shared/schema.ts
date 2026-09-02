@@ -266,6 +266,15 @@ export const complaints = pgTable("complaints", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const complaintEvidence = pgTable("complaint_evidence", {
+  id: serial("id").primaryKey(),
+  complaintId: integer("complaint_id").notNull().references(() => complaints.id, { onDelete: "cascade" }),
+  url: text("url").notNull(),
+  fileName: text("file_name").notNull(),
+  fileSize: integer("file_size").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const complaintNotes = pgTable("complaint_notes", {
   id: serial("id").primaryKey(),
   complaintId: integer("complaint_id").notNull().references(() => complaints.id),
@@ -375,7 +384,12 @@ export const complaintsRelations = relations(complaints, ({ one, many }) => ({
     references: [users.id],
     relationName: "complaintResolvedBy",
   }),
+  evidence: many(complaintEvidence),
   notes: many(complaintNotes),
+}));
+
+export const complaintEvidenceRelations = relations(complaintEvidence, ({ one }) => ({
+  complaint: one(complaints, { fields: [complaintEvidence.complaintId], references: [complaints.id] }),
 }));
 
 export const complaintNotesRelations = relations(complaintNotes, ({ one }) => ({
@@ -417,6 +431,10 @@ export const insertComplaintNoteSchema = createInsertSchema(complaintNotes).omit
   id: true,
   createdAt: true,
 });
+export const insertComplaintEvidenceSchema = createInsertSchema(complaintEvidence).omit({
+  id: true,
+  createdAt: true,
+});
 export const insertSupportDesignerAssignmentSchema = createInsertSchema(supportDesignerAssignments).omit({ id: true, assignedAt: true });
 export const insertServicesCatalogSchema = createInsertSchema(servicesCatalog).omit({ id: true, createdAt: true });
 export const insertPackageConfigSchema = createInsertSchema(packageConfigs).omit({ id: true, createdAt: true });
@@ -444,6 +462,8 @@ export type Complaint = typeof complaints.$inferSelect;
 export type InsertComplaint = z.infer<typeof insertComplaintSchema>;
 export type ComplaintNote = typeof complaintNotes.$inferSelect;
 export type InsertComplaintNote = z.infer<typeof insertComplaintNoteSchema>;
+export type ComplaintEvidence = typeof complaintEvidence.$inferSelect;
+export type InsertComplaintEvidence = z.infer<typeof insertComplaintEvidenceSchema>;
 export type MonthlyFinance = typeof monthlyFinance.$inferSelect;
 export type UserRole = (typeof userRoles)[number];
 
@@ -515,6 +535,7 @@ export type ComplaintResponse = {
   resolutionOutcome?: (typeof complaintResolutionOutcomes)[number] | null;
   screenshotUrl?: string | null;
   resolutionScreenshotUrl?: string | null;
+  evidence?: Pick<ComplaintEvidence, "id" | "url" | "fileName" | "fileSize" | "createdAt">[];
   dismissalReason?: string | null;
   dismissedBy?: ComplaintUserSummary | null;
   dismissedAt?: Date | null;

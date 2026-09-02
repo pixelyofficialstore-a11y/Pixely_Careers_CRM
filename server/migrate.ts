@@ -306,6 +306,21 @@ export async function runMigrations() {
     `);
 
     await client.query(`
+      CREATE TABLE IF NOT EXISTS complaint_evidence (
+        id           SERIAL PRIMARY KEY,
+        complaint_id INTEGER NOT NULL REFERENCES complaints(id) ON DELETE CASCADE,
+        url          TEXT NOT NULL,
+        file_name    TEXT NOT NULL,
+        file_size    INTEGER NOT NULL,
+        created_at   TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS complaint_evidence_complaint_idx
+        ON complaint_evidence(complaint_id, created_at ASC)
+    `);
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS complaint_notes (
         id                  SERIAL PRIMARY KEY,
         complaint_id        INTEGER NOT NULL REFERENCES complaints(id),

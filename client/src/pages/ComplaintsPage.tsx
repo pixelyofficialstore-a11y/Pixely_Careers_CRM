@@ -28,6 +28,7 @@ import { ImageDropzone } from "@/components/ImageDropzone";
 const errorText = (error: Error) => error.message.match(/"message":"([^"]+)"/)?.[1] || "The request could not be completed.";
 const titleCase = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, c => c.toUpperCase());
 const money = (value?: number | null) => value == null ? null : `Rs${Math.round(Number(value) / 100).toLocaleString()}`;
+const fileSize = (bytes: number) => bytes > 0 ? `${(bytes / 1024 / 1024).toFixed(2)} MB` : "Legacy evidence";
 const caseDate = (value?: string | Date | null) => value ? format(new Date(value), "MMM dd, yyyy · h:mm a") : "—";
 const complaintStatusHelp: Record<string, string> = {
   new: "Awaiting management review.",
@@ -107,7 +108,12 @@ export function ComplaintDetails({ id, open, onOpenChange, onBack }: { id: numbe
 
       <section className="border-b border-slate-800 pb-5">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Complaint Evidence</p>
-        {complaint.screenshotUrl ? <div className="mt-4 space-y-3"><button type="button" onClick={() => setImagePreview(complaint.screenshotUrl!)} className="block w-full overflow-hidden rounded-xl border border-slate-800 bg-slate-900"><img src={complaint.screenshotUrl} alt="Complaint evidence" className="max-h-56 w-full object-contain" /></button><Button variant="ghost" size="sm" className="px-0 text-blue-300 hover:text-blue-200" onClick={() => setImagePreview(complaint.screenshotUrl!)}>View Full Image</Button></div> : <p className="mt-3 text-sm text-slate-500">No evidence was attached to this complaint.</p>}
+        {complaint.evidence?.length ? <div className="mt-4 grid grid-cols-2 gap-3">
+          {complaint.evidence.map(item => <button key={item.id} type="button" onClick={() => setImagePreview(item.url)} className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900 text-left transition-colors hover:border-cyan-500/50">
+            <img src={item.url} alt={item.fileName} className="h-32 w-full object-cover" />
+            <div className="p-2"><p className="truncate text-xs text-slate-300">{item.fileName}</p><p className="mt-1 text-[11px] text-slate-500">{fileSize(item.fileSize)}</p></div>
+          </button>)}
+        </div> : <p className="mt-3 text-sm text-slate-500">No evidence was attached to this complaint.</p>}
       </section>
 
       {complaint.order && <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
