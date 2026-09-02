@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
 import { format } from "date-fns";
-import { AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, ClipboardCheck, Clock, Download, FileWarning, Filter, Loader2, Search, X, XCircle, DollarSign } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, ClipboardCheck, Clock, Download, FileWarning, Filter, Loader2, Search, X, XCircle, DollarSign, MessageSquareText } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { complaintCategories, complaintStatuses, type ComplaintHistoryEntry, type ComplaintCategoryConfig, type ComplaintResponse, type ComplaintStats, type OrderWithServices } from "@shared/schema";
@@ -42,6 +42,7 @@ const complaintHistoryLabel = (entry: ComplaintHistoryEntry) => {
   const to = entry.newValue ? titleCase(entry.newValue) : "";
   if (entry.action === "complaint_created") return "Complaint filed";
   if (entry.action === "complaint_note") return "Admin note added";
+  if (entry.action === "complaint_designer_explanation") return "Designer explanation added";
   if (entry.action === "complaint_resolution") return entry.previousValue ? "Resolution details updated" : "Resolution details added";
   if (entry.action === "complaint_resolved") return entry.newValue === "refunded" ? "Refund recorded and complaint closed" : "Complaint marked as Resolved";
   if (entry.action === "status_change" && entry.details?.refundRecorded) return "Related order canceled";
@@ -54,6 +55,7 @@ const complaintHistoryLabel = (entry: ComplaintHistoryEntry) => {
 export function ComplaintDetails({ id, open, onOpenChange, onBack }: { id: number | null; open: boolean; onOpenChange: (open: boolean) => void; onBack?: () => void }) {
   const { user } = useAuth(); const { toast } = useToast(); const isAdmin = user?.role === "admin";
   const [notes, setNotes] = useState(""); const [resolution, setResolution] = useState(""); const [resolutionEvidence, setResolutionEvidence] = useState(""); const [dismissalReason, setDismissalReason] = useState(""); const [refundConfirmed, setRefundConfirmed] = useState(false); const [pending, setPending] = useState<string | null>(null); const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [designerExplanation, setDesignerExplanation] = useState(""); const [designerEvidenceFiles, setDesignerEvidenceFiles] = useState<File[]>([]); const [designerEvidencePreviews, setDesignerEvidencePreviews] = useState<string[]>([]);
   const { data: complaint, isLoading, isError } = useQuery<ComplaintResponse>({ queryKey: [`/api/complaints/${id}`], enabled: Boolean(id && open) });
   const { data: history = [] } = useQuery<ComplaintHistoryEntry[]>({ queryKey: [`/api/complaints/${id}/history`], enabled: Boolean(id && open) });
   useEffect(() => {
@@ -63,6 +65,9 @@ export function ComplaintDetails({ id, open, onOpenChange, onBack }: { id: numbe
     setDismissalReason("");
     setRefundConfirmed(false);
     setImagePreview(null);
+    setDesignerExplanation("");
+    setDesignerEvidencePreviews(previous => { previous.forEach(URL.revokeObjectURL); return []; });
+    setDesignerEvidenceFiles([]);
   }, [complaint?.id]);
   const update = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => (await apiRequest("PATCH", `/api/complaints/${id}`, payload)).json(),
@@ -84,6 +89,48 @@ export function ComplaintDetails({ id, open, onOpenChange, onBack }: { id: numbe
     try { const response = await fetch("/api/feedback/upload", { method: "POST", body, credentials: "include" }); if (!response.ok) throw new Error(); setResolutionEvidence((await response.json()).screenshotUrl); }
     catch { toast({ title: "Upload failed", description: "Resolution evidence could not be uploaded.", variant: "destructive" }); }
   };
+  const designerExplanationMutation = useMutation({
+    mutationFn: async () => {
+      let evidence: Array<{ url: string; fileName: string; fileSize: number }> = [];
+      if (designerEvidenceFiles.length) {
+        const form = new FormData();
+        designerEvidenceFiles.forEach(file => form.append("screenshots", file, file.name));
+        const upload = await fetch("/api/complaints/designer-explanation/upload", { method: "POST", body: form, credentials: "include" });
+        if (!upload.ok) throw new Error((await upload.text()) || "Explanation evidence upload failed.");
+        evidence = (await upload.json()).evidence || [];
+      }
+      const response = await apiRequest("PATCH", `/api/complaints/${id}/designer-explanation`, {
+        explanation: designerExplanation.trim(),
+        ...(evidence.length ? { evidence } : {}),
+      });
+      return response.json();
+    },
+    onSuccess: (value: ComplaintResponse) => {
+      queryClient.setQueryData([`/api/complaints/${id}`], value);
+      queryClient.invalidateQueries({ queryKey: ["/api/complaints"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/complaints/${id}/history`] });
+      setDesignerEvidenceFiles([]);
+      setDesignerEvidencePreviews(previous => { previous.forEach(URL.revokeObjectURL); return []; });
+      toast({ title: "Explanation recorded", description: "Your explanation has been added to the complaint." });
+    },
+    onError: (error: Error) => toast({ title: "Could not record explanation", description: errorText(error), variant: "destructive" }),
+  });
+  const addDesignerEvidence = (files: File[]) => {
+    const nextFiles = files.slice(0, 5 - designerEvidenceFiles.length);
+    if (!nextFiles.length) return;
+    setDesignerEvidenceFiles(previous => [...previous, ...nextFiles]);
+    setDesignerEvidencePreviews(previous => [...previous, ...nextFiles.map(file => URL.createObjectURL(file))]);
+  };
+  const removeDesignerEvidence = (index: number) => {
+    setDesignerEvidenceFiles(previous => previous.filter((_, fileIndex) => fileIndex !== index));
+    setDesignerEvidencePreviews(previous => {
+      const removed = previous[index];
+      if (removed) URL.revokeObjectURL(removed);
+      return previous.filter((_, previewIndex) => previewIndex !== index);
+    });
+  };
+  const isAssignedDesigner = user?.role === "designer" && complaint?.complaintAgainstUserId === user.id;
+  const canExplain = Boolean(isAssignedDesigner && complaint && !complaint.designerExplanation && ["new", "confirmed"].includes(complaint.status));
   return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent className="detail-drawer w-full overflow-y-auto border-slate-800 bg-slate-950 text-white sm:max-w-xl">
     <SheetHeader className="detail-drawer-header border-b border-slate-800 pb-5 pr-8 text-left">
       <SheetTitle className="flex items-center gap-3"><div className="flex items-center gap-2">{onBack && <Button variant="ghost" size="icon" className="-ml-2 h-8 w-8" onClick={onBack} aria-label="Back to order"><ArrowLeft className="h-4 w-4" /></Button>}<span className="font-mono text-xl text-blue-300">{complaint?.complaintNumber || "Complaint details"}</span></div>{complaint && <ComplaintStatusBadge status={complaint.status} />}</SheetTitle>
@@ -114,6 +161,55 @@ export function ComplaintDetails({ id, open, onOpenChange, onBack }: { id: numbe
             <div className="p-2"><p className="truncate text-xs text-slate-300">{item.fileName}</p><p className="mt-1 text-[11px] text-slate-500">{fileSize(item.fileSize)}</p></div>
           </button>)}
         </div> : <p className="mt-3 text-sm text-slate-500">No evidence was attached to this complaint.</p>}
+      </section>
+
+      <section className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-5">
+        <div className="flex items-start gap-3">
+          <MessageSquareText className="mt-0.5 h-5 w-5 shrink-0 text-cyan-300" />
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">Designer Explanation</p>
+            <p className="mt-2 text-sm leading-6 text-slate-400">The assigned designer can explain their side of the complaint and attach supporting screenshots.</p>
+          </div>
+        </div>
+        {complaint.designerExplanation ? <div className="mt-4">
+          <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-4">
+            <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-200">{complaint.designerExplanation}</p>
+            <p className="mt-3 text-xs text-slate-500">
+              {complaint.designerExplanationBy?.name ? `${complaint.designerExplanationBy.name} · ` : "Assigned designer · "}
+              {caseDate(complaint.designerExplanationAt)}
+            </p>
+          </div>
+          {complaint.designerEvidence?.length ? <div className="mt-4 grid grid-cols-2 gap-3">
+            {complaint.designerEvidence.map(item => <button key={item.id} type="button" onClick={() => setImagePreview(item.url)} className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900 text-left transition-colors hover:border-cyan-500/50">
+              <img src={item.url} alt={item.fileName} className="h-32 w-full object-cover" />
+              <div className="p-2"><p className="truncate text-xs text-slate-300">{item.fileName}</p><p className="mt-1 text-[11px] text-slate-500">{fileSize(item.fileSize)}</p></div>
+            </button>)}
+          </div> : <p className="mt-3 text-xs text-slate-500">No supporting images were attached.</p>}
+        </div> : canExplain ? <div className="mt-4 space-y-4">
+          <Textarea value={designerExplanation} onChange={event => setDesignerExplanation(event.target.value)} placeholder="Explain what happened from your side. Include the relevant facts, timeline, and any context that may help management review the complaint." rows={5} maxLength={5000} className="border-slate-700 bg-slate-950" />
+          <p className="text-xs text-slate-500">{designerExplanation.length}/5000</p>
+          <ImageDropzone
+            values={designerEvidenceFiles}
+            onFiles={addDesignerEvidence}
+            maxFiles={Math.max(1, 5 - designerEvidenceFiles.length)}
+            listenForPaste={open && canExplain}
+            disabled={designerEvidenceFiles.length >= 5 || designerExplanationMutation.isPending}
+            label={designerEvidenceFiles.length >= 5 ? "Maximum evidence attached" : "Add supporting screenshots"}
+            description="Paste from clipboard or drag images here"
+          />
+          {designerEvidenceFiles.length > 0 && <div className="grid grid-cols-2 gap-3">
+            {designerEvidenceFiles.map((file, index) => <div key={`${file.name}-${file.lastModified}-${index}`} className="overflow-hidden rounded-xl border border-slate-700 bg-slate-950">
+              <div className="relative"><img src={designerEvidencePreviews[index]} alt={`Supporting evidence preview ${index + 1}`} className="h-28 w-full object-cover" /><Button type="button" variant="secondary" size="icon" className="absolute right-2 top-2 h-7 w-7" onClick={() => removeDesignerEvidence(index)} disabled={designerExplanationMutation.isPending}><X className="h-4 w-4" /></Button></div>
+              <div className="space-y-1 p-2"><p className="truncate text-xs text-slate-300">{file.name}</p><div className="flex items-center justify-between gap-2 text-[11px] text-slate-500"><span>{fileSize(file.size)}</span><span className={designerExplanationMutation.isPending ? "text-amber-300" : "text-emerald-300"}>{designerExplanationMutation.isPending ? "Uploading" : "Ready"}</span></div></div>
+            </div>)}
+          </div>}
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs leading-5 text-slate-500">This response will be recorded in the complaint history and cannot be edited after submission.</p>
+            <Button onClick={() => designerExplanationMutation.mutate()} disabled={!designerExplanation.trim() || designerExplanationMutation.isPending} className="shrink-0 bg-cyan-600 text-slate-950 hover:bg-cyan-500">
+              {designerExplanationMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Submit Explanation
+            </Button>
+          </div>
+        </div> : <p className="mt-4 text-sm text-slate-500">Awaiting the assigned designer&apos;s explanation.</p>}
       </section>
 
       {complaint.order && <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">

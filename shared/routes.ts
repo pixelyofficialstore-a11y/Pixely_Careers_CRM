@@ -231,6 +231,25 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    designerExplanation: {
+      method: "PATCH" as const,
+      path: "/api/complaints/:id/designer-explanation",
+      input: z.object({
+        explanation: z.string().trim().min(1, "Please explain your side.").max(5000),
+        evidence: z.array(z.object({
+          url: z.string().url(),
+          fileName: z.string().trim().min(1).max(255),
+          fileSize: z.number().int().nonnegative().max(5 * 1024 * 1024),
+        })).max(5).optional(),
+      }),
+      responses: {
+        200: z.custom<ComplaintResponse>(),
+        400: errorSchemas.validation,
+        403: errorSchemas.forbidden,
+        404: errorSchemas.notFound,
+        409: errorSchemas.conflict,
+      },
+    },
     history: {
       method: "GET" as const,
       path: "/api/complaints/:id/history",

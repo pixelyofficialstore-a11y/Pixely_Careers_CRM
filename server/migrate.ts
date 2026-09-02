@@ -300,6 +300,9 @@ export async function runMigrations() {
         dismissed_at               TIMESTAMP,
         resolved_by_user_id        INTEGER REFERENCES users(id),
         resolved_at                TIMESTAMP,
+        designer_explanation       TEXT,
+        designer_explanation_by_user_id INTEGER REFERENCES users(id),
+        designer_explanation_at    TIMESTAMP,
         created_at                 TIMESTAMP DEFAULT NOW(),
         updated_at                 TIMESTAMP DEFAULT NOW()
       )
@@ -318,6 +321,21 @@ export async function runMigrations() {
     await client.query(`
       CREATE INDEX IF NOT EXISTS complaint_evidence_complaint_idx
         ON complaint_evidence(complaint_id, created_at ASC)
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS complaint_designer_evidence (
+        id           SERIAL PRIMARY KEY,
+        complaint_id INTEGER NOT NULL REFERENCES complaints(id) ON DELETE CASCADE,
+        url          TEXT NOT NULL,
+        file_name    TEXT NOT NULL,
+        file_size    INTEGER NOT NULL,
+        created_at   TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS complaint_designer_evidence_complaint_idx
+        ON complaint_designer_evidence(complaint_id, created_at ASC)
     `);
 
     await client.query(`
@@ -466,6 +484,9 @@ export async function runMigrations() {
         ADD COLUMN IF NOT EXISTS dismissed_at TIMESTAMP,
         ADD COLUMN IF NOT EXISTS resolved_by_user_id INTEGER REFERENCES users(id),
         ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS designer_explanation TEXT,
+        ADD COLUMN IF NOT EXISTS designer_explanation_by_user_id INTEGER REFERENCES users(id),
+        ADD COLUMN IF NOT EXISTS designer_explanation_at TIMESTAMP,
         ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()
     `);
     await client.query(`

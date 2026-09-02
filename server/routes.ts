@@ -1039,9 +1039,9 @@ export async function registerRoutes(
     res.json(complaint);
   });
 
-  const complaintUpload = multer({
+  const complaintImageUpload = () => multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 5 * 1024 * 1024 },
+    limits: { fileSize: 5 * 1024 * 1024, files: 5 },
     fileFilter: (_req, file, cb) => {
       if (["image/png", "image/jpeg", "image/webp"].includes(file.mimetype)) {
         cb(null, true);
@@ -1049,10 +1049,10 @@ export async function registerRoutes(
         cb(new Error("Only PNG, JPEG, and WebP images are allowed."));
       }
     },
-  }).single("screenshot");
+  }).array("screenshots", 5);
 
-  app.post("/api/complaints/upload", requireRole(["admin", "support"]), (req, res) => {
-    complaintUpload(req, res, async (err) => {
+  const uploadComplaintImages = (req: Request, res: Response, callback: (files: Express.Multer.File[]) => Promise<void>) => {
+    complaintImageUpload()(req, res, async (err) => {
       if (err) return res.status(400).json({ message: err.message });
       const files = (req.files || []) as Express.Multer.File[];
       if (files.length === 0) return res.status(400).json({ message: "At least one screenshot is required." });
@@ -1060,15 +1060,32 @@ export async function registerRoutes(
         return res.status(503).json({ message: "Complaint uploads require Cloudinary configuration." });
       }
       try {
-        const evidence = await Promise.all(files.map(async file => ({
-          url: await uploadToCloudinary(file.buffer, "pixelcrm/complaints"),
-          fileName: file.originalname,
-          fileSize: file.size,
-        })));
-        return res.json({ evidence, screenshotUrl: evidence[0]?.url });
+        await callback(files);
       } catch {
         return res.status(502).json({ message: "Unable to upload the complaint screenshot." });
       }
+    });
+  };
+
+  app.post("/api/complaints/upload", requireRole(["admin", "support"]), (req, res) => {
+    uploadComplaintImages(req, res, async files => {
+      const evidence = await Promise.all(files.map(async file => ({
+        url: await uploadToCloudinary(file.buffer, "pixelcrm/complaints"),
+        fileName: file.originalname,
+        fileSize: file.size,
+      })));
+      res.json({ evidence, screenshotUrl: evidence[0]?.url });
+    });
+  });
+
+  app.post("/api/complaints/designer-explanation/upload", requireRole(["designer"]), (req, res) => {
+    uploadComplaintImages(req, res, async files => {
+      const evidence = await Promise.all(files.map(async file => ({
+        url: await uploadToCloudinary(file.buffer, "pixelcrm/complaint-explanations"),
+        fileName: file.originalname,
+        fileSize: file.size,
+      })));
+      res.json({ evidence });
     });
   });
 
@@ -1339,6 +1356,56 @@ export async function registerRoutes(
       }
       if (err instanceof Error && err.message === "Unable to cancel the related order") {
         return res.status(409).json({ message: "The related order was already canceled. Reload this complaint before continuing." });
+      }
+      throw err;
+    }
+  });
+
+  app.patch(api.complaints.designerExplanation.path, requireRole(["designer"]), async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const input = api.complaints.designerExplanation.input.parse(req.body);
+      const actor = req.user as User;
+      const existing = await storage.getComplaintRecord(id);
+      if (!existing || existing.complaintTargetType !== "designer") return res.sendStatus(404);
+      if (existing.complaintAgainstUserId !== actor.id) return res.sendStatus(403);
+      const evidence = input.evidence || [];
+      if (evidence.some(item => !isCloudinaryUrl(item.url))) {
+        return res.status(400).json({ message: "Explanation evidence must contain HTTPS Cloudinary image URLs." });
+      }
+      const updated = await storage.saveDesignerExplanation(id, actor.id, input.explanation, evidence);
+      if (!updated) return res.sendStatus(404);
+
+      const admins = await storage.getAdmins();
+      await dispatchNotifications(
+        admins.map(admin => admin.id),
+        {
+          event: "complaint_designer_explanation",
+          type: "complaint",
+          title: "Designer Explanation Received",
+          message: "A designer has explained their side of a complaint. Review the response and evidence.",
+          priority: "update",
+          relatedId: id,
+          relatedType: "complaint",
+          sourceEventId: `${id}:designer-explanation`,
+        },
+        [actor.id],
+      );
+      emitRealtime(actor.id, ["complaints", "stats"]);
+      emitRealtime(existing.filedByUserId, ["complaints", "stats"]);
+      admins.forEach(admin => emitRealtime(admin.id, ["complaints", "stats"]));
+
+      const response = await storage.getComplaintForUser(id, "designer", actor.id);
+      res.json(response);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message || "Invalid designer explanation." });
+      }
+      if (err instanceof Error && (
+        err.message === "A designer explanation has already been recorded for this complaint." ||
+        err.message === "Designer explanations are closed for this complaint."
+      )) {
+        return res.status(409).json({ message: err.message });
       }
       throw err;
     }

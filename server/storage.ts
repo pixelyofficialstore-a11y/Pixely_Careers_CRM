@@ -1,6 +1,6 @@
 import { 
   users, orders, notifications, orderServices, paymentVerifications, supportDesignerAssignments,
-  servicesCatalog, packageConfigs, platformsCatalog, complaintCategoryConfigs, pushSubscriptions, activityLogs, complaints, complaintEvidence, complaintNotes, clientReviews, clientSuggestions, suggestionNotes,
+  servicesCatalog, packageConfigs, platformsCatalog, complaintCategoryConfigs, pushSubscriptions, activityLogs, complaints, complaintEvidence, complaintDesignerEvidence, complaintNotes, clientReviews, clientSuggestions, suggestionNotes,
   type User, type InsertUser, type Order, type InsertOrder,
   type OrderService, type InsertOrderService, type OrderWithServices,
   type PaymentVerification, type InsertPaymentVerification, type PaymentVerificationWithUsers,
@@ -9,7 +9,7 @@ import {
   type PackageConfig, type InsertPackageConfig,
   type PlatformCatalogItem, type InsertPlatformCatalogItem,
   type ComplaintCategoryConfig, type InsertComplaintCategoryConfig,
-  type PushSubscription, type Complaint, type InsertComplaint, type ComplaintResponse, type ComplaintEvidence, type ComplaintNote, type ComplaintNoteResponse,
+  type PushSubscription, type Complaint, type InsertComplaint, type ComplaintResponse, type ComplaintEvidence, type ComplaintDesignerEvidence, type ComplaintNote, type ComplaintNoteResponse,
   type ComplaintHistoryEntry, type ComplaintStats,
   type InsertActivityLog, type ActivityLog,
   type ClientReview, type InsertClientReview, type ClientSuggestion, type InsertClientSuggestion, type ActivityLogWithActor, type SuggestionNote,
@@ -118,6 +118,12 @@ export interface IStorage {
     actorId: number,
     evidence?: Array<Pick<ComplaintEvidence, "url" | "fileName" | "fileSize">>,
   ): Promise<Complaint>;
+  saveDesignerExplanation(
+    complaintId: number,
+    designerId: number,
+    explanation: string,
+    evidence?: Array<Pick<ComplaintDesignerEvidence, "url" | "fileName" | "fileSize">>,
+  ): Promise<Complaint | undefined>;
   getComplaints(role: string, userId: number, filters?: ComplaintListFilters): Promise<ComplaintResponse[]>;
   getComplaintForUser(id: number, role: string, userId: number): Promise<ComplaintResponse | undefined>;
   getComplaintRecord(id: number): Promise<Complaint | undefined>;
@@ -588,6 +594,7 @@ export class DatabaseStorage implements IStorage {
     role: string,
     services: OrderService[] = [],
     evidenceByComplaintId: Map<number, ComplaintEvidence[]> = new Map(),
+    designerEvidenceByComplaintId: Map<number, ComplaintDesignerEvidence[]> = new Map(),
   ): ComplaintResponse | undefined {
     const against = complaint.complaintAgainstUserId
       ? this.complaintUserSummary(usersById.get(complaint.complaintAgainstUserId))
@@ -628,6 +635,11 @@ export class DatabaseStorage implements IStorage {
       resolutionScreenshotUrl: complaint.resolutionScreenshotUrl,
       createdAt: complaint.createdAt,
       updatedAt: complaint.updatedAt,
+      designerExplanation: complaint.designerExplanation,
+      designerExplanationAt: complaint.designerExplanationAt,
+      designerExplanationBy: complaint.designerExplanationByUserId
+        ? this.complaintUserSummary(usersById.get(complaint.designerExplanationByUserId))
+        : null,
       evidence: (evidenceByComplaintId.get(complaint.id) || (complaint.screenshotUrl ? [{
         id: 0,
         complaintId: complaint.id,
@@ -636,6 +648,13 @@ export class DatabaseStorage implements IStorage {
         fileSize: 0,
         createdAt: complaint.createdAt,
       }] : [])).map(item => ({
+        id: item.id,
+        url: item.url,
+        fileName: item.fileName,
+        fileSize: item.fileSize,
+        createdAt: item.createdAt,
+      })),
+      designerEvidence: (designerEvidenceByComplaintId.get(complaint.id) || []).map(item => ({
         id: item.id,
         url: item.url,
         fileName: item.fileName,
@@ -705,6 +724,53 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
+  async saveDesignerExplanation(
+    complaintId: number,
+    designerId: number,
+    explanation: string,
+    evidence: Array<Pick<ComplaintDesignerEvidence, "url" | "fileName" | "fileSize">> = [],
+  ): Promise<Complaint | undefined> {
+    const text = explanation.trim();
+    if (!text) throw new Error("Designer explanation cannot be empty.");
+    return await db.transaction(async (tx) => {
+      const [complaint] = await tx.select().from(complaints).where(eq(complaints.id, complaintId));
+      if (!complaint || complaint.complaintAgainstUserId !== designerId) return undefined;
+      if (complaint.status === "dismissed" || complaint.status === "resolved" || complaint.status === "refunded") {
+        throw new Error("Designer explanations are closed for this complaint.");
+      }
+      if (complaint.designerExplanation) {
+        throw new Error("A designer explanation has already been recorded for this complaint.");
+      }
+      const [updated] = await tx.update(complaints)
+        .set({
+          designerExplanation: text,
+          designerExplanationByUserId: designerId,
+          designerExplanationAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(and(eq(complaints.id, complaintId), eq(complaints.complaintAgainstUserId, designerId)))
+        .returning();
+      if (!updated) return undefined;
+      if (evidence.length > 0) {
+        await tx.insert(complaintDesignerEvidence).values(
+          evidence.map(item => ({ complaintId, ...item })),
+        );
+      }
+      await tx.insert(activityLogs).values({
+        orderId: complaint.orderId,
+        actorId: designerId,
+        activityType: "complaint_designer_explanation",
+        newValue: "added",
+        details: {
+          complaintId: complaint.id,
+          complaintNumber: complaint.complaintNumber,
+          evidenceCount: evidence.length,
+        },
+      });
+      return updated;
+    });
+  }
+
   async getComplaints(role: string, userId: number, filters: ComplaintListFilters = {}): Promise<ComplaintResponse[]> {
     let visible = (await db.select().from(complaints).orderBy(desc(complaints.createdAt)))
       .filter(complaint => isSupportedComplaintTarget(complaint.complaintTargetType))
@@ -735,11 +801,12 @@ export class DatabaseStorage implements IStorage {
       visible = visible.filter(complaint => (complaint.createdAt?.getMonth() ?? -1) + 1 === filters.month);
     }
 
-    const [allOrders, allUsers, allServices, allEvidence] = await Promise.all([
+    const [allOrders, allUsers, allServices, allEvidence, allDesignerEvidence] = await Promise.all([
       db.select().from(orders),
       this.getUsers(),
       db.select().from(orderServices),
       db.select().from(complaintEvidence).orderBy(asc(complaintEvidence.createdAt)),
+      db.select().from(complaintDesignerEvidence).orderBy(asc(complaintDesignerEvidence.createdAt)),
     ]);
     const ordersById = new Map(allOrders.map(order => [order.id, order]));
     const usersById = new Map(allUsers.map(user => [user.id, user]));
@@ -749,10 +816,16 @@ export class DatabaseStorage implements IStorage {
       items.push(evidence);
       evidenceByComplaintId.set(evidence.complaintId, items);
     }
+    const designerEvidenceByComplaintId = new Map<number, ComplaintDesignerEvidence[]>();
+    for (const evidence of allDesignerEvidence) {
+      const items = designerEvidenceByComplaintId.get(evidence.complaintId) || [];
+      items.push(evidence);
+      designerEvidenceByComplaintId.set(evidence.complaintId, items);
+    }
     const search = filters.search?.trim().toLowerCase();
 
     return visible
-      .map(complaint => this.toComplaintResponse(complaint, ordersById.get(complaint.orderId), usersById, role, allServices, evidenceByComplaintId))
+      .map(complaint => this.toComplaintResponse(complaint, ordersById.get(complaint.orderId), usersById, role, allServices, evidenceByComplaintId, designerEvidenceByComplaintId))
       .filter((response): response is ComplaintResponse => {
         if (!response) return false;
         if (!search) return true;

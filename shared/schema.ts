@@ -56,6 +56,7 @@ export const activityTypes = [
   "complaint_created",
   "complaint_status",
   "complaint_note",
+  "complaint_designer_explanation",
   "complaint_resolution",
   "complaint_resolved",
   "review_created",
@@ -262,11 +263,23 @@ export const complaints = pgTable("complaints", {
   dismissedAt: timestamp("dismissed_at"),
   resolvedByUserId: integer("resolved_by_user_id").references(() => users.id),
   resolvedAt: timestamp("resolved_at"),
+  designerExplanation: text("designer_explanation"),
+  designerExplanationByUserId: integer("designer_explanation_by_user_id").references(() => users.id),
+  designerExplanationAt: timestamp("designer_explanation_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const complaintEvidence = pgTable("complaint_evidence", {
+  id: serial("id").primaryKey(),
+  complaintId: integer("complaint_id").notNull().references(() => complaints.id, { onDelete: "cascade" }),
+  url: text("url").notNull(),
+  fileName: text("file_name").notNull(),
+  fileSize: integer("file_size").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const complaintDesignerEvidence = pgTable("complaint_designer_evidence", {
   id: serial("id").primaryKey(),
   complaintId: integer("complaint_id").notNull().references(() => complaints.id, { onDelete: "cascade" }),
   url: text("url").notNull(),
@@ -385,11 +398,16 @@ export const complaintsRelations = relations(complaints, ({ one, many }) => ({
     relationName: "complaintResolvedBy",
   }),
   evidence: many(complaintEvidence),
+  designerEvidence: many(complaintDesignerEvidence),
   notes: many(complaintNotes),
 }));
 
 export const complaintEvidenceRelations = relations(complaintEvidence, ({ one }) => ({
   complaint: one(complaints, { fields: [complaintEvidence.complaintId], references: [complaints.id] }),
+}));
+
+export const complaintDesignerEvidenceRelations = relations(complaintDesignerEvidence, ({ one }) => ({
+  complaint: one(complaints, { fields: [complaintDesignerEvidence.complaintId], references: [complaints.id] }),
 }));
 
 export const complaintNotesRelations = relations(complaintNotes, ({ one }) => ({
@@ -435,6 +453,10 @@ export const insertComplaintEvidenceSchema = createInsertSchema(complaintEvidenc
   id: true,
   createdAt: true,
 });
+export const insertComplaintDesignerEvidenceSchema = createInsertSchema(complaintDesignerEvidence).omit({
+  id: true,
+  createdAt: true,
+});
 export const insertSupportDesignerAssignmentSchema = createInsertSchema(supportDesignerAssignments).omit({ id: true, assignedAt: true });
 export const insertServicesCatalogSchema = createInsertSchema(servicesCatalog).omit({ id: true, createdAt: true });
 export const insertPackageConfigSchema = createInsertSchema(packageConfigs).omit({ id: true, createdAt: true });
@@ -464,6 +486,8 @@ export type ComplaintNote = typeof complaintNotes.$inferSelect;
 export type InsertComplaintNote = z.infer<typeof insertComplaintNoteSchema>;
 export type ComplaintEvidence = typeof complaintEvidence.$inferSelect;
 export type InsertComplaintEvidence = z.infer<typeof insertComplaintEvidenceSchema>;
+export type ComplaintDesignerEvidence = typeof complaintDesignerEvidence.$inferSelect;
+export type InsertComplaintDesignerEvidence = z.infer<typeof insertComplaintDesignerEvidenceSchema>;
 export type MonthlyFinance = typeof monthlyFinance.$inferSelect;
 export type UserRole = (typeof userRoles)[number];
 
@@ -536,6 +560,10 @@ export type ComplaintResponse = {
   screenshotUrl?: string | null;
   resolutionScreenshotUrl?: string | null;
   evidence?: Pick<ComplaintEvidence, "id" | "url" | "fileName" | "fileSize" | "createdAt">[];
+  designerExplanation?: string | null;
+  designerExplanationAt?: Date | null;
+  designerExplanationBy?: ComplaintUserSummary | null;
+  designerEvidence?: Pick<ComplaintDesignerEvidence, "id" | "url" | "fileName" | "fileSize" | "createdAt">[];
   dismissalReason?: string | null;
   dismissedBy?: ComplaintUserSummary | null;
   dismissedAt?: Date | null;
