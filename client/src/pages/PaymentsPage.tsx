@@ -441,39 +441,39 @@ export default function PaymentsPage() {
       {/* Payment Requests Table */}
       <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
         <div className="table-scroll-wrapper">
-        <Table>
+        <Table className="min-w-[1040px]">
           <TableHeader className="bg-slate-900/50">
             <TableRow className="border-slate-800">
-              <TableHead className="text-slate-400">Order</TableHead>
-              <TableHead className="text-slate-400">Requester</TableHead>
-              <TableHead className="text-slate-400">Type</TableHead>
-              <TableHead className="text-slate-400">Amount</TableHead>
-              <TableHead className="text-slate-400">Screenshot</TableHead>
-              <TableHead className="text-slate-400">Date</TableHead>
-              <TableHead className="text-slate-400">Status</TableHead>
-              {isAdmin && <TableHead className="text-slate-400 text-right">Actions</TableHead>}
+              <TableHead className="min-w-[190px] whitespace-nowrap text-slate-400">Order</TableHead>
+              <TableHead className="min-w-[165px] whitespace-nowrap text-slate-400">Requester</TableHead>
+              <TableHead className="min-w-[120px] whitespace-nowrap text-slate-400">Type</TableHead>
+              <TableHead className="min-w-[110px] whitespace-nowrap text-slate-400">Amount</TableHead>
+              <TableHead className="min-w-[125px] whitespace-nowrap text-slate-400">Screenshot</TableHead>
+              <TableHead className="min-w-[145px] whitespace-nowrap text-slate-400">Date</TableHead>
+              <TableHead className="min-w-[125px] whitespace-nowrap text-slate-400">Status</TableHead>
+              {isAdmin && <TableHead className="min-w-[190px] whitespace-nowrap text-right text-slate-400">Actions</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredVerifications.map((payment) => (
               <TableRow key={payment.id} className="border-slate-800">
-                <TableCell>
+                <TableCell className="min-w-[190px]">
                   <div>
-                    {payment.order?.orderNumber ? <button className="font-mono font-medium text-blue-400 hover:underline" onClick={() => setLocation(`/orders?order=${encodeURIComponent(payment.order!.orderNumber)}`)}>{payment.order.orderNumber}</button> : <p className="font-mono font-medium text-yellow-400">#{payment.id}</p>}
-                    <p className="text-sm text-slate-300">{payment.order?.clientName}</p>
+                    {payment.order?.orderNumber ? <button className="block whitespace-nowrap font-mono font-semibold text-blue-400 hover:underline" onClick={() => setLocation(`/orders?order=${encodeURIComponent(payment.order!.orderNumber)}`)}>{payment.order.orderNumber}</button> : <p className="whitespace-nowrap font-mono font-semibold text-yellow-400">#{payment.id}</p>}
+                    <p className="whitespace-nowrap text-sm font-semibold text-slate-100">{payment.order?.clientName || "—"}</p>
                   </div>
                 </TableCell>
-                <TableCell>
+                <TableCell className="min-w-[165px]">
                   <div>
-                    <p className="text-white">{payment.submittedBy?.name || "Unknown"}</p>
-                    <p className="text-xs text-slate-500 capitalize">{payment.submittedBy?.role}</p>
+                    <p className="whitespace-nowrap font-medium text-white">{payment.submittedBy?.name || "Unknown"}</p>
+                    <p className="whitespace-nowrap text-xs text-slate-500 capitalize">{payment.submittedBy?.role}</p>
                   </div>
                 </TableCell>
-                <TableCell>{getTypeBadge(payment.paymentType)}</TableCell>
+                <TableCell className="whitespace-nowrap">{getTypeBadge(payment.paymentType)}</TableCell>
                 <TableCell className="whitespace-nowrap text-white font-medium">
                   ₨{Math.round((payment.amount || 0) / 100).toLocaleString()}
                 </TableCell>
-                <TableCell>
+                <TableCell className="whitespace-nowrap">
                   {payment.screenshotUrl ? (
                     <a 
                       href={payment.screenshotUrl} 
@@ -488,10 +488,10 @@ export default function PaymentsPage() {
                     <span className="text-slate-500">-</span>
                   )}
                 </TableCell>
-                <TableCell className="text-slate-400">
+                <TableCell className="whitespace-nowrap text-slate-400">
                   {payment.createdAt ? format(new Date(payment.createdAt), "MMM dd, h:mm a") : "-"}
                 </TableCell>
-                <TableCell>{getStatusBadge(payment.status)}</TableCell>
+                <TableCell className="whitespace-nowrap">{getStatusBadge(payment.status)}</TableCell>
                 {isAdmin && (
                   <TableCell className="text-right">
                     {payment.status === "pending_confirmation" && (
