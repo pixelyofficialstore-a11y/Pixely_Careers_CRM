@@ -1,7 +1,6 @@
-import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { 
   LayoutDashboard, 
   FileText, 
@@ -16,11 +15,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { queryClient } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { NotificationBell } from "./NotificationBell";
-import { ImageDropzone } from "./ImageDropzone";
 
 import logoUrl from "@assets/rr__1500_x_500_px_-removebg-preview_1769451275347.png";
 
@@ -31,7 +27,6 @@ interface SidebarProps {
 export function Sidebar({ onNavigate }: SidebarProps) {
   const [location] = useLocation();
   const { user, logoutMutation } = useAuth();
-  const { toast } = useToast();
   
   const isAdmin = user?.role === "admin";
   const { data: pendingPaymentData } = useQuery<{ count: number }>({
@@ -48,28 +43,6 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   });
   const pendingPaymentCount = pendingPaymentData?.count ?? 0;
   const actionableComplaintCount = actionableComplaintData?.count ?? 0;
-
-  const avatarMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const formData = new FormData();
-      formData.append('avatar', file);
-      const res = await fetch('/api/users/me/avatar', {
-        method: 'POST',
-        body: formData,
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Failed to upload avatar');
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/user"] });
-      toast({ title: "Success", description: "Profile photo updated!" });
-      window.location.reload();
-    },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to upload photo", variant: "destructive" });
-    },
-  });
 
   if (!user) return null;
 
@@ -153,27 +126,12 @@ export function Sidebar({ onNavigate }: SidebarProps) {
             <div className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
               <Camera className="w-4 h-4 text-white" />
             </div>
-            {avatarMutation.isPending && (
-              <div className="absolute inset-0 bg-black/70 rounded-full flex items-center justify-center">
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              </div>
-            )}
           </div>
           <div className="flex-1 min-w-0">
              <p className="text-[13px] font-medium text-slate-200 truncate">{user.name}</p>
             <p className="text-xs text-slate-500 truncate capitalize">{user.role}</p>
           </div>
         </div>
-        <ImageDropzone
-          value={null}
-          onFile={file => avatarMutation.mutate(file)}
-          accept="image/jpeg,image/png,image/gif,image/webp"
-          label="Change profile photo"
-          description="Paste or drag an image here"
-          compact
-          disabled={avatarMutation.isPending}
-        />
-        
         <button 
           onClick={() => logoutMutation.mutate()}
             className="flex items-center gap-3 w-full px-3 py-2 rounded-[.38rem] text-[13px] font-medium text-rose-300 hover:bg-rose-950/20 transition-colors focus-visible:ring-2 focus-visible:ring-ring"
