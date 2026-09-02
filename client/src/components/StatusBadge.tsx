@@ -9,7 +9,7 @@ const orderStatusConfig: Record<string, StatusConfig> = {
   new: { color: "bg-amber-500/10 text-amber-300 border-amber-500/20", label: "New" },
   working: { color: "bg-cyan-500/10 text-cyan-200 border-cyan-500/20", label: "Working" },
   ready: { color: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20", label: "Ready" },
-  delivered: { color: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20", label: "Delivered" },
+  delivered: { color: "bg-slate-500/10 text-slate-300 border-slate-500/20", label: "Delivered" },
   canceled: { color: "bg-rose-500/10 text-rose-300 border-rose-500/20", label: "Canceled" },
 };
 
