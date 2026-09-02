@@ -100,6 +100,7 @@ export function ComplaintDialog({ order, orders = [], open, onOpenChange }: Prop
           <ImageDropzone
             values={evidenceFiles}
             onFiles={onFiles}
+             listenForPaste
             maxFiles={Math.max(1, 5 - evidenceFiles.length)}
             disabled={evidenceFiles.length >= 5 || createMutation.isPending}
             label={evidenceFiles.length >= 5 ? "Maximum evidence attached" : "Add screenshots"}

@@ -1,4 +1,4 @@
-import { useRef, useState, type DragEvent, type ClipboardEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent, type ClipboardEvent } from "react";
 import { FileImage, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -18,6 +18,7 @@ type ImageDropzoneProps = {
   inputClassName?: string;
   compact?: boolean;
   testId?: string;
+  listenForPaste?: boolean;
 };
 
 function acceptedFile(file: File, accept: string) {
@@ -45,6 +46,7 @@ export function ImageDropzone({
   inputClassName,
   compact = false,
   testId,
+  listenForPaste = false,
 }: ImageDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -86,6 +88,19 @@ export function ImageDropzone({
     selectFiles(image ? [image] : []);
   };
 
+  useEffect(() => {
+    if (!listenForPaste || disabled) return;
+    const handleDocumentPaste = (event: ClipboardEvent) => {
+      const imageItem = Array.from(event.clipboardData?.items || []).find(item => item.type.startsWith("image/"));
+      const image = imageItem?.getAsFile() || Array.from(event.clipboardData?.files || []).find(file => file.type.startsWith("image/"));
+      if (!image) return;
+      event.preventDefault();
+      selectFiles([image]);
+    };
+    document.addEventListener("paste", handleDocumentPaste);
+    return () => document.removeEventListener("paste", handleDocumentPaste);
+  }, [accept, disabled, listenForPaste, maxFiles, maxSizeMb, onFile, onFiles]);
+
   return (
     <div
       className={cn(
@@ -99,7 +114,7 @@ export function ImageDropzone({
       onDragOver={event => event.preventDefault()}
       onDragLeave={event => { if (event.currentTarget === event.target) setDragging(false); }}
       onDrop={handleDrop}
-      onPaste={handlePaste}
+       onPaste={listenForPaste ? undefined : handlePaste}
       onClick={() => { if (!disabled) inputRef.current?.click(); }}
       tabIndex={disabled ? -1 : 0}
       onKeyDown={event => {
