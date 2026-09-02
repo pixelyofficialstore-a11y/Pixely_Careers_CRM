@@ -1851,20 +1851,24 @@ export async function registerRoutes(
       });
 
       if (order.status !== 'pending_payment') {
-        const admins = await storage.getAdmins();
-        await dispatchNotifications(
-          admins.map(a => a.id),
-           {
-             event: "payment_verification_requested",
-             type: "payment",
-             title: "Payment Verification Required",
-             message: "New payment verification request received. Review payment details.",
-             priority: "action_required",
-             relatedId: verification.id,
-             relatedType: "payment_verification",
-             sourceEventId: verification.id,
-           },
-        );
+        try {
+          const admins = await storage.getAdmins();
+          await dispatchNotifications(
+            admins.map(a => a.id),
+             {
+               event: "payment_verification_requested",
+               type: "payment",
+               title: "Payment Verification Required",
+               message: "New payment verification request received. Review payment details.",
+               priority: "action_required",
+               relatedId: verification.id,
+               relatedType: "payment_verification",
+               sourceEventId: verification.id,
+             },
+          );
+        } catch (notificationError) {
+          console.error("[payment] request notification failed after commit:", notificationError);
+        }
       }
       emitRealtime(user.id, ["payments", "orders", "stats"]);
       
@@ -1985,55 +1989,58 @@ export async function registerRoutes(
     const { newRemaining, isFullyPaid } = approval;
 
     if (verification.paymentType === "advance" || verification.paymentType === "full") {
-      const approvalAdmins = await storage.getAdmins();
-      await dispatchNotifications(
-        approvalAdmins.map(admin => admin.id),
-        {
-          event: "order_approved",
-          type: "order",
-          title: "Order Approved",
-          message: "Order request approved. Review the order details.",
-          priority: "confirmation",
-          relatedId: order.id,
-          relatedType: "order",
-          sourceEventId: verification.id,
-        },
-        [user.id],
-      );
-      if (order.createdById) {
-        await dispatchNotification({
-          event: "order_approved",
-          recipientId: order.createdById,
-          recipientRole: "support",
-          type: "order",
-          title: "Order Approved",
-          message: "Your order request has been approved.",
-          priority: "confirmation",
-          relatedId: order.id,
-          relatedType: "order",
-          sourceEventId: verification.id,
-        });
-      }
-      const assignedDesignerId = order.assignedToId || order.intendedDesignerId;
-      if (assignedDesignerId) {
-        await dispatchNotification({
-          event: "order_approved",
-          recipientId: assignedDesignerId,
-          recipientRole: "designer",
-          type: "order",
-          title: "Order Approved",
-          message: "Your assigned order has been approved and production can start.",
-          priority: "confirmation",
-          relatedId: order.id,
-          relatedType: "order",
-          sourceEventId: verification.id,
-        });
+      try {
+        const approvalAdmins = await storage.getAdmins();
+        await dispatchNotifications(
+          approvalAdmins.map(admin => admin.id),
+          {
+            event: "order_approved",
+            type: "order",
+            title: "Order Approved",
+            message: "Order request approved. Review the order details.",
+            priority: "confirmation",
+            relatedId: order.id,
+            relatedType: "order",
+            sourceEventId: verification.id,
+          },
+          [user.id],
+        );
+        if (order.createdById) {
+          await dispatchNotification({
+            event: "order_approved",
+            recipientId: order.createdById,
+            recipientRole: "support",
+            type: "order",
+            title: "Order Approved",
+            message: "Your order request has been approved.",
+            priority: "confirmation",
+            relatedId: order.id,
+            relatedType: "order",
+            sourceEventId: verification.id,
+          });
+        }
+        const assignedDesignerId = order.assignedToId || order.intendedDesignerId;
+        if (assignedDesignerId) {
+          await dispatchNotification({
+            event: "order_approved",
+            recipientId: assignedDesignerId,
+            recipientRole: "designer",
+            type: "order",
+            title: "Order Approved",
+            message: "Your assigned order has been approved and production can start.",
+            priority: "confirmation",
+            relatedId: order.id,
+            relatedType: "order",
+            sourceEventId: verification.id,
+          });
+        }
+      } catch (notificationError) {
+        console.error("[payment] approval notification failed after commit:", notificationError);
       }
     }
     emitRealtime(user.id, ["payments", "orders", "stats"]);
     
-    const updatedVerification = await storage.getPaymentVerifications("admin", 0);
-    res.json(updatedVerification.find(v => v.id === verificationId));
+    res.json({ ...verification, ...approval.approvedVerification });
   });
 
   app.patch("/api/payment-verifications/:id/disapprove", requireAuth, async (req, res) => {
@@ -2074,23 +2081,26 @@ export async function registerRoutes(
     }
 
     if (rejectedOrder && rejectedOrder.createdById) {
-      await dispatchNotification({
-        event: "order_disapproved",
-        recipientId: rejectedOrder.createdById,
-        recipientRole: "support",
-        type: "order",
-        title: "Order Disapproved",
-        message: "Your order request was not approved. Please review the details.",
-        priority: "action_required",
-        relatedId: rejectedOrder.id,
-        relatedType: "order",
-        sourceEventId: verification.id,
-      });
+      try {
+        await dispatchNotification({
+          event: "order_disapproved",
+          recipientId: rejectedOrder.createdById,
+          recipientRole: "support",
+          type: "order",
+          title: "Order Disapproved",
+          message: "Your order request was not approved. Please review the details.",
+          priority: "action_required",
+          relatedId: rejectedOrder.id,
+          relatedType: "order",
+          sourceEventId: verification.id,
+        });
+      } catch (notificationError) {
+        console.error("[payment] disapproval notification failed after commit:", notificationError);
+      }
     }
     emitRealtime(user.id, ["payments", "orders", "stats"]);
     
-    const updatedVerifications = await storage.getPaymentVerifications("admin", 0);
-    res.json(updatedVerifications.find(v => v.id === verificationId));
+    res.json({ ...verification, status: "disapproved", reviewedById: user.id, reviewedAt: new Date(), notes });
   });
 
   const objectStorageService = new ObjectStorageService();

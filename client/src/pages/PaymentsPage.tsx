@@ -138,11 +138,27 @@ export default function PaymentsPage() {
       setShowApproveDialog(false);
       setApproveNotes("");
     },
-    onError: (error: Error) => {
+    onError: async (error: Error, variables) => {
       // Refresh even when a response fails: the server may have committed the
       // approval before a secondary side effect reported an error.
       queryClient.invalidateQueries({ queryKey: ["/api/payment-verifications"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      try {
+        const refreshedPayments = await queryClient.fetchQuery<PaymentVerification[]>({
+          queryKey: ["/api/payment-verifications"],
+          staleTime: 0,
+        });
+        const refreshed = refreshedPayments.find(payment => payment.id === variables.id);
+        if (refreshed?.status === "approved") {
+          setSelectedPayment(refreshed);
+          setShowApproveDialog(false);
+          setApproveNotes("");
+          toast({ title: "Payment approved", description: "The payment was approved successfully." });
+          return;
+        }
+      } catch {
+        // Keep the original error when the reconciliation request also fails.
+      }
       toast({ title: "Approval response failed", description: error.message || "Please refresh and check the payment status.", variant: "destructive" });
     },
   });
@@ -180,8 +196,33 @@ export default function PaymentsPage() {
       setRemainingAmount("");
       setRemainingScreenshot(null);
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to submit payment request", variant: "destructive" });
+    onError: async (error: Error, formData) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payment-verifications"] });
+      const orderId = Number(formData.get("orderId"));
+      const amount = Number(formData.get("amount"));
+      try {
+        const refreshedPayments = await queryClient.fetchQuery<PaymentVerification[]>({
+          queryKey: ["/api/payment-verifications"],
+          staleTime: 0,
+        });
+        const committed = refreshedPayments.some(payment =>
+          payment.orderId === orderId &&
+          payment.paymentType === "remaining" &&
+          payment.amount === amount &&
+          payment.status === "pending_confirmation"
+        );
+        if (committed) {
+          setShowSubmitDialog(false);
+          setSelectedOrderId("");
+          setRemainingAmount("");
+          setRemainingScreenshot(null);
+          toast({ title: "Success", description: "Remaining payment request submitted" });
+          return;
+        }
+      } catch {
+        // Keep the original error when the reconciliation request also fails.
+      }
+      toast({ title: "Error", description: error.message || "Failed to submit payment request", variant: "destructive" });
     },
   });
 

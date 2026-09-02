@@ -387,7 +387,30 @@ export default function OrdersPage() {
       setAdvanceDisposition("");
       toast({ title: "Order canceled", description: updated.advanceRefunded ? "The advance refund was recorded." : "The advance was recorded as retained." });
     },
-    onError: (error: Error) => toast({ title: "Could not cancel order", description: error.message, variant: "destructive" }),
+    onError: async (error: Error, variables) => {
+      // A dropped response can happen after the server commits the
+      // cancellation. Re-read the order before telling the user it failed.
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      try {
+        const refreshedOrders = await queryClient.fetchQuery<OrderWithServices[]>({
+          queryKey: ["/api/orders"],
+          staleTime: 0,
+        });
+        const refreshed = refreshedOrders.find(order => order.id === variables.id);
+        if (refreshed?.status === "canceled") {
+          if (selectedOrder?.id === refreshed.id) setSelectedOrder(current => current ? { ...current, ...refreshed } : current);
+          setOrderToCancel(null);
+          setCancellationReason("");
+          setAdvanceDisposition("");
+          toast({ title: "Order canceled", description: refreshed.advanceRefunded ? "The advance refund was recorded." : "The advance was recorded as retained." });
+          return;
+        }
+      } catch {
+        // Keep the original error when the reconciliation request also fails.
+      }
+      toast({ title: "Could not cancel order", description: error.message || "Please refresh and check the order status.", variant: "destructive" });
+    },
   });
 
   const clientCaseReportMutation = useMutation({
