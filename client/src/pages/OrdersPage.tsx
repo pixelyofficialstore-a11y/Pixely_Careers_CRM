@@ -119,11 +119,10 @@ const FALLBACK_PACKAGE_LABELS: Record<string, string> = {
 
 const ORDER_STATUS_FILTERS: Array<{ value: string; label: string; statuses: string[] }> = [
   { value: "pending", label: "Pending", statuses: ["pending_payment", "new"] },
-  { value: "in_progress", label: "In Progress", statuses: ["working"] },
+  { value: "working", label: "Working", statuses: ["working"] },
   { value: "delivered", label: "Delivered", statuses: ["delivered"] },
   { value: "canceled", label: "Cancelled", statuses: ["canceled"] },
-  // The existing "ready" workflow state represents a completed order before delivery.
-  { value: "completed", label: "Completed", statuses: ["ready"] },
+  { value: "ready", label: "Ready", statuses: ["ready"] },
 ];
 
 const orderActivityLabel = (entry: ActivityLogWithActor) => {
