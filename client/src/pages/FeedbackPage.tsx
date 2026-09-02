@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   ClipboardList,
   Facebook,
-  FileImage,
   Filter,
   Loader2,
   MessageSquare,
@@ -36,6 +35,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import type { OrderWithServices, User } from "@shared/schema";
 import { MetricCard as CRMMetricCard, PageHeader } from "@/components/CRMPrimitives";
 import { SuggestionStatusBadge } from "@/components/StatusBadge";
+import { ImageDropzone } from "@/components/ImageDropzone";
 
 export type Review = {
   id: number;
@@ -156,12 +156,15 @@ function ScreenshotField({ value, onChange, folder }: { value: string; onChange:
   return (
     <div className="space-y-2">
       <Label>Screenshot / Evidence <span className="text-slate-600">(optional)</span></Label>
-      <div className="rounded-lg border border-dashed border-slate-700 bg-slate-950/60 p-3">
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-400 hover:text-white">
-          {uploading ? <Loader2 className="h-4 w-4 animate-spin text-blue-400" /> : <FileImage className="h-4 w-4 text-blue-400" />}
-          {uploading ? "Uploading to Cloudinary…" : value ? "Replace screenshot" : "Choose PNG, JPG, JPEG, or WEBP"}
-          <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={uploading} onChange={event => { const file = event.target.files?.[0]; if (file) void upload(file); event.currentTarget.value = ""; }} />
-        </label>
+      <div>
+        <ImageDropzone
+          value={undefined}
+          onFile={file => void upload(file)}
+          accept="image/png,image/jpeg,image/webp"
+          disabled={uploading}
+          label={uploading ? "Uploading to Cloudinary…" : value ? "Replace screenshot" : "Choose PNG, JPG, JPEG, or WEBP"}
+          description="Paste from clipboard or drag an image here"
+        />
         {value && <div className="mt-3 space-y-2"><img src={value} alt="Selected evidence" className="max-h-40 w-full rounded-lg bg-slate-900 object-contain" /><Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-slate-400" onClick={() => onChange("")}><X className="mr-1 h-3 w-3" />Remove</Button></div>}
       </div>
     </div>

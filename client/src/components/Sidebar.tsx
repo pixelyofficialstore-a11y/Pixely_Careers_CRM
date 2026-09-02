@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -20,6 +20,7 @@ import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { NotificationBell } from "./NotificationBell";
+import { ImageDropzone } from "./ImageDropzone";
 
 import logoUrl from "@assets/rr__1500_x_500_px_-removebg-preview_1769451275347.png";
 
@@ -31,7 +32,6 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   const [location] = useLocation();
   const { user, logoutMutation } = useAuth();
   const { toast } = useToast();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const isAdmin = user?.role === "admin";
   const { data: pendingPaymentData } = useQuery<{ count: number }>({
@@ -70,17 +70,6 @@ export function Sidebar({ onNavigate }: SidebarProps) {
       toast({ title: "Error", description: "Failed to upload photo", variant: "destructive" });
     },
   });
-
-  const handleAvatarClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      avatarMutation.mutate(file);
-    }
-  };
 
   if (!user) return null;
 
@@ -151,21 +140,8 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         </div>
       </div>
        <div className="mt-auto p-4 border-t border-border">
-        <input 
-          type="file" 
-          ref={fileInputRef}
-          onChange={handleFileChange}
-          accept="image/jpeg,image/png,image/gif,image/webp"
-          className="hidden"
-          data-testid="input-avatar-upload"
-        />
         <div className="flex items-center gap-3 mb-4">
-          <button 
-            onClick={handleAvatarClick}
-            className="relative group"
-            data-testid="button-change-avatar"
-            title="Click to change profile photo"
-          >
+          <div className="relative group" data-testid="button-change-avatar" title="Profile photo">
              <Avatar className="w-8 h-8 border border-slate-700">
               {user.avatar ? (
                 <AvatarImage src={user.avatar} alt={user.name} />
@@ -182,12 +158,21 @@ export function Sidebar({ onNavigate }: SidebarProps) {
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               </div>
             )}
-          </button>
+          </div>
           <div className="flex-1 min-w-0">
              <p className="text-[13px] font-medium text-slate-200 truncate">{user.name}</p>
             <p className="text-xs text-slate-500 truncate capitalize">{user.role}</p>
           </div>
         </div>
+        <ImageDropzone
+          value={null}
+          onFile={file => avatarMutation.mutate(file)}
+          accept="image/jpeg,image/png,image/gif,image/webp"
+          label="Change profile photo"
+          description="Paste or drag an image here"
+          compact
+          disabled={avatarMutation.isPending}
+        />
         
         <button 
           onClick={() => logoutMutation.mutate()}

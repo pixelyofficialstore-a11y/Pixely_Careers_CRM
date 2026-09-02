@@ -17,10 +17,10 @@ self.addEventListener('push', (event) => {
     body,
     icon: '/favicon.ico',
     badge: '/favicon.ico',
-    tag: 'pixelcrm-' + Date.now(),
+    tag: data.tag || 'pixelcrm-notification',
     requireInteraction: priority === 'action_required',
     vibrate: priority === 'action_required' ? [200, 100, 200] : undefined,
-    data: { url: '/orders' },
+    data: { url: data.url || '/orders' },
   };
 
   event.waitUntil(
@@ -32,16 +32,16 @@ self.addEventListener('message', (event) => {
   const data = event.data;
   if (!data || data.type !== 'SHOW_NOTIFICATION') return;
 
-  const { title, body, priority } = data;
+  const { title, body, priority, url, tag } = data;
 
   const options = {
     body: body || '',
     icon: '/favicon.ico',
     badge: '/favicon.ico',
-    tag: 'pixelcrm-' + Date.now(),
+    tag: tag || 'pixelcrm-notification',
     requireInteraction: priority === 'action_required',
     vibrate: priority === 'action_required' ? [200, 100, 200] : undefined,
-    data: { url: '/orders' },
+    data: { url: url || '/orders' },
   };
 
   event.waitUntil(

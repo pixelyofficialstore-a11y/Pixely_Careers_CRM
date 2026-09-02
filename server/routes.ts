@@ -137,21 +137,22 @@ async function dispatchNotification(input: DispatchNotificationInput) {
   const recipient = await storage.getUser(input.recipientId);
   if (!recipient || !recipient.isActive || (input.recipientRole && recipient.role !== input.recipientRole)) return null;
 
-  const scopes = EVENT_SCOPES[input.event];
-  const tag = notificationTag(input.event, input.relatedType, input.relatedId, input.sourceEventId);
-  const dedupeKey = [input.event, input.relatedType || "", input.relatedId ?? "", input.sourceEventId].join("::");
-  const result = await storage.createNotification(
-    input.recipientId,
-    input.type,
-    input.title,
-    input.message,
-    input.priority,
-    input.relatedId,
-    input.relatedType,
-    dedupeKey,
-  );
-  if (result.created) {
-    const url = input.relatedType === "complaint" && input.relatedId
+  try {
+    const scopes = EVENT_SCOPES[input.event];
+    const tag = notificationTag(input.event, input.relatedType, input.relatedId, input.sourceEventId);
+    const dedupeKey = [input.event, input.relatedType || "", input.relatedId ?? "", input.sourceEventId].join("::");
+    const result = await storage.createNotification(
+      input.recipientId,
+      input.type,
+      input.title,
+      input.message,
+      input.priority,
+      input.relatedId,
+      input.relatedType,
+      dedupeKey,
+    );
+    if (result.created) {
+      const url = input.relatedType === "complaint" && input.relatedId
       ? `/complaints/${input.relatedId}`
       : input.relatedType === "order" && input.relatedId
         ? `/orders?order=${input.relatedId}`
@@ -162,39 +163,45 @@ async function dispatchNotification(input: DispatchNotificationInput) {
             : input.relatedType === "payment_verification" && input.relatedId
               ? `/payments?payment=${input.relatedId}`
               : "/orders";
-    const eventPayload = {
-      event: "notification",
-      id: result.notification.id,
-      count: 1,
-      eventType: input.event,
-      type: input.type,
-      title: input.title,
-      message: input.message,
-      priority: input.priority,
-      relatedId: input.relatedId ?? null,
-      relatedType: input.relatedType ?? null,
-      url,
-      tag,
-      scopes,
-      sound: SOUND_EVENTS.has(input.event),
-    };
-    // An active CRM session receives the event over SSE and owns its
-    // foreground browser alert. Fall back to Web Push for non-connected
-    // sessions so the same event is not shown twice.
-    if (!hasSseClient(input.recipientId)) {
-      sendWebPushToUser(input.recipientId, {
+      const eventPayload = {
+        event: "notification",
+        id: result.notification.id,
+        count: 1,
+        eventType: input.event,
+        type: input.type,
         title: input.title,
-        body: input.message,
+        message: input.message,
         priority: input.priority,
+        relatedId: input.relatedId ?? null,
+        relatedType: input.relatedType ?? null,
         url,
         tag,
-      }).catch(() => {});
+        scopes,
+        sound: SOUND_EVENTS.has(input.event),
+      };
+      // An active CRM session receives the event over SSE and owns its
+      // foreground browser alert. Fall back to Web Push for non-connected
+      // sessions so the same event is not shown twice.
+      if (!hasSseClient(input.recipientId)) {
+        sendWebPushToUser(input.recipientId, {
+          title: input.title,
+          body: input.message,
+          priority: input.priority,
+          url,
+          tag,
+        }).catch(() => {});
+      }
+      emitNotification(input.recipientId, eventPayload);
+    } else {
+      emitRealtime(input.recipientId, scopes);
     }
-    emitNotification(input.recipientId, eventPayload);
-  } else {
-    emitRealtime(input.recipientId, scopes);
+    return result.notification;
+  } catch (error) {
+    // Notifications are secondary side effects. Never report a successful
+    // payment/order mutation as failed because notification delivery failed.
+    console.error("[notifications] dispatch failed:", error);
+    return null;
   }
-  return result.notification;
 }
 
 async function dispatchNotifications(
@@ -1503,73 +1510,6 @@ export async function registerRoutes(
       await storage.replaceOrderServices(orderId, cleanedServices);
     }
 
-    // Admin edit notifications: reassignment, package/services update, bill update.
-    if (user.role === 'admin') {
-      const editAdmins = await storage.getAdmins();
-      const editUsers = await storage.getUsers();
-      const nameOf = (id: number | null | undefined) => editUsers.find(u => u.id === id)?.name || "Unassigned";
-      const clientName = existingOrder.clientName || "this client";
-
-      if ('assignedToId' in updates && updates.assignedToId !== oldAssignedToId) {
-        await notifyMany(
-          [...editAdmins.map(a => a.id), updates.assignedToId], "assignment",
-          "Order Reassigned",
-          `${orderRef(existingOrder)} for ${clientName} was reassigned from ${nameOf(oldAssignedToId)} to ${nameOf(updates.assignedToId)} by ${user.name}.`,
-          "update",
-          orderId, "order",
-          [user.id],
-          ["admin", "designer"]
-        );
-      }
-
-      const packageChanged = ('packageType' in updates && updates.packageType !== existingOrder.packageType);
-      if (incomingServices || packageChanged) {
-        await notifyMany(
-          editAdmins.map(a => a.id), "order",
-          "Order Package Updated",
-          `${orderRef(existingOrder)} package/services for ${clientName} were updated by ${user.name}.`,
-          "update",
-          orderId, "order",
-          [user.id],
-          ["admin"]
-        );
-      }
-
-      if (hasFinanceEdit) {
-        const finalPayable = Math.max(0, (updatedOrder.totalPrice || 0) - (updatedOrder.discountAmount || 0));
-        await notifyMany(
-          editAdmins.map(a => a.id), "payment",
-          "Order Bill Updated",
-          `${orderRef(existingOrder)} bill for ${clientName} was updated by ${user.name}. New payable amount: ${fmtRs(finalPayable)}.`,
-          "update",
-          orderId, "order",
-          [user.id],
-          ["admin"]
-        );
-      }
-    }
-
-    // Notify relevant parties when the order status actually changes.
-    if (updates.status && updates.status !== existingOrder.status) {
-      const statusAdmins = await storage.getAdmins();
-      const recipients = statusAdmins.map(a => a.id);
-      const clientName = existingOrder.clientName || "this client";
-
-      // Delivered is intentionally silent; the delivery state is visible in
-      // Orders and does not require a separate notification.
-      if (updates.status !== 'delivered') {
-        await notifyMany(
-          recipients, "order",
-          "Order Status Updated",
-          `${orderRef(existingOrder)} for ${clientName} changed from ${statusLabel(existingOrder.status)} to ${statusLabel(updates.status)} by ${user.name}.`,
-          "update",
-          orderId, "order",
-          [user.id],
-          ["admin"]
-        );
-      }
-    }
-
     res.json(updatedOrder);
   });
 
@@ -1593,18 +1533,6 @@ export async function registerRoutes(
     });
     if (!updated) return res.status(409).json({ message: "This order was already canceled." });
 
-    const admins = await storage.getAdmins();
-    await notifyMany(
-      [...admins.map(admin => admin.id), existing.assignedToId],
-      "order",
-      "Order Canceled",
-      `${orderRef(existing)} for ${existing.clientName} was canceled by ${actor.name}. Advance ${input.advanceRefunded ? `refunded (${fmtRs(refundAmount)})` : `retained (${fmtRs(existing.advanceAmount || 0)})`}.`,
-      "action_required",
-      orderId,
-      "order",
-      [actor.id],
-      ["admin", "designer"],
-    );
     res.json(updated);
   });
 
@@ -1615,8 +1543,6 @@ export async function registerRoutes(
     const existingOrder = await storage.getOrder(orderId);
     if (!existingOrder) return res.sendStatus(404);
 
-    const orderLabel = orderRef(existingOrder);
-    const clientName = existingOrder.clientName || "this client";
     const relatedComplaints = await storage.getComplaints("admin", user.id, { orderId });
     if (relatedComplaints.length > 0) {
       return res.status(409).json({
@@ -1625,18 +1551,6 @@ export async function registerRoutes(
     }
 
     await storage.deleteOrder(orderId);
-
-    // Notify other admins that an order was permanently removed (this notification is not tied to the deleted order).
-    const deleteAdmins = await storage.getAdmins();
-    await notifyMany(
-      deleteAdmins.map(a => a.id), "order",
-      "Order Deleted",
-      `${orderLabel} for ${clientName} was permanently deleted by ${user.name}.`,
-      "action_required",
-      undefined, undefined,
-      [user.id],
-      ["admin"]
-    );
 
     res.json({ success: true });
   });
@@ -1856,22 +1770,21 @@ export async function registerRoutes(
         details: { paymentVerificationId: verification.id, paymentType, amount: Number(amount) },
       });
 
-      // Only send screenshot notification for EXISTING approved orders (remaining payments).
-      // For initial pending_payment orders, the order creation already notified all admins.
-      // Never notify the submitter of their own action.
       if (order.status !== 'pending_payment') {
         const admins = await storage.getAdmins();
         const typeLabel = paymentType === 'remaining' ? 'remaining' : paymentType;
-        await notifyMany(
+        await dispatchNotifications(
           admins.map(a => a.id),
-          "payment",
-          "Payment Verification Required",
-          `${fmtRs(parsedAmount)} ${typeLabel} payment received from ${order.clientName} for ${orderRef(order)}. Please verify and approve.`,
-          "action_required",
-          verification.id,
-          "payment_verification",
-          [user.id],
-          ["admin"]
+           {
+             event: "payment_verification_requested",
+             type: "payment",
+             title: "Payment Verification Required",
+             message: `${fmtRs(parsedAmount)} ${typeLabel} payment for Order ${order.orderNumber || order.id} requires verification.`,
+             priority: "action_required",
+             relatedId: verification.id,
+             relatedType: "payment_verification",
+             sourceEventId: verification.id,
+           },
         );
       }
       emitRealtime(user.id, ["payments", "orders", "stats"]);
@@ -1992,85 +1905,51 @@ export async function registerRoutes(
     }
     const { newRemaining, isFullyPaid } = approval;
 
-    if (verification.paymentType === 'advance') {
-      if (order.intendedDesignerId && order.intendedDesignerId !== user.id) {
-        await notifyUser(
-          order.intendedDesignerId, "assignment",
-          "Order Assigned",
-          `${orderRef({ orderNumber })} for ${order.clientName} is approved and assigned to you. You can start working on it.`,
-          "action_required",
-          order.id, "order",
-          ["designer"]
-        );
-      }
-
-      // Notify all other admins (not the one who approved)
+    if (verification.paymentType === "advance" || verification.paymentType === "full") {
       const approvalAdmins = await storage.getAdmins();
-      const advBalanceNote = newRemaining > 0 ? ` ${fmtRs(newRemaining)} remaining.` : "";
-      await notifyMany(
-        approvalAdmins.map(a => a.id), "payment",
-        "Payment Approved",
-        `${fmtRs(verification.amount)} advance payment for ${orderRef({ orderNumber })} (${order.clientName}) was approved by ${user.name}.${advBalanceNote}`,
-        "confirmation",
-        order.id, "order",
+      await dispatchNotifications(
+        approvalAdmins.map(admin => admin.id),
+        {
+          event: "order_approved",
+          type: "order",
+          title: "Order Approved",
+          message: `Order ${orderNumber} was approved and assigned to a designer.`,
+          priority: "confirmation",
+          relatedId: order.id,
+          relatedType: "order",
+          sourceEventId: verification.id,
+        },
         [user.id],
-        ["admin"]
       );
-      await notifyUser(
-        verification.submittedById, "payment",
-        "Payment Approved",
-        `Your advance payment request for ${orderRef({ orderNumber })} (${order.clientName}) was approved.`,
-        "confirmation",
-        order.id, "order",
-        ["support"]
-      );
-    } else if (verification.paymentType === 'full') {
-      if (order.intendedDesignerId && order.intendedDesignerId !== user.id) {
-        await notifyUser(
-          order.intendedDesignerId, "assignment",
-          "Order Assigned",
-          `${orderRef({ orderNumber })} for ${order.clientName} is approved and assigned to you. You can start working on it.`,
-          "action_required",
-          order.id, "order",
-          ["designer"]
-        );
+      if (order.createdById) {
+        await dispatchNotification({
+          event: "order_approved",
+          recipientId: order.createdById,
+          recipientRole: "support",
+          type: "order",
+          title: "Order Approved",
+          message: `Order ${orderNumber} was approved and is ready for production.`,
+          priority: "confirmation",
+          relatedId: order.id,
+          relatedType: "order",
+          sourceEventId: verification.id,
+        });
       }
-
-      // Notify all other admins (not the one who approved)
-      const fullApprovalAdmins = await storage.getAdmins();
-      await notifyMany(
-        fullApprovalAdmins.map(a => a.id), "payment",
-        "Payment Approved",
-        `${fmtRs(verification.amount)} full payment for ${orderRef({ orderNumber })} (${order.clientName}) was approved by ${user.name}. Order fully paid.`,
-        "confirmation",
-        order.id, "order",
-        [user.id],
-        ["admin"]
-      );
-      await notifyUser(
-        verification.submittedById, "payment",
-        "Payment Approved",
-        `Your full payment request for ${orderRef({ orderNumber })} (${order.clientName}) was approved.`,
-        "confirmation",
-        order.id, "order",
-        ["support"]
-      );
-    } else if (verification.paymentType === 'remaining') {
-      // Notify admins plus the assigned designer and the payment requester.
-      const remainingAdmins = await storage.getAdmins();
-      const balanceNote = isFullyPaid
-        ? "Order fully paid."
-        : `${fmtRs(newRemaining)} still remaining.`;
-      await notifyMany(
-        [...remainingAdmins.map(a => a.id), order.assignedToId, verification.submittedById], "payment",
-        "Payment Approved",
-        `${fmtRs(verification.amount)} remaining payment for ${orderRef(order)} (${order.clientName}) was approved by ${user.name}. ${balanceNote}`,
-        "confirmation",
-        order.id, "order",
-        [user.id],
-        ["admin", "designer", "support"]
-      );
-
+      const assignedDesignerId = order.assignedToId || order.intendedDesignerId;
+      if (assignedDesignerId) {
+        await dispatchNotification({
+          event: "order_approved",
+          recipientId: assignedDesignerId,
+          recipientRole: "designer",
+          type: "order",
+          title: "Order Approved",
+          message: `Order ${orderNumber} was approved and assigned to you.`,
+          priority: "confirmation",
+          relatedId: order.id,
+          relatedType: "order",
+          sourceEventId: verification.id,
+        });
+      }
     }
     emitRealtime(user.id, ["payments", "orders", "stats"]);
     
@@ -2115,19 +1994,19 @@ export async function registerRoutes(
       }
     }
 
-    // Notify only the payment requester and admins that it was rejected.
-    if (rejectedOrder) {
-      const typeLabel = verification.paymentType === 'remaining' ? 'remaining' : verification.paymentType;
-      const rejectAdmins = await storage.getAdmins();
-      await notifyMany(
-        [...rejectAdmins.map(a => a.id), verification.submittedById], "payment",
-        "Payment Rejected",
-        `${fmtRs(verification.amount)} ${typeLabel} payment for ${orderRef(rejectedOrder)} (${rejectedOrder.clientName}) was rejected by ${user.name}. Please review the payment details.`,
-        "action_required",
-        rejectedOrder.id, "order",
-        [user.id],
-        ["admin", "designer", "support"]
-      );
+    if (rejectedOrder && rejectedOrder.createdById) {
+      await dispatchNotification({
+        event: "order_disapproved",
+        recipientId: rejectedOrder.createdById,
+        recipientRole: "support",
+        type: "order",
+        title: "Order Disapproved",
+        message: `Order ${rejectedOrder.orderNumber || rejectedOrder.id} was disapproved. Please review the payment details.`,
+        priority: "action_required",
+        relatedId: rejectedOrder.id,
+        relatedType: "order",
+        sourceEventId: verification.id,
+      });
     }
     emitRealtime(user.id, ["payments", "orders", "stats"]);
     

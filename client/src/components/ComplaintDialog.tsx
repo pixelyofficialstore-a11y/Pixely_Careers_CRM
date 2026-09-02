@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ImagePlus, Loader2, X } from "lucide-react";
+import { AlertTriangle, Loader2, X } from "lucide-react";
 import { complaintCategories, type ComplaintCategoryConfig, type OrderWithServices } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { ImageDropzone } from "@/components/ImageDropzone";
 
 export const complaintCategoryLabels: Record<(typeof complaintCategories)[number], string> = {
   communication_issue: "Communication Issue", slow_response: "Slow Response", delivery_delay: "Delivery Delay",
@@ -27,7 +28,6 @@ export function ComplaintDialog({ order, orders = [], open, onOpenChange }: Prop
   const [description, setDescription] = useState("");
   const [evidence, setEvidence] = useState<File | null>(null);
   const [preview, setPreview] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
   const { data: categoryConfigs = [] } = useQuery<ComplaintCategoryConfig[]>({ queryKey: ["/api/complaint-categories"], staleTime: 300000 });
   const availableCategories = categoryConfigs.length ? categoryConfigs.filter(item => item.isActive) : complaintCategories.map((key, i) => ({ id: -i - 1, key, label: complaintCategoryLabels[key], isActive: true, sortOrder: i, createdAt: null }));
   const eligibleOrders = useMemo(() => orders.filter(item => item.assignedToId), [orders]);
@@ -82,9 +82,9 @@ export function ComplaintDialog({ order, orders = [], open, onOpenChange }: Prop
            <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-300">Complaint against <span className="font-medium text-white">{selectedOrder.assignee?.name || "Assigned designer"}</span><span className="ml-1 text-xs text-slate-500">(Designer)</span></div>}
       <div className="space-y-2"><Label htmlFor="complaint-category">Category</Label><Select value={category} onValueChange={setCategory}><SelectTrigger id="complaint-category" className="bg-slate-950 border-slate-700"><SelectValue placeholder="Select a category" /></SelectTrigger><SelectContent>{availableCategories.map(item => <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>)}</SelectContent></Select></div>
       <div className="space-y-2"><Label htmlFor="complaint-description">Description</Label><Textarea id="complaint-description" value={description} onChange={e => setDescription(e.target.value)} placeholder="Describe what happened and include the relevant facts." rows={5} maxLength={5000} className="bg-slate-950 border-slate-700 resize-none" /><p className="text-xs text-slate-500">{description.length}/5000</p></div>
-      <div className="space-y-2"><Label htmlFor="complaint-evidence">Evidence <span className="text-slate-500">(optional)</span></Label><input ref={inputRef} id="complaint-evidence" type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={e => onFile(e.target.files?.[0])} />
-        {preview ? <div className="relative rounded-lg overflow-hidden border border-slate-700"><img src={preview} alt="Selected evidence preview" className="max-h-44 w-full object-contain bg-slate-950" /><Button type="button" variant="secondary" size="icon" className="absolute right-2 top-2" onClick={() => { setEvidence(null); setPreview(""); if (inputRef.current) inputRef.current.value = ""; }}><X className="w-4 h-4" /></Button></div> : <Button type="button" variant="outline" onClick={() => inputRef.current?.click()}><ImagePlus className="w-4 h-4 mr-2" />Add screenshot</Button>}
-        <p className="text-xs text-slate-500">PNG, JPEG, or WebP · maximum 5MB</p></div>
+       <div className="space-y-2"><Label>Evidence <span className="text-slate-500">(optional)</span></Label>
+         {preview ? <div className="relative rounded-lg overflow-hidden border border-slate-700"><img src={preview} alt="Selected evidence preview" className="max-h-44 w-full object-contain bg-slate-950" /><Button type="button" variant="secondary" size="icon" className="absolute right-2 top-2" onClick={() => { setEvidence(null); setPreview(""); }}><X className="w-4 h-4" /></Button></div> : <ImageDropzone onFile={onFile} label="Add screenshot" description="Paste from clipboard or drag an image here" />}
+         <p className="text-xs text-slate-500">PNG, JPEG, or WebP · maximum 5MB</p></div>
     </div>
     <DialogFooter><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button onClick={() => createMutation.mutate()} disabled={!canSubmit || createMutation.isPending} className="bg-red-600 hover:bg-red-500">{createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Raise Complaint</Button></DialogFooter>
   </DialogContent></Dialog>;

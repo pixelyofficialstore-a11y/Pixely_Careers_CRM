@@ -7,6 +7,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { format, differenceInMinutes, isToday } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
 
 interface Notification {
   id: number;
@@ -19,6 +20,18 @@ interface Notification {
   relatedId: number | null;
   relatedType: string | null;
   createdAt: string;
+}
+
+interface IncomingNotification {
+  event?: string;
+  id?: number;
+  eventType?: string;
+  type?: string;
+  title?: string;
+  message?: string;
+  priority?: string;
+  scopes?: string[];
+  sound?: boolean;
 }
 
 function playNotificationSound() {
@@ -135,12 +148,12 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
   const [open, setOpen] = useState(false);
   const [dropPos, setDropPos] = useState<{ top: number; left?: number; right?: number }>({ top: 0 });
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | null>(null);
-  const prevCount = useRef<number>(0);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const firstLoad = useRef(true);
+  const seenNotificationIds = useRef<Set<number>>(new Set());
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
 
   useEffect(() => {
     function updatePermission() {
@@ -194,7 +207,7 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
       };
 
       es.onmessage = (event) => {
-        let payload: { event?: string; scopes?: string[] } = {};
+        let payload: IncomingNotification = {};
         try { payload = JSON.parse(event.data); } catch (_) {}
         const scopes = payload.scopes || [];
         if (scopes.includes("complaints")) {
@@ -207,6 +220,27 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
         }
         if (scopes.includes("orders")) queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
         if (scopes.includes("stats")) queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+        if (payload.event === "notification" && typeof payload.id === "number") {
+          if (seenNotificationIds.current.has(payload.id)) return;
+          seenNotificationIds.current.add(payload.id);
+          if (seenNotificationIds.current.size > 500) {
+            const oldest = seenNotificationIds.current.values().next().value;
+            if (typeof oldest === "number") seenNotificationIds.current.delete(oldest);
+          }
+          const title = payload.title || "PixelCRM";
+          const message = payload.message || "You have a new notification";
+          toast({ title, description: message });
+          if ("Notification" in window && Notification.permission === "granted") {
+            try {
+              new Notification(title, {
+                body: message,
+                tag: `pixelcrm-notification-${payload.id}`,
+                icon: "/favicon.ico",
+              });
+            } catch (_) {}
+          }
+          if (user?.role === "admin" && payload.sound) playNotificationSound();
+        }
         // Notification inserts and generic reconciliation both refresh the
         // server-owned bell state.
         queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
@@ -270,34 +304,6 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
   });
 
   const unreadCount = unreadData?.count ?? 0;
-
-  useEffect(() => {
-    if (unreadData === undefined) return;
-    if (firstLoad.current) {
-      firstLoad.current = false;
-      prevCount.current = unreadCount;
-      return;
-    }
-    if (unreadCount > prevCount.current) {
-      playNotificationSound();
-      // The server is the single owner of browser push delivery. Fetch the
-      // latest record only to show one in-app alert and refresh the open panel.
-      fetch('/api/notifications', { credentials: 'include' })
-        .then(r => r.ok ? r.json() : [])
-        .then((freshList: Notification[]) => {
-          const newest = freshList.find(n => !n.read) ?? freshList[0];
-          const notifTitle = newest?.title || "PixelCRM";
-          const notifMsg = newest?.message ?? "You have a new notification";
-          toast({ title: notifTitle, description: notifMsg });
-          // Also update the React Query cache so the panel shows fresh data
-          queryClient.setQueryData(["/api/notifications"], freshList);
-        })
-        .catch(() => {
-          toast({ title: "PixelCRM", description: "You have a new notification" });
-        });
-    }
-    prevCount.current = unreadCount;
-  }, [unreadCount, unreadData]);
 
   const handleOpen = () => {
     if (!open && buttonRef.current) {

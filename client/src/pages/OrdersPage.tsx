@@ -65,6 +65,7 @@ import {
   Lightbulb,
   ArrowLeft
 } from "lucide-react";
+import { ImageDropzone } from "@/components/ImageDropzone";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import {
@@ -2700,12 +2701,14 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
             Payment Screenshot / Proof <span className="text-red-400 normal-case font-normal">(Required)</span>
           </h4>
           <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-2">
-            <Input 
-              type="file" 
+            <ImageDropzone
+              value={paymentScreenshot}
+              onFile={setPaymentScreenshot}
               accept="image/png,image/jpeg,image/jpg,image/webp"
-              onChange={(e) => setPaymentScreenshot(e.target.files?.[0] || null)}
-              className={`bg-slate-900 border-slate-700 text-white file:bg-slate-800 file:text-slate-300 file:border-0 file:mr-3 ${(parseInt(advanceAmount) || 0) > 0 && !paymentScreenshot ? "border-red-500/50" : ""}`}
-              data-testid="input-payment-screenshot"
+              label="Choose payment proof"
+              description="Paste from clipboard or drag an image here"
+              className={(parseInt(advanceAmount) || 0) > 0 && !paymentScreenshot ? "border-red-500/50" : ""}
+              testId="input-payment-screenshot"
             />
             {paymentScreenshot && (
               <p className="text-xs text-slate-400" data-testid="text-screenshot-filename">Selected: {paymentScreenshot.name}</p>

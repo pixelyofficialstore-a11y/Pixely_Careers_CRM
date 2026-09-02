@@ -46,6 +46,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/CRMPrimitives";
 import { PaymentStatusBadge } from "@/components/StatusBadge";
+import { ImageDropzone } from "@/components/ImageDropzone";
 
 interface PaymentVerification {
   id: number;
@@ -137,8 +138,12 @@ export default function PaymentsPage() {
       setShowApproveDialog(false);
       setApproveNotes("");
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to approve payment", variant: "destructive" });
+    onError: (error: Error) => {
+      // Refresh even when a response fails: the server may have committed the
+      // approval before a secondary side effect reported an error.
+      queryClient.invalidateQueries({ queryKey: ["/api/payment-verifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      toast({ title: "Approval response failed", description: error.message || "Please refresh and check the payment status.", variant: "destructive" });
     },
   });
 
@@ -294,11 +299,13 @@ export default function PaymentsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-slate-300">Payment Screenshot</Label>
-                  <Input 
-                    type="file" 
+                  <ImageDropzone
+                    value={remainingScreenshot}
+                    onFile={setRemainingScreenshot}
                     accept="image/*"
-                    onChange={(e) => setRemainingScreenshot(e.target.files?.[0] || null)}
-                    className="bg-slate-950 border-slate-800 text-white file:bg-slate-800 file:text-slate-300 file:border-0"
+                    label="Choose payment screenshot"
+                    description="Paste from clipboard or drag an image here"
+                    className="bg-slate-950"
                   />
                 </div>
                 <Button type="submit" className="w-full bg-primary" disabled={submitRemainingMutation.isPending}>
