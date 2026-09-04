@@ -836,7 +836,7 @@ export async function registerRoutes(
   const feedbackUpload = multer({
     storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 },
     fileFilter: (_req, file, cb) => cb(null, ["image/png", "image/jpeg", "image/webp"].includes(file.mimetype)),
-  }).array("screenshots", 5);
+  }).single("screenshot");
   app.post("/api/feedback/upload", requireRole(["admin", "support", "designer"]), (req, res) => {
     feedbackUpload(req, res, async err => {
       if (err) return res.status(400).json({ message: "Invalid image upload." });
