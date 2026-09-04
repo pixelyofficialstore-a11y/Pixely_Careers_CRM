@@ -183,6 +183,18 @@ export function ReviewForm({ review, orders, open, onOpenChange, defaultOrderId 
   const [marketingPermission, setMarketingPermission] = useState(review?.marketingPermission || "not_asked");
   const [screenshotUrl, setScreenshotUrl] = useState(review?.screenshotUrl || "");
   const selectedOrder = orders.find(order => String(order.id) === orderId);
+  useEffect(() => {
+    if (!open) return;
+    setOrderId(review?.orderId ? String(review.orderId) : defaultOrderId ? String(defaultOrderId) : "");
+    setRating(review?.rating ? String(review.rating) : "not_rated");
+    setFeedbackText(review?.feedbackText || "");
+    setWhatsapp(review?.whatsappFeedbackReceived ?? false);
+    setFacebook(review?.facebookReviewReceived ?? false);
+    setVideo(review?.videoReviewReceived ?? false);
+    setPublicLink(review?.publicReviewLink || "");
+    setMarketingPermission(review?.marketingPermission || "not_asked");
+    setScreenshotUrl(review?.screenshotUrl || "");
+  }, [open, review?.id, defaultOrderId]);
   const mutation = useMutation({
     mutationFn: async () => (await apiRequest(review ? "PATCH" : "POST", review ? `/api/feedback/reviews/${review.id}` : "/api/feedback/reviews", {
       ...(review ? {} : { orderId: Number(orderId) }),
