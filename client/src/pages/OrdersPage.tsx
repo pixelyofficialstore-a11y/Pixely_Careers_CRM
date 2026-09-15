@@ -89,6 +89,7 @@ import {
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { OrderWithServices, User, SupportDesignerAssignment, ServiceCatalogItem, PackageConfig, PlatformCatalogItem, PaymentVerification, ComplaintResponse, ComplaintHistoryEntry, ActivityLogWithActor, ClientReview, ClientSuggestion } from "@shared/schema";
+import { revisionOptions, supportPeriodOptions } from "@shared/schema";
 import { ComplaintDialog } from "@/components/ComplaintDialog";
 import { AdvancePaymentStatusBadge, ComplaintStatusBadge, OrderStatusBadge, PaymentLineStatusBadge, SuggestionStatusBadge } from "@/components/StatusBadge";
 import { ComplaintDetails } from "@/pages/ComplaintsPage";
@@ -1651,6 +1652,23 @@ export default function OrdersPage() {
                 )}
               </div>
 
+              {(selectedOrder.revisionsAllowed || selectedOrder.supportPeriod) && (
+                <div className="grid grid-cols-2 gap-4 p-4 bg-slate-950 rounded-lg border border-slate-800">
+                  {selectedOrder.revisionsAllowed && (
+                    <div>
+                      <p className="text-xs text-slate-500">Number of Revisions</p>
+                      <p className="mt-1 text-sm text-white">{selectedOrder.revisionsAllowed}</p>
+                    </div>
+                  )}
+                  {selectedOrder.supportPeriod && (
+                    <div>
+                      <p className="text-xs text-slate-500">Support Time Period</p>
+                      <p className="mt-1 text-sm text-white">{selectedOrder.supportPeriod}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-3 p-4 bg-slate-950 rounded-lg border border-slate-800">
                 <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Assignment</h4>
                 <div className="flex items-center gap-3">
@@ -2006,6 +2024,8 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
   const [creative, setCreative] = useState(order.creative || "");
   const [notes, setNotes] = useState(order.notes || "");
   const [packageType, setPackageType] = useState<string>(order.packageType || "custom");
+  const [revisionsAllowed, setRevisionsAllowed] = useState<string>(order.revisionsAllowed || "");
+  const [supportPeriod, setSupportPeriod] = useState<string>(order.supportPeriod || "");
   const serviceIdRef = useRef(1);
   const nextServiceNumberRef = useRef((order.services?.length || 0) + 1);
   const [services, setServices] = useState<OrderFormService[]>(() => {
@@ -2083,6 +2103,8 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
         paymentMethod: paymentMethod || null,
         paymentStatus,
         packageType: packageType || null,
+        revisionsAllowed: revisionsAllowed || null,
+        supportPeriod: supportPeriod || null,
         platform: platform.trim() || null,
         campaign: campaign.trim() || null,
         adSet: adSet.trim() || null,
@@ -2234,6 +2256,38 @@ function EditOrderForm({ order, designers, onSuccess }: { order: OrderWithServic
       )}
 
       <div className="space-y-4">
+        <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Revisions & Support</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label className="text-slate-300">Number of Revisions</Label>
+            <Select value={revisionsAllowed} onValueChange={setRevisionsAllowed}>
+              <SelectTrigger className="bg-slate-950 border-slate-800 text-white" data-testid="edit-select-revisions-allowed">
+                <SelectValue placeholder="Select revisions..." />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                {revisionOptions.map((opt) => (
+                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-slate-300">Support Time Period</Label>
+            <Select value={supportPeriod} onValueChange={setSupportPeriod}>
+              <SelectTrigger className="bg-slate-950 border-slate-800 text-white" data-testid="edit-select-support-period">
+                <SelectValue placeholder="Select support period..." />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                {supportPeriodOptions.map((opt) => (
+                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4">
         <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Billing (PKR)</h4>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-2">
@@ -2354,6 +2408,8 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
   const [creative, setCreative] = useState("");
   const [notes, setNotes] = useState("");
   const [packageType, setPackageType] = useState<string>("");
+  const [revisionsAllowed, setRevisionsAllowed] = useState<string>("");
+  const [supportPeriod, setSupportPeriod] = useState<string>("");
   const serviceIdRef = useRef(1);
   const nextServiceNumberRef = useRef(1);
   const [services, setServices] = useState<OrderFormService[]>([]);
@@ -2464,6 +2520,8 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
         advanceAmount: isAdmin ? advanceValue : 0,
         remainingAmount: isAdmin ? remainingValue : finalPayableValue,
         packageType: packageType || null,
+        revisionsAllowed: revisionsAllowed || null,
+        supportPeriod: supportPeriod || null,
         platform: platform.trim() || null,
         campaign: campaign.trim() || null,
         adSet: adSet.trim() || null,
@@ -2471,7 +2529,7 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
         notes: notes.trim() || null,
         services: orderServices,
       });
-      
+
       const order = await orderRes.json();
       
       // Then create payment verification request with screenshot
@@ -2675,16 +2733,48 @@ function CreateOrderForm({ designers, onSuccess }: { designers: User[]; onSucces
       )}
 
       <div className="space-y-4">
+        <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Revisions & Support</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label className="text-slate-300">Number of Revisions</Label>
+            <Select value={revisionsAllowed} onValueChange={setRevisionsAllowed}>
+              <SelectTrigger className="bg-slate-950 border-slate-800 text-white" data-testid="select-revisions-allowed">
+                <SelectValue placeholder="Select revisions..." />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                {revisionOptions.map((opt) => (
+                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-slate-300">Support Time Period</Label>
+            <Select value={supportPeriod} onValueChange={setSupportPeriod}>
+              <SelectTrigger className="bg-slate-950 border-slate-800 text-white" data-testid="select-support-period">
+                <SelectValue placeholder="Select support period..." />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                {supportPeriodOptions.map((opt) => (
+                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4">
         <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Billing (PKR)</h4>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-2">
             <Label className="text-slate-300">Total Bill (₨) *</Label>
-            <Input 
+            <Input
               type="number"
               min="0"
               step="1"
-              value={totalBill} 
-              onChange={(e) => setTotalBill(e.target.value.replace(/[^0-9]/g, ''))} 
+              value={totalBill}
+              onChange={(e) => setTotalBill(e.target.value.replace(/[^0-9]/g, ''))}
               onWheel={(e) => e.currentTarget.blur()}
               className="bg-slate-950 border-slate-800 text-white"
               placeholder="0"

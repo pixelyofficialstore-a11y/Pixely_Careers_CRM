@@ -123,6 +123,8 @@ export async function runMigrations() {
         ad_set                  TEXT,
         creative                TEXT,
         package_type            TEXT,
+        revisions_allowed       TEXT,
+        support_period          TEXT,
         notes                   TEXT,
         internal_notes          TEXT,
         cancellation_reason     TEXT,
@@ -441,7 +443,9 @@ export async function runMigrations() {
         ADD COLUMN IF NOT EXISTS payment_method         TEXT,
         ADD COLUMN IF NOT EXISTS payment_date           TIMESTAMP,
         ADD COLUMN IF NOT EXISTS delivered_at           TIMESTAMP,
-        ADD COLUMN IF NOT EXISTS client_type            TEXT NOT NULL DEFAULT 'national'
+        ADD COLUMN IF NOT EXISTS client_type            TEXT NOT NULL DEFAULT 'national',
+        ADD COLUMN IF NOT EXISTS revisions_allowed      TEXT,
+        ADD COLUMN IF NOT EXISTS support_period         TEXT
     `);
 
     await client.query(`
