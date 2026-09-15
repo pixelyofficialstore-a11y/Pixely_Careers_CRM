@@ -46,6 +46,8 @@ export const paymentTypes = ["advance", "full", "remaining"] as const;
 export const reviewProgresses = ["requested", "received", "public_review_received", "closed"] as const;
 export const advancePaymentStatuses = ["pending", "approved", "disapproved"] as const;
 export const clientTypes = ["national", "international"] as const;
+export const revisionOptions = ["1 Revision", "2 Revisions", "3 Revisions", "4 Revisions", "5 Revisions"] as const;
+export const supportPeriodOptions = ["15 Days", "30 Days", "3 Months", "6 Months"] as const;
 export const activityTypes = [
   "order_created",
   "status_change",
@@ -123,6 +125,8 @@ export const orders = pgTable("orders", {
   // Package keys come from the admin-managed package catalog, so this must remain
   // an unrestricted string rather than a fixed enum.
   packageType: text("package_type"),
+  revisionsAllowed: text("revisions_allowed"),
+  supportPeriod: text("support_period"),
   notes: text("notes"),
   internalNotes: text("internal_notes"),
   cancellationReason: text("cancellation_reason"),

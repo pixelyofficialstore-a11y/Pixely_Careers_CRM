@@ -7,7 +7,7 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-import { type User, userRoles, type InsertActivityLog, type ClientReview, type InsertClientSuggestion, orders, paymentVerifications, activityLogs } from "@shared/schema";
+import { type User, userRoles, type InsertActivityLog, type ClientReview, type InsertClientSuggestion, orders, paymentVerifications, activityLogs, revisionOptions, supportPeriodOptions } from "@shared/schema";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { db, pool } from "./db";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
@@ -584,6 +584,8 @@ export async function registerRoutes(
         advanceAmount: z.number().int().min(0).optional(),
         amountPaid: z.number().int().optional(),
         packageType: z.string().optional().nullable(),
+        revisionsAllowed: z.enum(revisionOptions).optional().nullable(),
+        supportPeriod: z.enum(supportPeriodOptions).optional().nullable(),
         platform: z.string().optional().nullable(),
         campaign: z.string().optional().nullable(),
         adSet: z.string().optional().nullable(),
@@ -1435,6 +1437,14 @@ export async function registerRoutes(
 
     if ("clientType" in updates && !["national", "international"].includes(updates.clientType)) {
       return res.status(400).json({ message: "Client type must be national or international" });
+    }
+
+    if ("revisionsAllowed" in updates && updates.revisionsAllowed !== null && !revisionOptions.includes(updates.revisionsAllowed)) {
+      return res.status(400).json({ message: "Invalid number of revisions" });
+    }
+
+    if ("supportPeriod" in updates && updates.supportPeriod !== null && !supportPeriodOptions.includes(updates.supportPeriod)) {
+      return res.status(400).json({ message: "Invalid support time period" });
     }
 
     // Services are stored in a separate table; preserve their presence for role checks.
