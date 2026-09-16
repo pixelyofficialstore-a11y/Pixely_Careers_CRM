@@ -46,6 +46,9 @@ export const paymentTypes = ["advance", "full", "remaining"] as const;
 export const reviewProgresses = ["requested", "received", "public_review_received", "closed"] as const;
 export const advancePaymentStatuses = ["pending", "approved", "disapproved"] as const;
 export const clientTypes = ["national", "international"] as const;
+export const orderTypes = ["documentation", "resume_distribution", "portfolio_website"] as const;
+export const revisionCounts = ["1", "2", "3", "4", "5"] as const;
+export const supportPeriods = ["15_days", "1_month", "2_months", "3_months", "4_months", "5_months", "6_months"] as const;
 export const activityTypes = [
   "order_created",
   "status_change",
@@ -102,6 +105,13 @@ export const orders = pgTable("orders", {
   clientPhone: text("client_phone"),
   clientEmail: text("client_email"),
   clientType: text("client_type", { enum: clientTypes }).notNull().default("national"),
+  orderType: text("order_type", { enum: orderTypes }).notNull().default("documentation"),
+  // Original purchased revision allowance — set at order creation, not edited afterward.
+  numberOfRevisions: integer("number_of_revisions"),
+  // Revisions still available — starts equal to numberOfRevisions, decremented
+  // manually by staff from the Orders table as revisions are completed.
+  remainingRevisions: integer("remaining_revisions"),
+  supportPeriod: text("support_period", { enum: supportPeriods }),
   status: text("status", { enum: orderStatuses }).notNull().default("new"),
   priority: text("priority", { enum: priorities }).notNull().default("normal"),
   assignedToId: integer("assigned_to_id").references(() => users.id),
@@ -143,6 +153,7 @@ export const orderServices = pgTable("order_services", {
   quantity: integer("quantity").notNull().default(1),
   instructions: text("instructions"),
   status: text("status", { enum: orderStatuses }).notNull().default("new"),
+  deliverableLink: text("deliverable_link"),
 });
 
 export const notifications = pgTable("notifications", {

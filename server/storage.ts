@@ -52,7 +52,9 @@ export interface IStorage {
   updateOrder(id: number, updates: Partial<InsertOrder>): Promise<Order>;
   cancelOrder(id: number, cancellation: OrderCancellation): Promise<Order | undefined>;
   getOrderServices(orderId: number): Promise<OrderService[]>;
+  getOrderService(id: number): Promise<OrderService | undefined>;
   createOrderService(service: InsertOrderService): Promise<OrderService>;
+  updateOrderService(id: number, updates: Partial<InsertOrderService>): Promise<OrderService>;
   replaceOrderServices(orderId: number, services: Omit<InsertOrderService, 'orderId'>[]): Promise<void>;
   deleteOrder(id: number): Promise<void>;
   generateOrderNumber(): Promise<string>;
@@ -184,11 +186,14 @@ export class DatabaseStorage implements IStorage {
     } else {
       orderList = await db.select().from(orders).where(and(eq(orders.assignedToId, userId), ne(orders.status, "pending_payment"))).orderBy(desc(orders.createdAt));
     }
-    const allServices = await db.select().from(orderServices);
+    const orderIds = orderList.map(o => o.id);
+    const relevantServices = orderIds.length > 0
+      ? await db.select().from(orderServices).where(inArray(orderServices.orderId, orderIds))
+      : [];
     const allUsers = await this.getUsers();
     return orderList.map(order => ({
       ...order,
-      services: allServices.filter(s => s.orderId === order.id),
+      services: relevantServices.filter(s => s.orderId === order.id),
       assignee: order.assignedToId ? allUsers.find(u => u.id === order.assignedToId) : null
     }));
   }
@@ -277,9 +282,19 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(orderServices).where(eq(orderServices.orderId, orderId));
   }
 
+  async getOrderService(id: number): Promise<OrderService | undefined> {
+    const [service] = await db.select().from(orderServices).where(eq(orderServices.id, id));
+    return service;
+  }
+
   async createOrderService(service: InsertOrderService): Promise<OrderService> {
     const [newService] = await db.insert(orderServices).values(service).returning();
     return newService;
+  }
+
+  async updateOrderService(id: number, updates: Partial<InsertOrderService>): Promise<OrderService> {
+    const [updated] = await db.update(orderServices).set(updates).where(eq(orderServices.id, id)).returning();
+    return updated;
   }
 
   async replaceOrderServices(orderId: number, services: Omit<InsertOrderService, 'orderId'>[]): Promise<void> {

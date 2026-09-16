@@ -95,7 +95,7 @@ if (process.env.NODE_ENV === "production") {
 // Start listening immediately so Railway's healthcheck gets a fast 200.
 // API routes and SPA catch-all are registered asynchronously below.
 httpServer.listen(
-  { port, host: "0.0.0.0", reusePort: true },
+  { port, host: "0.0.0.0", ...(process.platform !== "win32" ? { reusePort: true } : {}) },
   () => { log(`serving on port ${port}`); },
 );
 
@@ -103,7 +103,10 @@ httpServer.listen(
   // Run schema migrations before anything else touches the DB
   await runMigrations();
   await seedDatabase();
-  startCleanupJob();
+  // Disabled for local dev against the live Supabase DB — startCleanupJob() deletes
+  // notifications/payment_verifications older than 5 days. Do not re-enable without
+  // explicit confirmation; this must never run unintentionally against real data.
+  // startCleanupJob();
 
   // Register all API routes
   await registerRoutes(httpServer, app);

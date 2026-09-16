@@ -31,7 +31,6 @@ import {
   Plus,
   Pencil,
   Trash2,
-  Package,
   Wrench,
   Eye,
   EyeOff,
@@ -53,17 +52,13 @@ export default function AdminSettingsPage() {
 
   return (
     <div className="crm-page admin-settings-page space-y-5">
-      <PageHeader eyebrow="System configuration" title="Admin Settings" description="Manage services, packages, marketing platforms, and complaint categories." />
+      <PageHeader eyebrow="System configuration" title="Admin Settings" description="Manage services, marketing platforms, and complaint categories." />
 
       <Tabs defaultValue="services" className="space-y-5">
         <TabsList className="w-full justify-start overflow-x-auto sm:w-fit">
           <TabsTrigger value="services" className="gap-2">
             <Wrench className="w-4 h-4" />
             Services
-          </TabsTrigger>
-          <TabsTrigger value="packages" className="gap-2">
-            <Package className="w-4 h-4" />
-            Packages
           </TabsTrigger>
           <TabsTrigger value="platforms" className="gap-2">
             <Globe className="w-4 h-4" />
@@ -77,10 +72,6 @@ export default function AdminSettingsPage() {
 
         <TabsContent value="services">
           <ServicesSection />
-        </TabsContent>
-
-        <TabsContent value="packages">
-          <PackagesSection />
         </TabsContent>
 
         <TabsContent value="platforms">

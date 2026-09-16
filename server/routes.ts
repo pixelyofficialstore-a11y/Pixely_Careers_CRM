@@ -553,12 +553,12 @@ export async function registerRoutes(
 
   app.post(api.orders.create.path, requireRole(["admin", "support"]), async (req, res) => {
     try {
-      const { services, ...orderData } = req.body;
-      
-      const isCustomOrder = !orderData.packageType || orderData.packageType === "custom";
-      
-      if (isCustomOrder && (!services || !Array.isArray(services) || services.length === 0)) {
-        return res.status(400).json({ message: "At least one service is required for custom orders" });
+      const { services: rawServices, ...orderData } = req.body;
+
+      const orderType = orderData.orderType || "documentation";
+
+      if (orderType === "documentation" && (!rawServices || !Array.isArray(rawServices) || rawServices.length === 0)) {
+        return res.status(400).json({ message: "At least one service is required" });
       }
 
       const serviceSchema = z.object({
@@ -566,38 +566,52 @@ export async function registerRoutes(
         quantity: z.number().int().min(1, "Quantity must be at least 1"),
         instructions: z.string().nullable().optional(),
       });
-      
-      if (services && Array.isArray(services)) {
-        for (const service of services) {
+
+      if (rawServices && Array.isArray(rawServices)) {
+        for (const service of rawServices) {
           serviceSchema.parse(service);
         }
       }
+
+      // Portfolio Website / Resume Distribution orders don't ask the user to pick
+      // services — they get one fixed synthetic service so the Order still uses
+      // the normal services/deliverables architecture.
+      const services = orderType === "portfolio_website"
+        ? [{ serviceType: "Website", quantity: 1, instructions: null }]
+        : orderType === "resume_distribution"
+        ? [{ serviceType: "Distribution Service", quantity: 1, instructions: null }]
+        : rawServices;
 
       const orderSchema = z.object({
         clientName: z.string().min(1, "Client name is required"),
         clientPhone: z.string().min(1, "Phone number is required"),
         clientEmail: z.string().email().optional().nullable(),
         clientType: z.enum(["national", "international"]),
+        orderType: z.enum(["documentation", "resume_distribution", "portfolio_website"]).optional(),
         assignedToId: z.number().int().positive().optional().nullable(),
         paymentStatus: z.enum(["pending", "paid"]).optional(),
         totalPrice: z.number().int().optional(),
         advanceAmount: z.number().int().min(0).optional(),
         amountPaid: z.number().int().optional(),
         packageType: z.string().optional().nullable(),
+        numberOfRevisions: z.number().int().min(1).max(5).optional().nullable(),
+        supportPeriod: z.enum(["15_days", "1_month", "2_months", "3_months", "4_months", "5_months", "6_months"]).optional().nullable(),
         platform: z.string().optional().nullable(),
         campaign: z.string().optional().nullable(),
         adSet: z.string().optional().nullable(),
         creative: z.string().optional().nullable(),
         notes: z.string().optional().nullable(),
       });
-      
+
       orderSchema.parse(orderData);
-      
+
       const user = req.user as User;
-      
+
       const intendedDesignerId = orderData.assignedToId;
       const totalPrice = orderData.totalPrice || 0;
-      
+      // Remaining revisions starts equal to the purchased allowance.
+      (orderData as any).remainingRevisions = orderData.numberOfRevisions ?? null;
+
       if (user.role === 'admin') {
         // Admin orders are auto-approved — advance is collected immediately, no screenshot needed
         const orderNumber = await storage.generateOrderNumber();
@@ -1444,10 +1458,19 @@ export async function registerRoutes(
 
     const oldAssignedToId = existingOrder.assignedToId;
 
+    if ("remainingRevisions" in updates && updates.remainingRevisions !== null) {
+      const remaining = Number(updates.remainingRevisions);
+      const originalLimit = existingOrder.numberOfRevisions;
+      const maxAllowed = originalLimit != null ? originalLimit : 5;
+      if (!Number.isInteger(remaining) || remaining < 0 || remaining > maxAllowed) {
+        return res.status(400).json({ message: `Remaining revisions must be between 0 and ${maxAllowed}` });
+      }
+    }
+
     if (user.role === 'support') {
       // Support can create and monitor orders, but cannot change client, package,
       // pricing, payment, or other order-detail fields after creation.
-      const allowedUpdates = ['status', 'assignedToId'];
+      const allowedUpdates = ['status', 'assignedToId', 'remainingRevisions'];
       const keys = Object.keys(updates);
       if (hasIncomingServices || keys.some(key => !allowedUpdates.includes(key))) {
         return res.status(403).json({ message: "Support can only update operational order status and designer assignment" });
@@ -1486,7 +1509,7 @@ export async function registerRoutes(
     if (user.role === 'designer') {
       if (existingOrder.assignedToId !== user.id) return res.sendStatus(403);
       
-      const allowedUpdates = ['status'];
+      const allowedUpdates = ['status', 'remainingRevisions'];
       const keys = Object.keys(updates);
       if (hasIncomingServices || keys.some(k => !allowedUpdates.includes(k))) return res.sendStatus(403);
       
@@ -1580,17 +1603,49 @@ export async function registerRoutes(
 
     // Only admins can replace an order's services (add / remove / edit quantity & instructions).
     if (incomingServices && user.role === 'admin') {
+      // Replacing services deletes and reinserts rows — carry over each existing
+      // service's deliverable link when its serviceType is kept, so re-saving the
+      // services editor doesn't wipe out already-added deliverable links.
+      const existingServices = await storage.getOrderServices(orderId);
+      const linkByServiceType = new Map(existingServices.map(s => [s.serviceType, s.deliverableLink]));
       const cleanedServices = incomingServices
         .filter((s: any) => s && s.serviceType)
         .map((s: any) => ({
           serviceType: String(s.serviceType),
           quantity: Number(s.quantity) > 0 ? Number(s.quantity) : 1,
           instructions: s.instructions ? String(s.instructions) : null,
+          deliverableLink: linkByServiceType.get(String(s.serviceType)) || null,
         }));
       await storage.replaceOrderServices(orderId, cleanedServices);
     }
 
     res.json(updatedOrder);
+  });
+
+  app.patch("/api/order-services/:id", requireAuth, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ message: "Invalid service id" });
+
+    const orderService = await storage.getOrderService(id);
+    if (!orderService) return res.sendStatus(404);
+
+    const user = req.user as User;
+    if (user.role === 'designer') {
+      const order = await storage.getOrder(orderService.orderId);
+      if (!order || order.assignedToId !== user.id) return res.sendStatus(403);
+    }
+
+    const input = z.object({ deliverableLink: z.string().trim().url().max(2000).nullable() });
+    let deliverableLink: string | null;
+    try {
+      ({ deliverableLink } = input.parse({ deliverableLink: req.body.deliverableLink || null }));
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: "Enter a valid URL" });
+      throw err;
+    }
+
+    const updated = await storage.updateOrderService(id, { deliverableLink });
+    res.json(updated);
   });
 
   app.post("/api/orders/:id/cancel", requireRole(["admin"]), async (req, res) => {

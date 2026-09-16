@@ -108,6 +108,10 @@ export async function runMigrations() {
         client_phone            TEXT,
         client_email            TEXT,
         client_type             TEXT NOT NULL DEFAULT 'national',
+        order_type              TEXT NOT NULL DEFAULT 'documentation',
+        number_of_revisions     INTEGER,
+        support_period          TEXT,
+        remaining_revisions     INTEGER,
         status                  TEXT NOT NULL DEFAULT 'new',
         priority                TEXT NOT NULL DEFAULT 'normal',
         assigned_to_id          INTEGER REFERENCES users(id),
@@ -148,6 +152,15 @@ export async function runMigrations() {
       END $$
     `);
 
+    // Indexes for the Orders page's common filters/search (status, designer,
+    // date sort, service-type filter, phone search) and for reads/deletes on
+    // order_services by order_id.
+    await client.query(`CREATE INDEX IF NOT EXISTS orders_status_idx ON orders(status)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS orders_assigned_to_id_idx ON orders(assigned_to_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS orders_created_at_idx ON orders(created_at DESC)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS orders_order_type_idx ON orders(order_type)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS orders_client_phone_idx ON orders(client_phone)`);
+
     // ── Order services (depends on orders) ──────────────────────────────────
 
     await client.query(`
@@ -157,9 +170,11 @@ export async function runMigrations() {
         service_type TEXT NOT NULL,
         quantity     INTEGER NOT NULL DEFAULT 1,
         instructions TEXT,
-        status       TEXT NOT NULL DEFAULT 'new'
+        status       TEXT NOT NULL DEFAULT 'new',
+        deliverable_link TEXT
       )
     `);
+    await client.query(`CREATE INDEX IF NOT EXISTS order_services_order_id_idx ON order_services(order_id)`);
 
     // ── Notifications (depends on users) ────────────────────────────────────
 
@@ -441,12 +456,17 @@ export async function runMigrations() {
         ADD COLUMN IF NOT EXISTS payment_method         TEXT,
         ADD COLUMN IF NOT EXISTS payment_date           TIMESTAMP,
         ADD COLUMN IF NOT EXISTS delivered_at           TIMESTAMP,
-        ADD COLUMN IF NOT EXISTS client_type            TEXT NOT NULL DEFAULT 'national'
+        ADD COLUMN IF NOT EXISTS client_type            TEXT NOT NULL DEFAULT 'national',
+        ADD COLUMN IF NOT EXISTS order_type             TEXT NOT NULL DEFAULT 'documentation',
+        ADD COLUMN IF NOT EXISTS number_of_revisions    INTEGER,
+        ADD COLUMN IF NOT EXISTS support_period         TEXT,
+        ADD COLUMN IF NOT EXISTS remaining_revisions    INTEGER
     `);
 
     await client.query(`
       ALTER TABLE order_services
-        ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'new'
+        ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'new',
+        ADD COLUMN IF NOT EXISTS deliverable_link TEXT
     `);
 
     await client.query(`
