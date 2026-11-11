@@ -15,7 +15,10 @@ import {
   type ClientReview, type InsertClientReview, type ClientSuggestion, type InsertClientSuggestion, type ActivityLogWithActor, type SuggestionNote,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, ne, desc, sql, and, isNotNull, inArray, asc } from "drizzle-orm";
+import { eq, ne, desc, sql, and, isNotNull, inArray, asc, getTableColumns } from "drizzle-orm";
+
+// Arbitrary constant key for pg_advisory_xact_lock around order-number allocation.
+const ORDER_NUMBER_LOCK_KEY = 7_311_001;
 import { getStartOfBusinessDay, getStartOfBusinessMonth } from "@shared/business-time";
 import { getOrderAccounting } from "@shared/order-accounting";
 import { canAccessComplaintCase, canAccessOrderCase, isSupportedComplaintTarget, type CaseRole } from "@shared/case-access";
@@ -57,15 +60,19 @@ export interface IStorage {
   updateOrderService(id: number, updates: Partial<InsertOrderService>): Promise<OrderService>;
   replaceOrderServices(orderId: number, services: Omit<InsertOrderService, 'orderId'>[]): Promise<void>;
   deleteOrder(id: number): Promise<void>;
-  generateOrderNumber(): Promise<string>;
+  generateOrderNumber(tx?: any): Promise<string>;
 
-  getNotifications(userId: number): Promise<Notification[]>;
+  getNotifications(userId: number, limit?: number, beforeId?: number): Promise<Notification[]>;
   markNotificationRead(id: number, userId: number): Promise<Notification | undefined>;
   createNotification(userId: number, type: string, title: string, message: string, priority: string, relatedId?: number, relatedType?: string, dedupeKey?: string): Promise<{ notification: Notification; created: boolean }>;
 
   getStats(role: string, userId: number, complaintFilters?: ComplaintListFilters): Promise<any>;
+  invalidateStatsCache(): void;
+  invalidateUsersCache(): void;
 
   getPaymentVerifications(role: string, userId: number): Promise<PaymentVerificationWithUsers[]>;
+  getPaymentVerification(id: number): Promise<PaymentVerificationWithUsers | undefined>;
+  getPaymentVerificationsWithOrders(role: string, userId: number): Promise<Array<{ verification: PaymentVerificationWithUsers; order: { id: number; orderNumber: string | null; clientName: string; totalPrice: number } | null }>>;
   getPaymentVerificationsByOrder(orderId: number): Promise<PaymentVerificationWithUsers[]>;
   getPaymentVerificationByScreenshotUrl(url: string): Promise<PaymentVerification | undefined>;
   createPaymentVerification(data: InsertPaymentVerification): Promise<PaymentVerification>;
@@ -143,7 +150,23 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  // Small in-process cache of the users table. Every authenticated request
+  // deserializes the session user, and most list endpoints join users in JS,
+  // so this removes one database round trip from nearly every request.
+  private usersCache: { at: number; rows: User[] } | null = null;
+  private usersInflight: Promise<User[]> | null = null;
+  private static USERS_TTL_MS = 30_000;
+
+  invalidateUsersCache() {
+    this.usersCache = null;
+    this.usersInflight = null;
+  }
+
   async getUser(id: number): Promise<User | undefined> {
+    const cached = this.usersCache && Date.now() - this.usersCache.at < DatabaseStorage.USERS_TTL_MS
+      ? this.usersCache.rows.find(u => u.id === id)
+      : undefined;
+    if (cached) return cached;
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
   }
@@ -155,46 +178,67 @@ export class DatabaseStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db.insert(users).values(insertUser).returning();
+    this.invalidateUsersCache();
     return user;
   }
 
   async updateUser(id: number, updates: Partial<InsertUser>): Promise<User> {
     const [user] = await db.update(users).set(updates).where(eq(users.id, id)).returning();
+    this.invalidateUsersCache();
     return user;
   }
 
   async getUsers(): Promise<User[]> {
-    return await db.select().from(users).orderBy(users.id);
+    if (this.usersCache && Date.now() - this.usersCache.at < DatabaseStorage.USERS_TTL_MS) {
+      return [...this.usersCache.rows];
+    }
+    if (!this.usersInflight) {
+      const inflight = db.select().from(users).orderBy(users.id)
+        .then(rows => {
+          if (this.usersInflight === inflight) this.usersCache = { at: Date.now(), rows };
+          return rows;
+        })
+        .finally(() => {
+          if (this.usersInflight === inflight) this.usersInflight = null;
+        });
+      this.usersInflight = inflight;
+    }
+    return [...(await this.usersInflight)];
   }
 
   async getOrder(id: number): Promise<OrderWithServices | undefined> {
-    const [order] = await db.select().from(orders).where(eq(orders.id, id));
+    const [[order], services, allUsers] = await Promise.all([
+      db.select().from(orders).where(eq(orders.id, id)),
+      this.getOrderServices(id),
+      this.getUsers(),
+    ]);
     if (!order) return undefined;
-    const services = await this.getOrderServices(id);
-    const allUsers = await this.getUsers();
     const assignee = order.assignedToId ? allUsers.find(u => u.id === order.assignedToId) : null;
     return { ...order, services, assignee };
   }
 
   async getOrders(role: string, userId: number): Promise<OrderWithServices[]> {
-    let orderList: Order[];
-    if (role === "admin") {
-      orderList = await db.select().from(orders).where(ne(orders.status, "pending_payment")).orderBy(desc(orders.createdAt));
-    } else if (role === "support") {
-      // Support can view all orders (all months), like admin. Deleting remains admin-only.
-      orderList = await db.select().from(orders).where(ne(orders.status, "pending_payment")).orderBy(desc(orders.createdAt));
-    } else {
-      orderList = await db.select().from(orders).where(and(eq(orders.assignedToId, userId), ne(orders.status, "pending_payment"))).orderBy(desc(orders.createdAt));
+    // Support can view all orders (all months), like admin. Deleting remains admin-only.
+    const visible = role === "admin" || role === "support"
+      ? ne(orders.status, "pending_payment")
+      : and(eq(orders.assignedToId, userId), ne(orders.status, "pending_payment"));
+    // Orders, their services and the users list are fetched in parallel; the
+    // services query filters with a sub-select so it doesn't wait for orders.
+    const [orderList, relevantServices, allUsers] = await Promise.all([
+      db.select().from(orders).where(visible).orderBy(desc(orders.createdAt)),
+      db.select().from(orderServices).where(inArray(orderServices.orderId, db.select({ id: orders.id }).from(orders).where(visible))),
+      this.getUsers(),
+    ]);
+    const servicesByOrder = new Map<number, OrderService[]>();
+    for (const svc of relevantServices) {
+      const list = servicesByOrder.get(svc.orderId);
+      if (list) list.push(svc); else servicesByOrder.set(svc.orderId, [svc]);
     }
-    const orderIds = orderList.map(o => o.id);
-    const relevantServices = orderIds.length > 0
-      ? await db.select().from(orderServices).where(inArray(orderServices.orderId, orderIds))
-      : [];
-    const allUsers = await this.getUsers();
+    const usersById = new Map(allUsers.map(u => [u.id, u]));
     return orderList.map(order => ({
       ...order,
-      services: relevantServices.filter(s => s.orderId === order.id),
-      assignee: order.assignedToId ? allUsers.find(u => u.id === order.assignedToId) : null
+      services: servicesByOrder.get(order.id) || [],
+      assignee: order.assignedToId ? usersById.get(order.assignedToId) : null
     }));
   }
 
@@ -318,28 +362,31 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async generateOrderNumber(): Promise<string> {
+  /**
+   * Next PX-YYMM-NNN number. The sequence is the highest existing one + 1
+   * (not count-based, so gaps/deletions never cause duplicates).
+   * Pass a transaction to make allocation race-free: it takes a transaction
+   * advisory lock, so two concurrent approvals can't receive the same number.
+   */
+  async generateOrderNumber(tx?: any): Promise<string> {
+    const executor = tx || db;
+    if (tx) await tx.execute(sql`SELECT pg_advisory_xact_lock(${ORDER_NUMBER_LOCK_KEY})`);
     const year = new Date().getFullYear().toString().slice(-2);
     const month = (new Date().getMonth() + 1).toString().padStart(2, '0');
-    const existing = await db.select({ orderNumber: orders.orderNumber }).from(orders).where(isNotNull(orders.orderNumber));
-    
-    // Find the highest sequence number across ALL existing order numbers (not count-based — avoids duplicates on gaps/deletions)
-    let maxSeq = 0;
-    for (const o of existing) {
-      const match = o.orderNumber?.match(/PX-\d{4}-(\d+)/);
-      if (match) {
-        const seq = parseInt(match[1], 10);
-        if (seq > maxSeq) maxSeq = seq;
-      }
-    }
-    
+    const result = await executor.execute(sql`
+      SELECT COALESCE(MAX(substring(order_number from 'PX-[0-9]{4}-([0-9]+)')::int), 0) AS max_seq
+      FROM orders WHERE order_number IS NOT NULL`);
+    const maxSeq = Number((result as any).rows?.[0]?.max_seq ?? 0);
     return `PX-${year}${month}-${(maxSeq + 1).toString().padStart(3, '0')}`;
   }
 
-  async getNotifications(userId: number): Promise<Notification[]> {
+  async getNotifications(userId: number, limit = 50, beforeId?: number): Promise<Notification[]> {
     const rows = await db.select().from(notifications)
-      .where(eq(notifications.userId, userId))
-      .orderBy(desc(notifications.createdAt));
+      .where(beforeId
+        ? and(eq(notifications.userId, userId), sql`${notifications.id} < ${beforeId}`)
+        : eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt), desc(notifications.id))
+      .limit(Math.min(Math.max(limit, 1), 200));
     const complaintIds = rows
       .filter(notification => notification.relatedType === "complaint" && notification.relatedId)
       .map(notification => notification.relatedId as number);
@@ -388,8 +435,40 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  // Dashboard stats are cached for 30s per (role, user, filters) and dropped
+  // whenever an order/payment/complaint is changed (see invalidateStatsCache).
+  private statsCache = new Map<string, { at: number; value: Promise<any> }>();
+  private static STATS_TTL_MS = 30_000;
+
+  invalidateStatsCache() {
+    this.statsCache.clear();
+  }
+
   async getStats(role: string, userId: number, complaintFilters: ComplaintListFilters = {}): Promise<any> {
-    const allOrdersRaw = await db.select().from(orders);
+    const key = JSON.stringify([role, userId, complaintFilters.month ?? null, complaintFilters.year ?? null, complaintFilters.designerId ?? null]);
+    const hit = this.statsCache.get(key);
+    if (hit && Date.now() - hit.at < DatabaseStorage.STATS_TTL_MS) return structuredClone(await hit.value);
+    const value = this.computeStats(role, userId, complaintFilters);
+    this.statsCache.set(key, { at: Date.now(), value });
+    value.catch(() => { if (this.statsCache.get(key)?.value === value) this.statsCache.delete(key); });
+    return structuredClone(await value);
+  }
+
+  private async computeStats(role: string, userId: number, complaintFilters: ComplaintListFilters = {}): Promise<any> {
+    // All independent reads run in parallel. Only the columns the accounting
+    // needs are selected (no notes/links/text blobs).
+    const [allOrdersRaw, allPaymentVerifications, allUsers, complaintStats] = await Promise.all([
+      db.select().from(orders).where(eq(orders.advancePaymentStatus, "approved")),
+      db.select({
+        orderId: paymentVerifications.orderId,
+        status: paymentVerifications.status,
+        reviewedAt: paymentVerifications.reviewedAt,
+        amount: paymentVerifications.amount,
+        paymentType: paymentVerifications.paymentType,
+      }).from(paymentVerifications).where(eq(paymentVerifications.status, "approved")),
+      this.getUsers(),
+      this.getComplaintStats(role, userId, complaintFilters),
+    ]);
     const allOrders = allOrdersRaw.filter(o =>
       o.advancePaymentStatus === 'approved' &&
       canAccessOrderCase(role as CaseRole, userId, o.assignedToId)
@@ -397,9 +476,7 @@ export class DatabaseStorage implements IStorage {
     // Canceled orders retain original amounts for audit. Their accounting
     // projection decides whether an advance was refunded or retained.
     const collectedOrderIds = new Set(allOrders.filter(order => getOrderAccounting(order).netCollected > 0).map(order => order.id));
-    const allPaymentVerifications = await db.select().from(paymentVerifications);
-    const allUsers = await db.select().from(users);
-    
+
     const today = getStartOfBusinessDay();
     const todayOrders = allOrders.filter(o => new Date(o.createdAt!) >= today);
     const thisMonth = getStartOfBusinessMonth();
@@ -488,7 +565,7 @@ export class DatabaseStorage implements IStorage {
 
     return {
       orders: orderStats,
-      complaints: await this.getComplaintStats(role, userId, complaintFilters),
+      complaints: complaintStats,
       finance: {
         totalRevenue,
         monthlyRevenue: monthlyOrders.reduce((acc, order) => acc + getOrderAccounting(order).netCollected, 0),
@@ -1055,23 +1132,59 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPaymentVerifications(role: string, userId: number): Promise<PaymentVerificationWithUsers[]> {
-    let verificationList: PaymentVerification[];
-    
-    if (role === "admin") {
-      verificationList = await db.select().from(paymentVerifications).orderBy(desc(paymentVerifications.createdAt));
-    } else {
-      verificationList = await db.select().from(paymentVerifications)
-        .where(eq(paymentVerifications.submittedById, userId))
-        .orderBy(desc(paymentVerifications.createdAt));
-    }
-
-    const allUsers = await this.getUsers();
+    // screenshot_data (legacy base64 blobs) is never sent to the client, so it
+    // is not read from the database either.
+    const { screenshotData: _omit, ...pvColumns } = getTableColumns(paymentVerifications);
+    const [verificationList, allUsers] = await Promise.all([
+      role === "admin"
+        ? db.select(pvColumns).from(paymentVerifications).orderBy(desc(paymentVerifications.createdAt))
+        : db.select(pvColumns).from(paymentVerifications)
+          .where(eq(paymentVerifications.submittedById, userId))
+          .orderBy(desc(paymentVerifications.createdAt)),
+      this.getUsers(),
+    ]);
+    const usersById = new Map(allUsers.map(u => [u.id, u]));
     return verificationList.map(pv => ({
+      ...pv,
+      screenshotData: null,
+      submittedBy: usersById.get(pv.submittedById) || null,
+      reviewedBy: pv.reviewedById ? usersById.get(pv.reviewedById) || null : null,
+    }));
+  }
+
+  /** Payment list joined with the order summary in one query (no per-row getOrder). */
+  async getPaymentVerificationsWithOrders(role: string, userId: number) {
+    const [verifications, orderRows] = await Promise.all([
+      this.getPaymentVerifications(role, userId),
+      db.select({
+        id: orders.id,
+        orderNumber: orders.orderNumber,
+        clientName: orders.clientName,
+        totalPrice: orders.totalPrice,
+      }).from(orders).where(inArray(
+        orders.id,
+        role === "admin"
+          ? db.select({ id: paymentVerifications.orderId }).from(paymentVerifications)
+          : db.select({ id: paymentVerifications.orderId }).from(paymentVerifications).where(eq(paymentVerifications.submittedById, userId)),
+      )),
+    ]);
+    const ordersById = new Map(orderRows.map(o => [o.id, o]));
+    return verifications.map(v => ({ verification: v, order: ordersById.get(v.orderId) || null }));
+  }
+
+  async getPaymentVerification(id: number): Promise<PaymentVerificationWithUsers | undefined> {
+    const { screenshotData: _omit, ...pvColumns } = getTableColumns(paymentVerifications);
+    const [[pv], allUsers] = await Promise.all([
+      db.select(pvColumns).from(paymentVerifications).where(eq(paymentVerifications.id, id)),
+      this.getUsers(),
+    ]);
+    if (!pv) return undefined;
+    return {
       ...pv,
       screenshotData: null,
       submittedBy: allUsers.find(u => u.id === pv.submittedById) || null,
       reviewedBy: pv.reviewedById ? allUsers.find(u => u.id === pv.reviewedById) || null : null,
-    }));
+    };
   }
 
   async getPaymentVerificationByScreenshotUrl(url: string): Promise<PaymentVerification | undefined> {
@@ -1232,7 +1345,7 @@ export class DatabaseStorage implements IStorage {
     await db
       .update(notifications)
       .set({ read: true })
-      .where(eq(notifications.userId, userId));
+      .where(and(eq(notifications.userId, userId), eq(notifications.read, false)));
   }
 
   async savePushSubscription(userId: number, endpoint: string, p256dh: string, auth: string): Promise<PushSubscription> {

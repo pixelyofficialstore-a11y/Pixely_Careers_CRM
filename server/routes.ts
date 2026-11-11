@@ -19,6 +19,9 @@ import { ObjectStorageService, registerObjectStorageRoutes, objectStorageService
 import sharp from "sharp";
 import { isCloudinaryConfigured, uploadToCloudinary } from "./cloudinary";
 import webpush from "web-push";
+import { registerWebsiteRequestRoutes } from "./websiteRequests";
+import { placeApprovedOrderTx } from "./orderCreation";
+import { claimCrmPurchaseTx, queuePurchase, retryPurchase, txQueryOf } from "./lib/metaCapi";
 import { addSseClient, removeSseClient, emitNotification, emitRealtime, hasSseClient } from "./sse";
 import { getPaymentApprovalConflict } from "@shared/order-accounting";
 
@@ -71,6 +74,9 @@ const NOTIFIABLE_EVENTS = [
   "order_disapproved",
   "review_created",
   "suggestion_created",
+  "website_request_new",
+  "website_request_approval",
+  "website_request_decision",
 ] as const;
 
 type NotificationEvent = typeof NOTIFIABLE_EVENTS[number];
@@ -85,6 +91,9 @@ const EVENT_SCOPES: Record<NotificationEvent, string[]> = {
   order_disapproved: ["notifications", "payments", "orders", "stats"],
   review_created: ["notifications", "feedback"],
   suggestion_created: ["notifications", "feedback"],
+  website_request_new: ["notifications", "website_requests"],
+  website_request_approval: ["notifications", "website_requests"],
+  website_request_decision: ["notifications", "website_requests", "orders", "stats"],
 };
 
 const SOUND_EVENTS = new Set<NotificationEvent>([
@@ -92,6 +101,8 @@ const SOUND_EVENTS = new Set<NotificationEvent>([
   "complaint_created_by_admin",
   "payment_verification_requested",
   "review_created",
+  "website_request_new",
+  "website_request_approval",
 ]);
 
 function notificationTag(event: NotificationEvent, relatedType: string | undefined, relatedId: number | undefined, sourceEventId: string | number): string {
@@ -162,7 +173,9 @@ async function dispatchNotification(input: DispatchNotificationInput) {
             ? `/feedback?suggestion=${input.relatedId}`
             : input.relatedType === "payment_verification" && input.relatedId
               ? `/payments?payment=${input.relatedId}`
-              : "/orders";
+              : input.relatedType === "website_request"
+                ? "/website-requests"
+                : "/orders";
       const eventPayload = {
         event: "notification",
         id: result.notification.id,
@@ -299,8 +312,33 @@ export async function registerRoutes(
     })
   );
 
+  // With rolling sessions connect-pg-simple runs an UPDATE on every request
+  // just to push the expiry forward. The cookie lasts a year, so refreshing the
+  // stored expiry at most every 10 minutes per session is plenty.
+  const SESSION_TOUCH_INTERVAL_MS = 10 * 60 * 1000;
+  const sessionTouchedAt = new Map<string, number>();
+  const originalTouch = sessionStore.touch.bind(sessionStore);
+  sessionStore.touch = ((sid: string, sess: any, cb?: (err?: any) => void) => {
+    const now = Date.now();
+    if (now - (sessionTouchedAt.get(sid) || 0) < SESSION_TOUCH_INTERVAL_MS) return cb?.();
+    if (sessionTouchedAt.size > 5000) sessionTouchedAt.clear();
+    sessionTouchedAt.set(sid, now);
+    originalTouch(sid, sess, cb);
+  }) as typeof sessionStore.touch;
+
   app.use(passport.initialize());
   app.use(passport.session());
+
+  // Dashboard stats are cached for 30s; any successful write drops the cache
+  // so new orders/payments show up on the next dashboard load.
+  app.use("/api", (req, res, next) => {
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      res.on("finish", () => {
+        if (res.statusCode < 400) storage.invalidateStatsCache();
+      });
+    }
+    next();
+  });
 
   passport.use(
     new LocalStrategy(async (username, password, done) => {
@@ -372,6 +410,46 @@ export async function registerRoutes(
     if (!req.isAuthenticated()) return res.sendStatus(401);
     if (!roles.includes((req.user as User).role)) return res.sendStatus(403);
     next();
+  };
+
+  // Notifications for an order placed (auto-approved) by an admin. Shared by
+  // the Orders page and Website Requests. Runs after the transaction commits;
+  // a notification failure never undoes the order.
+  const notifyAdminPlacedOrder = async (order: { id: number; assignedToId: number | null }, actorId: number, message = "New order created by Admin.") => {
+    try {
+      const admins = await storage.getAdmins();
+      await dispatchNotifications(
+        admins.map(a => a.id),
+        {
+          event: "order_created_by_admin",
+          type: "order",
+          title: "New Order",
+          message,
+          priority: "update",
+          relatedId: order.id,
+          relatedType: "order",
+          sourceEventId: order.id,
+        },
+        [actorId],
+      );
+      if (order.assignedToId) {
+        await dispatchNotification({
+          event: "order_created_by_admin",
+          recipientId: order.assignedToId,
+          recipientRole: "designer",
+          type: "order",
+          title: "New Order Assigned",
+          message: "New order assigned to you. Client details are available in CRM.",
+          priority: "update",
+          relatedId: order.id,
+          relatedType: "order",
+          sourceEventId: order.id,
+        });
+      }
+    } catch (error) {
+      console.error(`[orders] notifications failed for order ${order.id} (order was saved):`, error);
+    }
+    emitRealtime(actorId, ["orders", "stats"]);
   };
 
   // SSE stream: authenticated users connect here to receive real-time notification events
@@ -613,62 +691,22 @@ export async function registerRoutes(
       (orderData as any).remainingRevisions = orderData.numberOfRevisions ?? null;
 
       if (user.role === 'admin') {
-        // Admin orders are auto-approved — advance is collected immediately, no screenshot needed
-        const orderNumber = await storage.generateOrderNumber();
-        const advanceAmount = orderData.advanceAmount || 0;
-        const remainingAmount = Math.max(0, totalPrice - advanceAmount);
-        const order = await storage.createOrder({
-          ...orderData,
-          totalPrice,
-          advanceAmount,
-          remainingAmount,
-          paymentStatus: remainingAmount === 0 ? "paid" : "pending",
-          assignedToId: intendedDesignerId || null,
-          intendedDesignerId: intendedDesignerId || null,
-          advancePaymentStatus: "approved",
-          orderNumber,
-          createdById: user.id,
-          status: "new",
-        }, services || []);
-        await storage.createActivityLog({ orderId: order.id, actorId: user.id, activityType: "order_created", newValue: "new" });
-        if (intendedDesignerId) {
-          const assignedDesigner = await storage.getUser(intendedDesignerId);
-          await storage.createActivityLog({
-            orderId: order.id, actorId: user.id, activityType: "assignment", newValue: String(intendedDesignerId),
-            details: { previousDesigner: null, newDesigner: userSummary(assignedDesigner) },
+        // Admin orders are auto-approved — advance is collected immediately, no screenshot needed.
+        // Same function as Website Requests "Verify & place order"; one transaction.
+        const { assignedToId: _ignored, ...orderFields } = orderData;
+        const { order, metaPayload } = await db.transaction(async tx => {
+          const order = await placeApprovedOrderTx(tx, {
+            order: { ...orderFields, totalPrice, advanceAmount: orderData.advanceAmount || 0 },
+            services: services || [],
+            designerId: intendedDesignerId || null,
+            actorId: user.id,
           });
-        }
-
-        const admins = await storage.getAdmins();
-        await dispatchNotifications(
-          admins.map(a => a.id),
-          {
-            event: "order_created_by_admin",
-            type: "order",
-            title: "New Order",
-            message: "New order created by Admin.",
-            priority: "update",
-            relatedId: order.id,
-            relatedType: "order",
-            sourceEventId: order.id,
-          },
-          [user.id],
-        );
-        if (intendedDesignerId) {
-          await dispatchNotification({
-            event: "order_created_by_admin",
-            recipientId: intendedDesignerId,
-            recipientRole: "designer",
-            type: "order",
-            title: "New Order Assigned",
-            message: "New order assigned to you. Client details are available in CRM.",
-            priority: "update",
-            relatedId: order.id,
-            relatedType: "order",
-            sourceEventId: order.id,
-          });
-        }
-
+          // First payment recorded on a manual (WhatsApp) order → Meta Purchase, claimed once.
+          const metaPayload = await claimCrmPurchaseTx(txQueryOf(tx), order.id, order.advanceAmount || 0, new Date());
+          return { order, metaPayload };
+        });
+        if (metaPayload) queuePurchase({ crmOrderId: order.id }, metaPayload);
+        await notifyAdminPlacedOrder(order, user.id);
         return res.status(201).json(order);
       }
 
@@ -1442,8 +1480,10 @@ export async function registerRoutes(
   app.patch(api.orders.update.path, requireAuth, async (req, res) => {
     const orderId = Number(req.params.id);
     const updates = { ...req.body };
+    // Meta Purchase tracking is server-owned.
+    delete updates.metaEventId; delete updates.metaStatus; delete updates.metaPurchaseSentAt;
     const user = req.user as User;
-    
+
     const existingOrder = await storage.getOrder(orderId);
     if (!existingOrder) return res.sendStatus(404);
 
@@ -1648,6 +1688,20 @@ export async function registerRoutes(
     res.json(updated);
   });
 
+  // Meta Purchase retry (admin) — only when the last send failed.
+  app.post("/api/orders/:id/meta-retry", requireRole(["admin"]), async (req, res) => {
+    const orderId = Number(req.params.id);
+    if (!Number.isInteger(orderId) || orderId <= 0) return res.status(400).json({ message: "Invalid order id" });
+    try {
+      const started = await retryPurchase({ kind: "crm", id: orderId });
+      if (!started) return res.status(409).json({ message: "Nothing to retry - the Purchase was already sent or is still sending." });
+      res.json({ ok: true, metaStatus: "pending" });
+    } catch (error: any) {
+      console.error(`[meta-capi] retry for order ${orderId} failed:`, error);
+      res.status(500).json({ message: "Retry failed to start. Please try again." });
+    }
+  });
+
   app.post("/api/orders/:id/cancel", requireRole(["admin"]), async (req, res) => {
     const orderId = Number(req.params.id);
     if (!Number.isInteger(orderId) || orderId <= 0) return res.status(400).json({ message: "Invalid order id" });
@@ -1691,7 +1745,10 @@ export async function registerRoutes(
   });
 
   app.get(api.notifications.list.path, requireAuth, async (req, res) => {
-    const notifs = await storage.getNotifications((req.user as User).id);
+    // Paginated (newest 50 by default, ?before=<id> for older pages).
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+    const before = Number(req.query.before) || undefined;
+    const notifs = await storage.getNotifications((req.user as User).id, limit, before);
     res.json(notifs);
   });
 
@@ -1771,11 +1828,10 @@ export async function registerRoutes(
   
   app.get("/api/payment-verifications", requireAuth, async (req, res) => {
     const user = req.user as User;
-    const verifications = await storage.getPaymentVerifications(user.role, user.id);
-    
-    // Use getOrder() per verification to include pending_payment orders (filtered out by getOrders)
-    const result = await Promise.all(verifications.map(async v => {
-      const order = await storage.getOrder(v.orderId);
+    // One query for the order summaries (includes pending_payment orders,
+    // which getOrders hides) instead of a getOrder() per verification.
+    const rows = await storage.getPaymentVerificationsWithOrders(user.role, user.id);
+    const result = rows.map(({ verification: v, order }) => {
       const sanitizedOrder = order ? {
         orderNumber: order.orderNumber,
         clientName: order.clientName,
@@ -1787,7 +1843,7 @@ export async function registerRoutes(
         reviewedBy: safeUserSummary(v.reviewedBy),
         order: sanitizedOrder,
       };
-    }));
+    });
     
     res.json(result);
   });
@@ -1941,23 +1997,21 @@ export async function registerRoutes(
     }
     
     const verificationId = Number(req.params.id);
-    const { notes } = req.body;
-    
-    const verifications = await storage.getPaymentVerifications("admin", 0);
-    const verification = verifications.find(v => v.id === verificationId);
-    if (!verification) return res.sendStatus(404);
+    if (!Number.isInteger(verificationId) || verificationId <= 0) {
+      return res.status(400).json({ error: "Invalid payment id" });
+    }
+    const notes = typeof req.body?.notes === "string" ? req.body.notes : undefined;
+    try {
+    const verification = await storage.getPaymentVerification(verificationId);
+    if (!verification) return res.status(404).json({ error: "Payment not found. It may have been removed - reload the page." });
     if (verification.status !== "pending_confirmation") {
       return res.status(409).json({ error: `This payment is already ${verification.status}` });
     }
     const order = await storage.getOrder(verification.orderId);
-    if (!order) return res.sendStatus(404);
+    if (!order) return res.status(404).json({ error: "The order for this payment no longer exists." });
     if (order.status === "canceled") {
       return res.status(409).json({ error: "Canceled orders cannot receive approved payments" });
     }
-
-    const orderNumber = verification.paymentType === "advance" || verification.paymentType === "full"
-      ? await storage.generateOrderNumber()
-      : order.orderNumber;
 
     const approval = await db.transaction(async tx => {
       await tx.execute(sql`SELECT id FROM orders WHERE id = ${order.id} FOR UPDATE`);
@@ -1965,6 +2019,11 @@ export async function registerRoutes(
       if (!lockedOrder) {
         throw new Error("ORDER_CANCELED_DURING_APPROVAL");
       }
+      // Allocated inside the transaction (advisory-locked) so two approvals
+      // running at the same time can never get the same order number.
+      const orderNumber = verification.paymentType === "advance" || verification.paymentType === "full"
+        ? (lockedOrder.orderNumber || await storage.generateOrderNumber(tx))
+        : lockedOrder.orderNumber;
       const approvalConflict = getPaymentApprovalConflict(lockedOrder, {
         paymentType: verification.paymentType,
         amount: verification.amount,
@@ -1996,7 +2055,7 @@ export async function registerRoutes(
         remainingAmount: newRemaining,
         paymentStatus: isFullyPaid ? "paid" : "pending",
         advancePaymentStatus: "approved" as const,
-        assignedToId: order.intendedDesignerId,
+        assignedToId: lockedOrder.intendedDesignerId,
         status: "new" as const,
         paymentDate: new Date(),
       } : verification.paymentType === "full" ? {
@@ -2005,7 +2064,7 @@ export async function registerRoutes(
         remainingAmount: 0,
         paymentStatus: "paid",
         advancePaymentStatus: "approved" as const,
-        assignedToId: order.intendedDesignerId,
+        assignedToId: lockedOrder.intendedDesignerId,
         status: "new" as const,
         paymentDate: new Date(),
       } : {
@@ -2027,7 +2086,11 @@ export async function registerRoutes(
         newValue: "approved",
         details: { paymentVerificationId: verificationId, paymentType: verification.paymentType, amount: verification.amount },
       });
-      return { approvedVerification, updatedOrder, newRemaining, isFullyPaid };
+      // First payment on this order → Meta Purchase (claimed once; sent after commit).
+      const metaPayload = (lockedOrder.advanceAmount || 0) === 0
+        ? await claimCrmPurchaseTx(txQueryOf(tx), order.id, verification.amount, new Date())
+        : null;
+      return { approvedVerification, updatedOrder, newRemaining, isFullyPaid, metaPayload };
     }).catch(error => {
       if (error instanceof Error && error.message === "ORDER_CANCELED_DURING_APPROVAL") return null;
       if (error instanceof Error && error.message.startsWith("PAYMENT_APPROVAL_CONFLICT:")) {
@@ -2042,6 +2105,7 @@ export async function registerRoutes(
       return res.status(409).json({ error: approval.conflict });
     }
     const { newRemaining, isFullyPaid } = approval;
+    if (approval.metaPayload) queuePurchase({ crmOrderId: order.id }, approval.metaPayload);
 
     if (verification.paymentType === "advance" || verification.paymentType === "full") {
       try {
@@ -2094,8 +2158,16 @@ export async function registerRoutes(
       }
     }
     emitRealtime(user.id, ["payments", "orders", "stats"]);
-    
+
     res.json({ ...verification, ...approval.approvedVerification });
+    } catch (error: any) {
+      // The transaction rolled back - nothing was half-saved.
+      console.error(`[payment-approve] id=${verificationId} admin=${user.id} failed: ${error?.code ? `[${error.code}] ` : ""}${error?.message || error}`);
+      const message = error?.code === "23505"
+        ? "Another approval happened at the same moment. Nothing was saved - please try again."
+        : "Approval failed on the server. Nothing was saved - please try again.";
+      if (!res.headersSent) res.status(error?.code === "23505" ? 409 : 500).json({ error: message });
+    }
   });
 
   app.patch("/api/payment-verifications/:id/disapprove", requireAuth, async (req, res) => {
@@ -2105,34 +2177,54 @@ export async function registerRoutes(
     }
     
     const verificationId = Number(req.params.id);
-    const { notes } = req.body;
-    
-    const verifications = await storage.getPaymentVerifications("admin", 0);
-    const verification = verifications.find(v => v.id === verificationId);
-    if (!verification) return res.sendStatus(404);
-    
-    await storage.updatePaymentVerification(verificationId, {
-      status: "disapproved",
-      reviewedById: user.id,
-      reviewedAt: new Date(),
-      notes,
-    });
-    await storage.createActivityLog({
-      orderId: verification.orderId, actorId: user.id, activityType: "payment_change",
-      previousValue: verification.status, newValue: "disapproved",
-      details: { paymentVerificationId: verificationId, paymentType: verification.paymentType, amount: verification.amount },
-    });
-    
-    const rejectedOrder = await storage.getOrder(verification.orderId);
+    if (!Number.isInteger(verificationId) || verificationId <= 0) {
+      return res.status(400).json({ error: "Invalid payment id" });
+    }
+    const notes = typeof req.body?.notes === "string" ? req.body.notes : undefined;
 
-    if (verification.paymentType !== 'remaining') {
-      if (rejectedOrder) {
-        // Keep as pending_payment (not canceled) so it stays hidden from Orders page
-        await storage.updateOrder(rejectedOrder.id, {
-          advancePaymentStatus: "disapproved",
-          status: "pending_payment",
-        });
+    let verification: Awaited<ReturnType<typeof storage.getPaymentVerification>>;
+    let rejectedOrder: Awaited<ReturnType<typeof storage.getOrder>>;
+    try {
+      verification = await storage.getPaymentVerification(verificationId);
+      if (!verification) return res.status(404).json({ error: "Payment not found. It may have been removed - reload the page." });
+      if (verification.status !== "pending_confirmation") {
+        return res.status(409).json({ error: `This payment is already ${verification.status}` });
       }
+      const pv = verification;
+      const outcome = await db.transaction(async tx => {
+        await tx.execute(sql`SELECT id FROM orders WHERE id = ${pv.orderId} FOR UPDATE`);
+        const [updated] = await tx.update(paymentVerifications).set({
+          status: "disapproved",
+          reviewedById: user.id,
+          reviewedAt: new Date(),
+          notes,
+        }).where(and(
+          eq(paymentVerifications.id, verificationId),
+          eq(paymentVerifications.status, "pending_confirmation"),
+        )).returning({ id: paymentVerifications.id });
+        if (!updated) return "changed" as const;
+        await tx.insert(activityLogs).values({
+          orderId: pv.orderId, actorId: user.id, activityType: "payment_change",
+          previousValue: "pending_confirmation", newValue: "disapproved",
+          details: { paymentVerificationId: verificationId, paymentType: pv.paymentType, amount: pv.amount },
+        });
+        if (pv.paymentType !== "remaining") {
+          // Keep as pending_payment (not canceled) so it stays hidden from Orders page.
+          // Only orders still waiting for this first payment are touched.
+          await tx.update(orders).set({
+            advancePaymentStatus: "disapproved",
+            status: "pending_payment",
+          }).where(and(eq(orders.id, pv.orderId), eq(orders.status, "pending_payment")));
+        }
+        return "ok" as const;
+      });
+      if (outcome === "changed") {
+        return res.status(409).json({ error: "This payment was already reviewed by someone else. Reload the page." });
+      }
+      rejectedOrder = await storage.getOrder(verification.orderId);
+    } catch (error: any) {
+      console.error(`[payment-disapprove] id=${verificationId} admin=${user.id} failed: ${error?.message || error}`);
+      return res.status(500).json({ error: "Disapproval failed on the server. Nothing was saved - please try again." });
     }
 
     if (rejectedOrder && rejectedOrder.createdById) {
@@ -2205,6 +2297,60 @@ export async function registerRoutes(
   });
 
   registerObjectStorageRoutes(app);
+
+  registerWebsiteRequestRoutes(app, {
+    requireRole,
+    notifyNewRequest: async (recipientIds, request) => {
+      const kind = request.kind ?? "order";
+      const amount = `Rs ${Number(request.total || 0).toLocaleString("en-PK")}`;
+      await dispatchNotifications(recipientIds, {
+        event: "website_request_new",
+        type: "website_request",
+        title: kind === "review" ? "New Free CV Review" : kind === "partner" ? "New Agency Partner" : request.status === "payment_submitted" ? "Website Payment Submitted" : "New Website Request",
+        message: kind === "order"
+          ? `${request.name || "A customer"} · ${request.currency && request.currency !== "PKR" ? `${request.currency} ${Number(request.total || 0).toLocaleString("en-PK")}` : amount}${request.status === "payment_submitted" ? " — needs verification" : ""}`
+          : `${request.name || (kind === "partner" ? "An agency" : "A customer")} submitted the ${kind === "review" ? "free CV review" : "For Agencies"} form.`,
+        priority: "action_required",
+        relatedType: "website_request",
+        sourceEventId: `${request.id}:${request.status}`,
+      });
+    },
+    notifyApprovalRequested: async (request, submitter, note) => {
+      const admins = await storage.getAdmins();
+      const amount = `${request.currency} ${Number(request.total || 0).toLocaleString()}`;
+      await dispatchNotifications(admins.map(a => a.id), {
+        event: "website_request_approval",
+        type: "website_request",
+        title: "Website order needs approval",
+        message: `${submitter.name} sent ${request.name || "a customer"} · ${amount} for approval${note ? ` — "${note.slice(0, 80)}"` : ""}`,
+        priority: "action_required",
+        relatedType: "website_request",
+        sourceEventId: `${request.id}:approval:${request.submittedAt}`,
+      }, [submitter.id]);
+      emitRealtime(submitter.id, ["website_requests"]);
+    },
+    notifySubmitterDecision: async (submitterId, request, decision, actorId, orderId) => {
+      await dispatchNotification({
+        event: "website_request_decision",
+        recipientId: submitterId,
+        recipientRole: "support",
+        type: "website_request",
+        title: decision === "approved" ? "Website order approved" : "Website order declined",
+        message: decision === "approved"
+          ? `${request.name || "The customer"}'s order was approved and placed.`
+          : `${request.name || "The customer"}'s request was declined.`,
+        priority: decision === "approved" ? "confirmation" : "action_required",
+        relatedId: orderId ?? undefined,
+        relatedType: decision === "approved" && orderId ? "order" : "website_request",
+        sourceEventId: `${request.id}:${decision}`,
+      }).catch(err => console.error("[website-requests] decision notify failed:", err));
+      emitRealtime(actorId, ["website_requests"]);
+    },
+    afterPlacement: async (actor, order) => {
+      await notifyAdminPlacedOrder(order, actor.id, "New order placed by Admin from a website request.");
+      emitRealtime(actor.id, ["payments", "orders", "stats", "website_requests"]);
+    },
+  });
 
   app.get("/api/platforms-catalog", requireAuth, async (req, res) => {
     const items = await storage.getPlatformsCatalog();

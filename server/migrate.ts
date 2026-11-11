@@ -653,12 +653,147 @@ export async function runMigrations() {
         ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true
     `);
 
+    // Activity log for website requests (website.orders rows are UUID-keyed and
+    // live outside the CRM orders table, so they get their own log).
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS website_request_activity (
+        id          SERIAL PRIMARY KEY,
+        request_id  UUID NOT NULL,
+        actor_id    INTEGER REFERENCES users(id),
+        action      TEXT NOT NULL,
+        details     JSONB,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS website_request_activity_request_idx
+        ON website_request_activity(request_id, created_at DESC)
+    `);
+
     await client.query("COMMIT");
     console.log("[migrate] Schema up to date.");
   } catch (err) {
     await client.query("ROLLBACK");
     console.error("[migrate] Migration failed:", err);
     throw err;
+  } finally {
+    client.release();
+  }
+
+  await runWebsiteSchemaMigrations();
+  await runPerformanceIndexes();
+}
+
+/**
+ * Indexes for the hot CRM queries (payments list/approval, notification bell,
+ * dashboard). Each is IF NOT EXISTS and runs on its own so one failure never
+ * blocks startup. Tables are small, so a plain CREATE INDEX is quick.
+ */
+async function runPerformanceIndexes() {
+  const statements = [
+    `CREATE INDEX IF NOT EXISTS payment_verifications_order_id_idx ON payment_verifications(order_id)`,
+    `CREATE INDEX IF NOT EXISTS payment_verifications_status_idx ON payment_verifications(status)`,
+    `CREATE INDEX IF NOT EXISTS payment_verifications_created_at_idx ON payment_verifications(created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS payment_verifications_submitted_by_idx ON payment_verifications(submitted_by_id)`,
+    `CREATE INDEX IF NOT EXISTS notifications_user_created_idx ON notifications(user_id, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS notifications_user_unread_idx ON notifications(user_id) WHERE read = false`,
+    `CREATE INDEX IF NOT EXISTS orders_advance_payment_status_idx ON orders(advance_payment_status)`,
+    `CREATE INDEX IF NOT EXISTS orders_created_by_id_idx ON orders(created_by_id)`,
+    `CREATE INDEX IF NOT EXISTS orders_intended_designer_id_idx ON orders(intended_designer_id)`,
+    `CREATE INDEX IF NOT EXISTS notifications_user_unread_count_idx ON notifications(user_id, read)`,
+    // Meta Conversions API (Purchase) tracking for CRM orders — additive only.
+    `ALTER TABLE orders
+       ADD COLUMN IF NOT EXISTS meta_purchase_sent_at TIMESTAMPTZ,
+       ADD COLUMN IF NOT EXISTS meta_event_id         TEXT,
+       ADD COLUMN IF NOT EXISTS meta_status           TEXT,
+       ADD COLUMN IF NOT EXISTS meta_response         JSONB,
+       ADD COLUMN IF NOT EXISTS meta_payload          JSONB`,
+  ];
+  for (const statement of statements) {
+    try {
+      await pool.query(statement);
+    } catch (err: any) {
+      console.error(`[migrate] index failed (${statement.slice(0, 80)}): ${err?.message || err}`);
+    }
+  }
+}
+
+/**
+ * Additive-only migration for the website's `website.orders` table (owned by
+ * pixelycareers.com). Adds CRM tracking columns and the CRM-side status values.
+ * Never alters or drops existing columns. ALTER TYPE ... ADD VALUE must run
+ * outside a transaction block, so each statement auto-commits.
+ */
+async function runWebsiteSchemaMigrations() {
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `SELECT 1 FROM information_schema.tables WHERE table_schema = 'website' AND table_name = 'orders'`,
+    );
+    if (rows.length === 0) {
+      console.warn("[migrate] website.orders not found — skipping website request migration.");
+      return;
+    }
+    await client.query(`
+      ALTER TABLE website.orders
+        ADD COLUMN IF NOT EXISTS crm_order_id  INTEGER,
+        ADD COLUMN IF NOT EXISTS paid_amount   NUMERIC,
+        ADD COLUMN IF NOT EXISTS verified_by   INTEGER,
+        ADD COLUMN IF NOT EXISTS verified_at   TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS contacted_at  TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS reject_reason TEXT,
+        ADD COLUMN IF NOT EXISTS crm_notes     TEXT,
+        ADD COLUMN IF NOT EXISTS submitted_by  INTEGER,
+        ADD COLUMN IF NOT EXISTS submitted_at  TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS approval_note TEXT
+    `);
+    for (const value of ["contacted", "converted", "rejected", "pending_approval"]) {
+      await client.query(`ALTER TYPE website.order_status ADD VALUE IF NOT EXISTS '${value}'`);
+    }
+    await client.query(`CREATE INDEX IF NOT EXISTS orders_transaction_id_idx ON website.orders(transaction_id)`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS orders_crm_order_id_uniq ON website.orders(crm_order_id) WHERE crm_order_id IS NOT NULL`);
+    // status/created_at/whatsapp indexes are created by the website project.
+    await client.query(`CREATE INDEX IF NOT EXISTS orders_status_created_idx ON website.orders(status, created_at DESC)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS orders_whatsapp_crm_idx ON website.orders(whatsapp)`);
+    // Meta Conversions API (Purchase) tracking — one event per website order.
+    await client.query(`
+      ALTER TABLE website.orders
+        ADD COLUMN IF NOT EXISTS meta_purchase_sent_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS meta_event_id         TEXT,
+        ADD COLUMN IF NOT EXISTS meta_status           TEXT,
+        ADD COLUMN IF NOT EXISTS meta_response         JSONB,
+        ADD COLUMN IF NOT EXISTS meta_payload          JSONB
+    `);
+    console.log("[migrate] website.orders CRM columns up to date.");
+
+    // Free CV reviews + agency partners (also owned by the website project).
+    const { rows: extra } = await client.query(
+      `SELECT table_name FROM information_schema.tables WHERE table_schema = 'website' AND table_name IN ('cv_reviews','partners')`,
+    );
+    const has = new Set(extra.map((r: any) => r.table_name));
+    if (has.has("cv_reviews")) {
+      await client.query(`
+        ALTER TABLE website.cv_reviews
+          ADD COLUMN IF NOT EXISTS crm_order_id      INTEGER,
+          ADD COLUMN IF NOT EXISTS review_started_by INTEGER,
+          ADD COLUMN IF NOT EXISTS review_started_at TIMESTAMPTZ,
+          ADD COLUMN IF NOT EXISTS sent_by           INTEGER,
+          ADD COLUMN IF NOT EXISTS sent_at           TIMESTAMPTZ,
+          ADD COLUMN IF NOT EXISTS converted_at      TIMESTAMPTZ,
+          ADD COLUMN IF NOT EXISTS reject_reason     TEXT
+      `);
+      await client.query(`ALTER TYPE website.cv_review_status ADD VALUE IF NOT EXISTS 'rejected'`);
+      await client.query(`CREATE INDEX IF NOT EXISTS cv_reviews_status_created_idx ON website.cv_reviews(status, created_at DESC)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS cv_reviews_whatsapp_idx ON website.cv_reviews(whatsapp)`);
+    }
+    if (has.has("partners")) {
+      await client.query(`ALTER TABLE website.partners ADD COLUMN IF NOT EXISTS contacted_at TIMESTAMPTZ`);
+      await client.query(`CREATE INDEX IF NOT EXISTS partners_status_created_idx ON website.partners(status, created_at DESC)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS partners_whatsapp_idx ON website.partners(whatsapp)`);
+    }
+  } catch (err) {
+    // Website schema problems must never block the CRM from starting.
+    console.error("[migrate] website.orders migration failed:", err);
   } finally {
     client.release();
   }

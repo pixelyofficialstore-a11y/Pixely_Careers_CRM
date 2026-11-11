@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -10,13 +11,29 @@ import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { Layout } from "@/components/Layout";
 import { Loader2 } from "lucide-react";
 
-import OrdersPage from "@/pages/OrdersPage";
-import TeamPage from "@/pages/TeamPage";
-import AnalyticsPage from "@/pages/AnalyticsPage";
-import PaymentsPage from "@/pages/PaymentsPage";
-import AdminSettingsPage from "@/pages/AdminSettingsPage";
-import ComplaintsPage from "@/pages/ComplaintsPage";
-import FeedbackPage from "@/pages/FeedbackPage";
+const OrdersPage = lazy(() => import("@/pages/OrdersPage"));
+const TeamPage = lazy(() => import("@/pages/TeamPage"));
+const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage"));
+const PaymentsPage = lazy(() => import("@/pages/PaymentsPage"));
+const AdminSettingsPage = lazy(() => import("@/pages/AdminSettingsPage"));
+const ComplaintsPage = lazy(() => import("@/pages/ComplaintsPage"));
+const FeedbackPage = lazy(() => import("@/pages/FeedbackPage"));
+const WebsiteRequestsPage = lazy(() => import("@/pages/WebsiteRequestsPage"));
+
+// Heavy pages (Orders, Analytics charts, ...) are code-split and loaded on first visit.
+function PageSuspense({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-24">
+          <Loader2 className="w-6 h-6 animate-spin text-slate-500" />
+        </div>
+      }
+    >
+      {children}
+    </Suspense>
+  );
+}
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -52,56 +69,63 @@ function Router() {
       <Route path="/orders">
         <ProtectedRoute>
           <Layout>
-            <OrdersPage />
+            <PageSuspense><OrdersPage /></PageSuspense>
+          </Layout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/website-requests">
+        <ProtectedRoute>
+          <Layout>
+            <PageSuspense><WebsiteRequestsPage /></PageSuspense>
           </Layout>
         </ProtectedRoute>
       </Route>
       <Route path="/complaints/:id">
         <ProtectedRoute>
           <Layout>
-            <ComplaintsPage />
+            <PageSuspense><ComplaintsPage /></PageSuspense>
           </Layout>
         </ProtectedRoute>
       </Route>
       <Route path="/complaints">
         <ProtectedRoute>
           <Layout>
-            <ComplaintsPage />
+            <PageSuspense><ComplaintsPage /></PageSuspense>
           </Layout>
         </ProtectedRoute>
       </Route>
       <Route path="/feedback">
         <ProtectedRoute>
           <Layout>
-            <FeedbackPage />
+            <PageSuspense><FeedbackPage /></PageSuspense>
           </Layout>
         </ProtectedRoute>
       </Route>
       <Route path="/payments">
         <ProtectedRoute>
           <Layout>
-            <PaymentsPage />
+            <PageSuspense><PaymentsPage /></PageSuspense>
           </Layout>
         </ProtectedRoute>
       </Route>
       <Route path="/users">
         <ProtectedRoute>
           <Layout>
-            <TeamPage />
+            <PageSuspense><TeamPage /></PageSuspense>
           </Layout>
         </ProtectedRoute>
       </Route>
       <Route path="/stats">
         <ProtectedRoute>
           <Layout>
-            <AnalyticsPage />
+            <PageSuspense><AnalyticsPage /></PageSuspense>
           </Layout>
         </ProtectedRoute>
       </Route>
       <Route path="/admin-settings">
         <ProtectedRoute>
           <Layout>
-            <AdminSettingsPage />
+            <PageSuspense><AdminSettingsPage /></PageSuspense>
           </Layout>
         </ProtectedRoute>
       </Route>

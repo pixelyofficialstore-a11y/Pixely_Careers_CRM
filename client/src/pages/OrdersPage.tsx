@@ -86,7 +86,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { OrderWithServices, User, SupportDesignerAssignment, ServiceCatalogItem, PackageConfig, PlatformCatalogItem, PaymentVerification, ComplaintResponse, ComplaintHistoryEntry, ActivityLogWithActor, ClientReview, ClientSuggestion } from "@shared/schema";
 import { ComplaintDialog } from "@/components/ComplaintDialog";
@@ -480,6 +480,24 @@ export default function OrdersPage() {
     onError: (_err, _variables, context) => {
       if (context?.previousOrders) queryClient.setQueryData(["/api/orders"], context.previousOrders);
       toast({ title: "Error", description: "Failed to update order", variant: "destructive" });
+    },
+  });
+
+  const metaRetryMutation = useMutation({
+    mutationFn: async (id: number) => (await apiRequest("POST", `/api/orders/${id}/meta-retry`)).json(),
+    onMutate: (id: number) => { if (selectedOrder?.id === id) setSelectedOrder(current => current ? { ...current, metaStatus: "pending" } : current); },
+    onSuccess: () => {
+      toast({ title: "Retrying Meta Purchase" });
+      // The send runs in the background (with retries); re-read the order once it has had time to finish.
+      for (const delay of [3_000, 15_000]) setTimeout(async () => {
+        const fresh = await queryClient.fetchQuery<OrderWithServices[]>({ queryKey: ["/api/orders"], staleTime: 0 });
+        const match = fresh.find(o => o.id === selectedOrder?.id);
+        if (match) setSelectedOrder(current => current && current.id === match.id ? { ...current, metaStatus: match.metaStatus, metaPurchaseSentAt: match.metaPurchaseSentAt } : current);
+      }, delay);
+    },
+    onError: (err: Error, id: number) => {
+      if (selectedOrder?.id === id) setSelectedOrder(current => current ? { ...current, metaStatus: "failed" } : current);
+      toast({ title: "Meta retry failed", description: getErrorMessage(err), variant: "destructive" });
     },
   });
 
@@ -1925,6 +1943,16 @@ export default function OrdersPage() {
                     <Badge variant="outline" className={selectedOrder.paymentStatus === 'paid' ? "text-green-500 border-green-500/30" : "text-yellow-500 border-yellow-500/30"}>
                       {selectedOrder.paymentStatus === 'paid' ? "Paid" : "Payment Pending"}
                     </Badge>
+                    {isAdmin && (
+                      <span className="ml-2 inline-flex items-center gap-1.5 text-xs text-slate-500" data-testid="order-meta-status">
+                        Meta:
+                        {selectedOrder.metaStatus === "sent" ? <Badge variant="outline" className="border-emerald-400/30 bg-emerald-400/10 text-emerald-200">Sent ✓</Badge>
+                          : selectedOrder.metaStatus === "test" ? <Badge variant="outline" className="border-slate-600 bg-slate-800/70 text-slate-300">Test ✓</Badge>
+                          : selectedOrder.metaStatus === "pending" ? <span className="text-slate-400">Sending…</span>
+                          : selectedOrder.metaStatus === "failed" ? <button type="button" disabled={metaRetryMutation.isPending} onClick={() => metaRetryMutation.mutate(selectedOrder.id)} className="rounded-md border border-rose-400/30 bg-rose-400/10 px-2 py-0.5 font-medium text-rose-200 hover:bg-rose-400/20" data-testid="button-order-meta-retry">Failed · Retry</button>
+                          : <span>—</span>}
+                      </span>
+                    )}
                   </div>
                   {selectedOrder.status === "canceled" && <div className="grid grid-cols-2 gap-3 border-t border-slate-800 pt-3 text-sm"><div><p className="text-xs text-slate-500">Net Collected</p><p className="mt-1 font-medium text-white">{formatRs(selectedOrder.advanceRefunded ? 0 : selectedOrder.advanceAmount)}</p></div><div><p className="text-xs text-slate-500">Remaining Receivable</p><p className="mt-1 font-medium text-white">Rs0</p></div><div className="col-span-2"><p className="text-xs text-slate-500">Cancellation Reason</p><p className="mt-1 text-slate-300">{selectedOrder.cancellationReason || "Legacy cancellation — reason not recorded."}</p></div></div>}
                 </div>
@@ -2706,9 +2734,49 @@ function DeliverableLinkRow({ service, onSave, isSaving, label, quantity, instru
   );
 }
 
-function CreateOrderForm({ designers, onSuccess, orderType, onBack }: { designers: User[]; onSuccess: () => void; orderType: OrderServiceType; onBack: () => void }) {
+/**
+ * Prefill for converting a pixelycareers.com request (Website Requests page).
+ * When passed, CreateOrderForm submits to /api/website-requests/orders/:id/place
+ * (admin only), which creates the CRM order + payment record and updates the
+ * website row in one transaction. Without it, the form behaves exactly as on the Orders page.
+ */
+export type WebsiteOrderPrefill = {
+  requestId: string;
+  clientName: string;
+  clientPhone: string;
+  clientEmail: string;
+  clientType: "national" | "international";
+  services: Array<{ serviceType: string; quantity: number; instructions: string }>;
+  totalBill: string;
+  amountReceived: string;
+  paymentMethod: string;
+  transactionId: string;
+  screenshotUrl: string;
+  notes: string;
+  numberOfRevisions: string;
+  supportPeriod: string;
+  platform: string;
+  campaign: string;
+  adSet: string;
+  creative: string;
+  totalHint?: string;
+  /** Request is awaiting approval → POST .../approve instead of .../place. */
+  approve?: boolean;
+};
+
+export { ServiceTypeSelector, ORDER_SERVICE_TYPE_TITLES };
+export type { OrderServiceType };
+
+/** Contact details to prefill a normal (non-website) order, e.g. from a free CV review. */
+export type ContactPrefill = { clientName: string; clientPhone: string; clientType?: "national" | "international"; notes?: string };
+
+export function CreateOrderForm({ designers, onSuccess, orderType, onBack, websitePrefill, onConverted, contactPrefill, onCreated }: { designers: User[]; onSuccess: () => void; orderType: OrderServiceType; onBack: () => void; websitePrefill?: WebsiteOrderPrefill; onConverted?: (result: { order: { id: number; orderNumber: string | null } }) => void; contactPrefill?: ContactPrefill; onCreated?: (order: { id: number; orderNumber: string | null }) => void | Promise<void> }) {
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
+  const isWebsite = !!websitePrefill;
+  const [clientEmail, setClientEmail] = useState(websitePrefill?.clientEmail ?? "");
+  const [transactionId, setTransactionId] = useState(websitePrefill?.transactionId ?? "");
+  const [screenshotUrl, setScreenshotUrl] = useState(websitePrefill?.screenshotUrl ?? "");
 
   const { data: servicesCatalogData = [] } = useQuery<ServiceCatalogItem[]>({
     queryKey: ["/api/services-catalog"],
@@ -2721,26 +2789,33 @@ function CreateOrderForm({ designers, onSuccess, orderType, onBack }: { designer
   });
 
   const activeFormServiceTypes = servicesCatalogData.filter(s => s.isActive).map(s => s.name);
-  const formServiceTypes = activeFormServiceTypes.length > 0 ? activeFormServiceTypes : FALLBACK_SERVICE_TYPES;
+  const baseFormServiceTypes = activeFormServiceTypes.length > 0 ? activeFormServiceTypes : FALLBACK_SERVICE_TYPES;
+  // Website prefill may map an add-on to a service name outside the catalog; keep it selectable.
+  const formServiceTypes = isWebsite
+    ? Array.from(new Set([...baseFormServiceTypes, ...websitePrefill!.services.map(s => s.serviceType).filter(Boolean)]))
+    : baseFormServiceTypes;
   const activePlatforms = platformsCatalogData.filter(p => p.isActive);
-  const [clientName, setClientName] = useState("");
-  const [clientPhone, setClientPhone] = useState("");
-  const [clientType, setClientType] = useState<"national" | "international">("national");
+  const [clientName, setClientName] = useState(websitePrefill?.clientName ?? contactPrefill?.clientName ?? "");
+  const [clientPhone, setClientPhone] = useState(websitePrefill?.clientPhone ?? contactPrefill?.clientPhone ?? "");
+  const [clientType, setClientType] = useState<"national" | "international">(websitePrefill?.clientType ?? contactPrefill?.clientType ?? "national");
   const [assignedToId, setAssignedToId] = useState("");
-  const [totalBill, setTotalBill] = useState("");
-  const [advanceAmount, setAdvanceAmount] = useState("");
+  const [totalBill, setTotalBill] = useState(websitePrefill?.totalBill ?? "");
+  const [advanceAmount, setAdvanceAmount] = useState(websitePrefill?.amountReceived ?? "");
   const [discountAmount, setDiscountAmount] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<string>("");
-  const [platform, setPlatform] = useState("");
-  const [campaign, setCampaign] = useState("");
-  const [adSet, setAdSet] = useState("");
-  const [creative, setCreative] = useState("");
-  const [notes, setNotes] = useState("");
-  const [numberOfRevisions, setNumberOfRevisions] = useState("");
-  const [supportPeriod, setSupportPeriod] = useState("");
-  const serviceIdRef = useRef(1);
-  const nextServiceNumberRef = useRef(1);
-  const [services, setServices] = useState<OrderFormService[]>([]);
+  const [paymentMethod, setPaymentMethod] = useState<string>(websitePrefill?.paymentMethod ?? "");
+  const [platform, setPlatform] = useState(websitePrefill?.platform ?? "");
+  const [campaign, setCampaign] = useState(websitePrefill?.campaign ?? "");
+  const [adSet, setAdSet] = useState(websitePrefill?.adSet ?? "");
+  const [creative, setCreative] = useState(websitePrefill?.creative ?? "");
+  const [notes, setNotes] = useState(websitePrefill?.notes ?? contactPrefill?.notes ?? "");
+  const [numberOfRevisions, setNumberOfRevisions] = useState(websitePrefill?.numberOfRevisions ?? "");
+  const [supportPeriod, setSupportPeriod] = useState(websitePrefill?.supportPeriod ?? "");
+  const initialServices: OrderFormService[] = (websitePrefill?.services ?? []).map((s, i) => ({
+    id: i + 1, serviceNumber: i + 1, serviceType: s.serviceType, quantity: s.quantity, instructions: s.instructions,
+  } as OrderFormService));
+  const serviceIdRef = useRef(initialServices.length + 1);
+  const nextServiceNumberRef = useRef(initialServices.length + 1);
+  const [services, setServices] = useState<OrderFormService[]>(initialServices);
   const customServicesTopRef = useRef<HTMLDivElement | null>(null);
   
   // Payment verification fields
@@ -2798,8 +2873,18 @@ function CreateOrderForm({ designers, onSuccess, orderType, onBack }: { designer
     if (!clientType) missingFields.push("Client Type");
     if (orderType === "documentation" && services.every(s => !s.serviceType)) missingFields.push("At least one service");
     if (!totalBill.trim() || totalPriceValue <= 0) missingFields.push("Total Bill");
-    if (isSupport && advanceValue <= 0) missingFields.push("Advance Paid (greater than 0)");
-    if (isSupport && advanceValue > 0 && !paymentScreenshot) missingFields.push("Payment Screenshot / Proof");
+    if (!isWebsite) {
+      if (isSupport && advanceValue <= 0) missingFields.push("Advance Paid (greater than 0)");
+      if (isSupport && advanceValue > 0 && !paymentScreenshot) missingFields.push("Payment Screenshot / Proof");
+    }
+    if (isWebsite && screenshotUrl.trim() && !/^https?:\/\/\S+$/i.test(screenshotUrl.trim())) {
+      toast({ title: "Invalid screenshot URL", description: "Paste a full http(s) link to the payment screenshot.", variant: "destructive" });
+      return;
+    }
+    if (isWebsite && clientEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail.trim())) {
+      toast({ title: "Invalid email", description: "Check the client email address.", variant: "destructive" });
+      return;
+    }
 
     if (missingFields.length > 0) {
       toast({ 
@@ -2833,6 +2918,44 @@ function CreateOrderForm({ designers, onSuccess, orderType, onBack }: { designer
             instructions: s.instructions || null,
           }))
         : [];
+
+      if (isWebsite) {
+        // One server call = one DB transaction (order + payment record + website row).
+        const res = await fetch(`/api/website-requests/orders/${websitePrefill!.requestId}/${websitePrefill!.approve ? "approve" : "place"}`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clientName: clientName.trim(),
+            clientPhone: clientPhone.trim(),
+            clientEmail: clientEmail.trim() || null,
+            clientType,
+            orderType,
+            assignedToId: assignedToId ? parseInt(assignedToId) : null,
+            totalPrice: totalPriceValue,
+            amountReceived: advanceValue,
+            paymentMethod: paymentMethod.trim() || null,
+            transactionId: transactionId.trim() || null,
+            screenshotUrl: screenshotUrl.trim() || null,
+            numberOfRevisions: numberOfRevisions ? parseInt(numberOfRevisions) : null,
+            supportPeriod: supportPeriod || null,
+            platform: platform.trim() || null,
+            campaign: campaign.trim() || null,
+            adSet: adSet.trim() || null,
+            creative: creative.trim() || null,
+            notes: notes.trim() || null,
+            services: orderServices,
+          }),
+        });
+        const result = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(result.message || result.error || "Failed to place order");
+        queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/payment-verifications"] });
+        toast({ title: "Order placed", description: `CRM order ${result.order?.orderNumber || ""} created and approved.` });
+        onConverted?.(result);
+        onSuccess();
+        return;
+      }
 
       const isAdmin = currentUser?.role === 'admin';
       const orderRes = await apiRequest("POST", "/api/orders", {
@@ -2890,6 +3013,7 @@ function CreateOrderForm({ designers, onSuccess, orderType, onBack }: { designer
       } else {
         toast({ title: "Order placed", description: "Order created successfully" });
       }
+      await onCreated?.(order);
       onSuccess();
     } catch (error: any) {
       toast({ 
@@ -2952,6 +3076,19 @@ function CreateOrderForm({ designers, onSuccess, orderType, onBack }: { designer
             </Select>
           </div>
         </div>
+        {isWebsite && (
+          <div className="space-y-2">
+            <Label className="text-slate-300">Email</Label>
+            <Input
+              type="email"
+              value={clientEmail}
+              onChange={(e) => setClientEmail(e.target.value)}
+              className="bg-slate-950 border-slate-800 text-white"
+              placeholder="client@email.com"
+              data-testid="input-client-email"
+            />
+          </div>
+        )}
       </div>
 
       <div className="space-y-4">
@@ -3088,7 +3225,7 @@ function CreateOrderForm({ designers, onSuccess, orderType, onBack }: { designer
             />
           </div>
           <div className="space-y-2">
-            <Label className="text-slate-300">Advance Paid (₨)</Label>
+            <Label className="text-slate-300">{isWebsite ? "Amount Received (₨)" : "Advance Paid (₨)"}</Label>
             <Input 
               type="number"
               min="0"
@@ -3109,11 +3246,50 @@ function CreateOrderForm({ designers, onSuccess, orderType, onBack }: { designer
           </div>
         </div>
         {(parseInt(advanceAmount) || 0) > (parseInt(totalBill) || 0) && (
-          <p className="text-xs text-red-400" data-testid="text-advance-warning">Advance paid cannot be greater than total bill.</p>
+          <p className="text-xs text-red-400" data-testid="text-advance-warning">{isWebsite ? "Amount received" : "Advance paid"} cannot be greater than total bill.</p>
+        )}
+        {isWebsite && (
+          <p className="text-xs text-slate-500">
+            Defaults to the website total. Lower it for a partial / advance payment.{websitePrefill?.totalHint ? ` ${websitePrefill.totalHint}` : ""}
+          </p>
         )}
       </div>
 
-      {currentUser?.role !== 'admin' && (
+      {isWebsite && (
+        <div className="space-y-4">
+          <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+            Payment Proof {currentUser?.role !== 'admin' && <span className="text-red-400 normal-case font-normal">(Required)</span>}
+          </h4>
+          <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-slate-300">Payment Method</Label>
+                <Input value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className="bg-slate-900 border-slate-700 text-white" placeholder="e.g. JazzCash, Bank transfer" data-testid="input-payment-method" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-slate-300">Transaction ID</Label>
+                <Input value={transactionId} onChange={(e) => setTransactionId(e.target.value)} className="bg-slate-900 border-slate-700 text-white" placeholder="Transaction / reference ID" data-testid="input-transaction-id" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-slate-300">Payment Screenshot URL</Label>
+              <Input value={screenshotUrl} onChange={(e) => setScreenshotUrl(e.target.value)} className="bg-slate-900 border-slate-700 text-white" placeholder="https://res.cloudinary.com/..." data-testid="input-screenshot-url" />
+            </div>
+            {/^https?:\/\/\S+$/i.test(screenshotUrl.trim()) && (
+              <a href={screenshotUrl.trim()} target="_blank" rel="noopener noreferrer" className="inline-block" data-testid="link-screenshot-preview">
+                <img src={screenshotUrl.trim()} alt="Payment screenshot" className="h-24 w-auto rounded-md border border-slate-700 object-cover" />
+              </a>
+            )}
+            <p className="text-xs text-slate-500">
+              {currentUser?.role === 'admin'
+                ? "Saved with the payment record. Admin orders are approved immediately."
+                : "Saved as the payment proof. The order stays pending until an admin approves it."}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {currentUser?.role !== 'admin' && !isWebsite && (
         <div className="space-y-4">
           <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
             Payment Screenshot / Proof <span className="text-red-400 normal-case font-normal">(Required)</span>
@@ -3217,7 +3393,7 @@ function CreateOrderForm({ designers, onSuccess, orderType, onBack }: { designer
 
       <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
         <Button type="submit" className="bg-primary" disabled={isUploading} data-testid="button-submit-order">
-          {isUploading ? "Creating Order..." : "Create Order"}
+          {isUploading ? (isWebsite ? "Placing order..." : "Creating Order...") : isWebsite ? "Verify & place order" : "Create Order"}
         </Button>
       </div>
     </form>

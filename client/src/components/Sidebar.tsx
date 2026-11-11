@@ -11,7 +11,8 @@ import {
   Camera,
   Settings,
   FileWarning,
-  MessageSquareHeart
+  MessageSquareHeart,
+  Globe
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +42,17 @@ export function Sidebar({ onNavigate }: SidebarProps) {
     refetchIntervalInBackground: true,
     staleTime: 0,
   });
+  const canSeeWebsiteRequests = user?.role === "admin" || user?.role === "support";
+  const { data: websiteRequestData } = useQuery<{ orders_new: number; reviews_new: number; partners_new: number; awaiting_approval: number }>({
+    queryKey: ["/api/website-requests/counts"],
+    enabled: canSeeWebsiteRequests,
+    retry: false,
+    refetchInterval: 10000,
+    refetchIntervalInBackground: true,
+  });
+  // Admins also count requests support sent for approval.
+  const websiteRequestCount = (websiteRequestData?.orders_new ?? 0) + (websiteRequestData?.reviews_new ?? 0) + (websiteRequestData?.partners_new ?? 0)
+    + (user?.role === "admin" ? websiteRequestData?.awaiting_approval ?? 0 : 0);
   const pendingPaymentCount = pendingPaymentData?.count ?? 0;
   const actionableComplaintCount = actionableComplaintData?.count ?? 0;
 
@@ -49,6 +61,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   const links = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "support", "designer"] },
     { href: "/orders", label: "Orders", icon: FileText, roles: ["admin", "support", "designer"] },
+    { href: "/website-requests", label: "Website Requests", icon: Globe, roles: ["admin", "support"] },
     { href: "/complaints", label: "Complaints", icon: FileWarning, roles: ["admin", "support", "designer"] },
     { href: "/feedback", label: "Feedback", icon: MessageSquareHeart, roles: ["admin", "support", "designer"] },
     { href: "/payments", label: "Payments", icon: CreditCard, roles: ["admin", "support", "designer"] },
@@ -79,7 +92,9 @@ export function Sidebar({ onNavigate }: SidebarProps) {
               const Icon = link.icon;
               const isActive = location === link.href;
                const showBadge = (link.href === "/payments" && isAdmin && pendingPaymentData !== undefined && pendingPaymentCount > 0)
-                 || (link.href === "/complaints" && actionableComplaintData !== undefined && actionableComplaintCount > 0);
+                 || (link.href === "/complaints" && actionableComplaintData !== undefined && actionableComplaintCount > 0)
+                 || (link.href === "/website-requests" && websiteRequestCount > 0);
+               const badgeCount = link.href === "/payments" ? pendingPaymentCount : link.href === "/website-requests" ? websiteRequestCount : actionableComplaintCount;
               
               return (
                 <Link 
@@ -99,11 +114,9 @@ export function Sidebar({ onNavigate }: SidebarProps) {
                     <Badge 
                       variant="destructive" 
                       className="h-5 min-w-[20px] px-1.5 text-xs font-bold"
-                       data-testid={link.href === "/payments" ? "badge-pending-payments" : "badge-actionable-complaints"}
+                       data-testid={link.href === "/payments" ? "badge-pending-payments" : link.href === "/website-requests" ? "badge-website-requests" : "badge-actionable-complaints"}
                     >
-                       {(link.href === "/payments" ? pendingPaymentCount : actionableComplaintCount) > 99
-                         ? "99+"
-                         : link.href === "/payments" ? pendingPaymentCount : actionableComplaintCount}
+                       {badgeCount > 99 ? "99+" : badgeCount}
                     </Badge>
                   )}
                 </Link>

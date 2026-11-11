@@ -7,6 +7,27 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+/**
+ * Human-readable message from an apiRequest/query error. Errors look like
+ * "409: {\"error\":\"...\"}" - this returns the server's message (error or
+ * message field) instead of the raw status + JSON.
+ */
+export function getErrorMessage(error: unknown, fallback = "Something went wrong. Please try again."): string {
+  const raw = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  if (!raw) return fallback;
+  if (/failed to fetch|networkerror|load failed/i.test(raw)) return "Can't reach the server. Check your connection and try again.";
+  const body = raw.replace(/^\d{3}:\s*/, "");
+  try {
+    const parsed = JSON.parse(body);
+    const message = parsed?.error || parsed?.message;
+    if (typeof message === "string" && message.trim()) return message;
+  } catch {
+    // not JSON
+  }
+  if (/^<!doctype|^<html/i.test(body.trim())) return fallback;
+  return body.trim() || fallback;
+}
+
 export async function apiRequest(
   method: string,
   url: string,

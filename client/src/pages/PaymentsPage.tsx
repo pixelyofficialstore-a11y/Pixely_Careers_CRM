@@ -42,7 +42,7 @@ import {
   Upload
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/CRMPrimitives";
 import { PaymentStatusBadge } from "@/components/StatusBadge";
@@ -159,7 +159,7 @@ export default function PaymentsPage() {
       } catch {
         // Keep the original error when the reconciliation request also fails.
       }
-      toast({ title: "Approval response failed", description: error.message || "Please refresh and check the payment status.", variant: "destructive" });
+      toast({ title: "Approval failed", description: getErrorMessage(error, "Please refresh and check the payment status."), variant: "destructive" });
     },
   });
 
@@ -169,12 +169,14 @@ export default function PaymentsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/payment-verifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       toast({ title: "Payment Disapproved", description: "The payment request has been disapproved" });
       setShowDisapproveDialog(false);
       setDisapproveNotes("");
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to disapprove payment", variant: "destructive" });
+    onError: (error: Error) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payment-verifications"] });
+      toast({ title: "Disapproval failed", description: getErrorMessage(error, "Failed to disapprove payment"), variant: "destructive" });
     },
   });
 
@@ -185,7 +187,10 @@ export default function PaymentsPage() {
         body: formData,
         credentials: "include",
       });
-      if (!response.ok) throw new Error("Failed to submit");
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || body.message || "Failed to submit payment request");
+      }
       return response.json();
     },
     onSuccess: () => {

@@ -224,6 +224,7 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
         }
         if (scopes.includes("orders")) queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
         if (scopes.includes("stats")) queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+        if (scopes.includes("website_requests")) queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/website-requests") });
         if (payload.event === "notification" && typeof payload.id === "number") {
           if (seenNotificationIds.current.has(payload.id)) return;
           seenNotificationIds.current.add(payload.id);
@@ -243,7 +244,7 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
               });
             } catch (_) {}
           }
-          if (user?.role === "admin" && payload.sound) playNotificationSound();
+          if (payload.sound && (user?.role === "admin" || (user?.role === "support" && payload.eventType === "website_request_new"))) playNotificationSound();
         }
         // Notification inserts and generic reconciliation both refresh the
         // server-owned bell state.
@@ -337,6 +338,8 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
       setLocation(`/feedback?suggestion=${notif.relatedId}`);
     } else if (notif.relatedType === "order" && notif.relatedId) {
       setLocation(`/orders?order=${notif.relatedId}`);
+    } else if (notif.relatedType === "website_request") {
+      setLocation("/website-requests");
     } else {
       setLocation("/orders");
     }

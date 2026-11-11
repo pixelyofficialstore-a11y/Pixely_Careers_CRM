@@ -144,6 +144,11 @@ export const orders = pgTable("orders", {
   refundRecordedAt: timestamp("refund_recorded_at"),
   createdById: integer("created_by_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
+  // Meta Conversions API Purchase (sent once per order). meta_payload and
+  // meta_response are JSONB columns read/written with raw SQL only.
+  metaEventId: text("meta_event_id"),
+  metaStatus: text("meta_status"),
+  metaPurchaseSentAt: timestamp("meta_purchase_sent_at", { withTimezone: true }),
 });
 
 export const orderServices = pgTable("order_services", {

@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
@@ -5,7 +6,7 @@ import { createServer } from "http";
 import { seedDatabase } from "./seed";
 import { startCleanupJob } from "./cleanup";
 import { runMigrations } from "./migrate";
-import { pool } from "./db";
+import { pool, requestContext } from "./db";
 import path from "path";
 import fs from "fs";
 
@@ -18,6 +19,9 @@ process.on("unhandledRejection", (reason) => {
 
 const app = express();
 const httpServer = createServer(app);
+
+// Tag every request so slow-query logs show which route ran the SQL.
+app.use((req, _res, next) => requestContext.run({ route: `${req.method} ${req.path}` }, next));
 
 declare module "http" {
   interface IncomingMessage {
@@ -61,9 +65,13 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (reqPath.startsWith("/api")) {
       let logLine = `${req.method} ${reqPath} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      // Only error bodies are logged (truncated). Serialising every successful
+      // response (e.g. the full orders list) cost CPU on each request and
+      // flooded the Railway logs.
+      if (capturedJsonResponse && res.statusCode >= 400) {
+        logLine += ` :: ${JSON.stringify(capturedJsonResponse).slice(0, 500)}`;
       }
+      if (duration > 1000) logLine += " [slow]";
 
       log(logLine);
     }
@@ -111,17 +119,24 @@ httpServer.listen(
   // Register all API routes
   await registerRoutes(httpServer, app);
 
-  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+  app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    console.error("Internal Server Error:", err);
+    const user = (req as any).user as { id?: number; username?: string; role?: string } | undefined;
+    // One structured line per failure so it can be found in the Railway logs.
+    console.error(
+      `[api-error] ${req.method} ${req.originalUrl} status=${status} user=${user ? `${user.id}:${user.username}(${user.role})` : "anonymous"} error=${err?.code ? `[${err.code}] ` : ""}${err?.message || err}`,
+    );
+    if (status >= 500 && err?.stack) console.error(err.stack);
 
     if (res.headersSent) {
       return next(err);
     }
 
-    return res.status(status).json({ message });
+    // Never leak SQL/internal details to the browser for 5xx errors.
+    const message = status >= 500
+      ? "Server error - the action may not have completed. Please refresh and check before retrying."
+      : (err.message || "Request failed");
+    return res.status(status).json({ message, error: message });
   });
 
   if (process.env.NODE_ENV === "production") {
