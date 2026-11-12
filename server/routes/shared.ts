@@ -9,6 +9,10 @@ import webpush from "web-push";
 import { emitNotification, emitRealtime, hasSseClient } from "../sse";
 import { isAllowedFileRef } from "../files";
 import { canAccessOrderCase, type CaseRole } from "@shared/case-access";
+import { EVENT_CATEGORY, NOTIFIABLE_EVENTS, SOUND_EVENTS, type NotificationEvent } from "@shared/notification-events";
+import { getNotificationPrefs, shouldAlert } from "../notificationPrefs";
+import { rsFromPaisa, shortName } from "@shared/notification-events";
+import { packageLabel as packageLabelOf } from "../lib/metaCapi";
 
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
   webpush.setVapidDetails(
@@ -39,29 +43,6 @@ export function isValidPushEndpoint(endpoint: string): boolean {
 }
 
 
-const NOTIFIABLE_EVENTS = [
-  "complaint_created_by_support",
-  "complaint_created_by_admin",
-  "complaint_confirmed",
-  "complaint_designer_explanation",
-  "order_created_by_admin",
-  "payment_verification_requested",
-  "order_approved",
-  "order_disapproved",
-  "review_created",
-  "suggestion_created",
-  "website_request_new",
-  "website_request_approval",
-  "website_request_decision",
-  // Phase 2
-  "order_pay_later_approved",
-  "order_overdue",
-  "refund_requested",
-  "refund_decided",
-] as const;
-
-type NotificationEvent = typeof NOTIFIABLE_EVENTS[number];
-
 const EVENT_SCOPES: Record<NotificationEvent, string[]> = {
   complaint_created_by_support: ["notifications", "complaints", "stats"],
   complaint_created_by_admin: ["notifications", "complaints", "stats"],
@@ -80,34 +61,60 @@ const EVENT_SCOPES: Record<NotificationEvent, string[]> = {
   order_overdue: ["notifications", "orders"],
   refund_requested: ["notifications", "refunds", "orders"],
   refund_decided: ["notifications", "refunds", "orders", "stats"],
+  // Phase 3
+  order_assigned: ["notifications", "orders"],
+  order_due_today: ["notifications", "orders"],
+  order_revision_requested: ["notifications", "orders"],
+  order_delivered: ["notifications", "orders", "stats"],
+  daily_summary: ["notifications"],
 };
 
-const SOUND_EVENTS = new Set<NotificationEvent>([
-  "complaint_created_by_support",
-  "complaint_created_by_admin",
-  "payment_verification_requested",
-  "review_created",
-  "website_request_new",
-  "website_request_approval",
-  "refund_requested",
-]);
-
-function notificationTag(event: NotificationEvent, relatedType: string | undefined, relatedId: number | undefined, sourceEventId: string | number): string {
-  return ["pixelcrm", event, relatedType || "record", relatedId ?? "none", sourceEventId].join("-");
+/** Where a notification opens (bell click + push click-through). */
+export function notificationUrl(relatedType: string | null | undefined, relatedId: number | null | undefined): string {
+  if (relatedType === "complaint" && relatedId) return `/complaints/${relatedId}`;
+  if (relatedType === "order" && relatedId) return `/orders?order=${relatedId}`;
+  if (relatedType === "review" && relatedId) return `/feedback?review=${relatedId}`;
+  if (relatedType === "suggestion" && relatedId) return `/feedback?suggestion=${relatedId}`;
+  if (relatedType === "payment_verification" && relatedId) return `/payments?payment=${relatedId}`;
+  if (relatedType === "website_request") return "/website-requests";
+  if (relatedType === "dashboard") return "/";
+  return "/orders";
 }
 
-async function sendWebPushToUser(
-  userId: number,
-  payload: { title: string; body: string; priority: string; url: string; tag: string },
-) {
+/** Related notifications (same order / complaint / …) replace each other on the phone. */
+function notificationGroupTag(event: NotificationEvent, relatedType: string | undefined, relatedId: number | undefined): string {
+  if (relatedType && relatedId) return `px-${relatedType}-${relatedId}`;
+  return `px-${event}`;
+}
+
+export type PushPayload = {
+  title: string;
+  body: string;
+  priority: string;
+  url: string;
+  tag: string;
+  icon?: string;
+  badge?: string;
+};
+
+const PUSH_ICON = "/icons/icon-192.png";
+const PUSH_BADGE = "/icons/badge-96.png";
+
+/** Sends to every device of the user. Returns how many devices accepted it. */
+export async function sendWebPushToUser(userId: number, payload: PushPayload): Promise<number> {
+  if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return 0;
+  let delivered = 0;
   try {
     const subs = await storage.getPushSubscriptionsForUser(userId);
+    const body = JSON.stringify({ icon: PUSH_ICON, badge: PUSH_BADGE, ...payload });
     await Promise.all(subs.map(async sub => {
       try {
         await webpush.sendNotification(
           { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          JSON.stringify(payload)
+          body,
+          { TTL: 24 * 60 * 60, urgency: payload.priority === "action_required" ? "high" : "normal", topic: payload.tag.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32) || undefined },
         );
+        delivered++;
       } catch (err: any) {
         // The only allowed automatic removal: expired subscriptions the app created.
         if (err.statusCode === 410 || err.statusCode === 404) {
@@ -116,6 +123,7 @@ async function sendWebPushToUser(
       }
     }));
   } catch (_) {}
+  return delivered;
 }
 
 type DispatchNotificationInput = {
@@ -138,7 +146,6 @@ export async function dispatchNotification(input: DispatchNotificationInput) {
 
   try {
     const scopes = EVENT_SCOPES[input.event];
-    const tag = notificationTag(input.event, input.relatedType, input.relatedId, input.sourceEventId);
     const dedupeKey = [input.event, input.relatedType || "", input.relatedId ?? "", input.sourceEventId].join("::");
     const result = await storage.createNotification(
       input.recipientId,
@@ -151,19 +158,11 @@ export async function dispatchNotification(input: DispatchNotificationInput) {
       dedupeKey,
     );
     if (result.created) {
-      const url = input.relatedType === "complaint" && input.relatedId
-      ? `/complaints/${input.relatedId}`
-      : input.relatedType === "order" && input.relatedId
-        ? `/orders?order=${input.relatedId}`
-        : input.relatedType === "review" && input.relatedId
-          ? `/feedback?review=${input.relatedId}`
-          : input.relatedType === "suggestion" && input.relatedId
-            ? `/feedback?suggestion=${input.relatedId}`
-            : input.relatedType === "payment_verification" && input.relatedId
-              ? `/payments?payment=${input.relatedId}`
-              : input.relatedType === "website_request"
-                ? "/website-requests"
-                : "/orders";
+      const url = notificationUrl(input.relatedType, input.relatedId);
+      const tag = notificationGroupTag(input.event, input.relatedType, input.relatedId);
+      // Muted category or quiet hours: the bell still gets it, but no push and no sound.
+      const prefs = await getNotificationPrefs(input.recipientId);
+      const alert = shouldAlert(prefs, EVENT_CATEGORY[input.event]);
       const eventPayload = {
         event: "notification",
         id: result.notification.id,
@@ -178,12 +177,13 @@ export async function dispatchNotification(input: DispatchNotificationInput) {
         url,
         tag,
         scopes,
-        sound: SOUND_EVENTS.has(input.event),
+        alert,
+        sound: alert && SOUND_EVENTS.has(input.event),
       };
-      // An active CRM session receives the event over SSE and owns its
-      // foreground browser alert. Fall back to Web Push for non-connected
-      // sessions so the same event is not shown twice.
-      if (!hasSseClient(input.recipientId)) {
+      // Push goes to every device (phone included). An open, focused CRM tab
+      // gets the SSE event instead; the service worker skips the duplicate OS
+      // alert there, and the shared tag collapses any remaining duplicate.
+      if (alert) {
         sendWebPushToUser(input.recipientId, {
           title: input.title,
           body: input.message,
@@ -276,7 +276,11 @@ export const optionalOrderId = (value: unknown): number | null => {
 // Notifications for an order placed (auto-approved) by an admin. Shared by
 // the Orders page and Website Requests. Runs after the transaction commits;
 // a notification failure never undoes the order.
-export const notifyAdminPlacedOrder = async (order: { id: number; assignedToId: number | null }, actorId: number, message = "New order created by Admin.") => {
+export const notifyAdminPlacedOrder = async (
+  order: { id: number; assignedToId: number | null; orderNumber?: string | null; clientName?: string | null; packageType?: string | null; totalPrice?: number | null; dueAt?: Date | string | null },
+  actorId: number,
+  message?: string,
+) => {
   try {
     const admins = await storage.getAdmins();
     await dispatchNotifications(
@@ -284,8 +288,8 @@ export const notifyAdminPlacedOrder = async (order: { id: number; assignedToId: 
       {
         event: "order_created_by_admin",
         type: "order",
-        title: "New Order",
-        message,
+        title: "🛒 New order",
+        message: message ?? [order.totalPrice ? rsFromPaisa(order.totalPrice) : null, packageLabelOf(order.packageType), shortName(order.clientName), "placed by Admin"].filter(Boolean).join(" · "),
         priority: "update",
         relatedId: order.id,
         relatedType: "order",
@@ -294,14 +298,15 @@ export const notifyAdminPlacedOrder = async (order: { id: number; assignedToId: 
       [actorId],
     );
     if (order.assignedToId) {
+      const due = order.dueAt ? new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Karachi", month: "short", day: "numeric" }).format(new Date(order.dueAt)) : null;
       await dispatchNotification({
-        event: "order_created_by_admin",
+        event: "order_assigned",
         recipientId: order.assignedToId,
         recipientRole: "designer",
         type: "order",
-        title: "New Order Assigned",
-        message: "New order assigned to you. Client details are available in CRM.",
-        priority: "update",
+        title: "👤 New order assigned",
+        message: [order.orderNumber || shortName(order.clientName), packageLabelOf(order.packageType), due ? `due ${due}` : null].filter(Boolean).join(" · "),
+        priority: "action_required",
         relatedId: order.id,
         relatedType: "order",
         sourceEventId: order.id,

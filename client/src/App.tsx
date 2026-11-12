@@ -20,6 +20,7 @@ const AdminSettingsPage = lazy(() => import("@/pages/AdminSettingsPage"));
 const ComplaintsPage = lazy(() => import("@/pages/ComplaintsPage"));
 const FeedbackPage = lazy(() => import("@/pages/FeedbackPage"));
 const WebsiteRequestsPage = lazy(() => import("@/pages/WebsiteRequestsPage"));
+const NotificationSettingsPage = lazy(() => import("@/pages/NotificationSettingsPage"));
 
 // Heavy pages (Orders, Analytics charts, ...) are code-split and loaded on first visit.
 function PageSuspense({ children }: { children: React.ReactNode }) {
@@ -124,6 +125,13 @@ function Router() {
         <ProtectedRoute>
           <Layout>
             <PageSuspense><AnalyticsPage /></PageSuspense>
+          </Layout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/settings/notifications">
+        <ProtectedRoute>
+          <Layout>
+            <PageSuspense><NotificationSettingsPage /></PageSuspense>
           </Layout>
         </ProtectedRoute>
       </Route>

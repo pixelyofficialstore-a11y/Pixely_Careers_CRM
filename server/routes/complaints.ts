@@ -170,7 +170,7 @@ export function registerComplaintRoutes(app: Express) {
         {
           event,
           type: "complaint",
-          title: "New Complaint",
+          title: "⚠️ Complaint filed",
           message: user.role === "support"
             ? "New complaint received from Support. Review required."
             : "New complaint recorded by Admin. Review required.",

@@ -17,6 +17,9 @@ import { logAudit } from "../security/audit";
 import { uploadPrivateImage } from "../files";
 import { listPayments, getPaymentForUser, paymentListQuerySchema } from "../paymentList";
 import { dispatchNotification, dispatchNotifications, safeUserSummary, requireAuth, requireRole, canAccessOrder } from "./shared";
+import { rsFromPaisa, shortName } from "@shared/notification-events";
+import { packageLabel } from "../lib/metaCapi";
+import { notifyDelivered } from "../orderNotifications";
 
 export function registerPaymentRoutes(app: Express) {
   // Configure multer for payment screenshot uploads — memory storage so sharp can process in-memory
@@ -190,8 +193,8 @@ export function registerPaymentRoutes(app: Express) {
              {
                event: "payment_verification_requested",
                type: "payment",
-               title: "Payment Verification Required",
-               message: "New payment verification request received. Review payment details.",
+               title: "💳 Verify payment",
+               message: [rsFromPaisa(Number(amount)), order.orderNumber || shortName(order.clientName)].join(" · "),
                priority: "action_required",
                relatedId: verification.id,
                relatedType: "payment_verification",
@@ -343,8 +346,8 @@ export function registerPaymentRoutes(app: Express) {
           {
             event: "order_approved",
             type: "order",
-            title: "Order Approved",
-            message: "Order request approved. Review the order details.",
+            title: "✅ Payment approved",
+            message: [order.orderNumber, shortName(order.clientName), rsFromPaisa(verification.amount)].filter(Boolean).join(" · "),
             priority: "confirmation",
             relatedId: order.id,
             relatedType: "order",
@@ -358,8 +361,8 @@ export function registerPaymentRoutes(app: Express) {
             recipientId: order.createdById,
             recipientRole: "support",
             type: "order",
-            title: "Order Approved",
-            message: "Your order request has been approved.",
+            title: "✅ Order confirmed",
+            message: [order.orderNumber, shortName(order.clientName), "payment approved"].filter(Boolean).join(" · "),
             priority: "confirmation",
             relatedId: order.id,
             relatedType: "order",
@@ -373,8 +376,8 @@ export function registerPaymentRoutes(app: Express) {
             recipientId: assignedDesignerId,
             recipientRole: "designer",
             type: "order",
-            title: "Order Approved",
-            message: "Your assigned order has been approved and production can start.",
+            title: "✅ Order confirmed",
+            message: [order.orderNumber, packageLabel(order.packageType), "you can start"].filter(Boolean).join(" · "),
             priority: "confirmation",
             relatedId: order.id,
             relatedType: "order",
@@ -384,6 +387,10 @@ export function registerPaymentRoutes(app: Express) {
       } catch (notificationError) {
         console.error("[payment] approval notification failed after commit:", notificationError);
       }
+    }
+    // Remaining payment that completes the order marks it Delivered (Phase 2) → 📦.
+    if (verification.paymentType === "remaining" && isFullyPaid && order.status !== "delivered") {
+      void notifyDelivered({ ...order, status: "delivered" } as any, user.id);
     }
     emitRealtime(user.id, ["payments", "orders", "stats"]);
 
@@ -463,8 +470,8 @@ export function registerPaymentRoutes(app: Express) {
           recipientId: rejectedOrder.createdById,
           recipientRole: "support",
           type: "order",
-          title: "Order Disapproved",
-          message: "Your order request was not approved. Please review the details.",
+          title: "❌ Payment not approved",
+          message: [rejectedOrder.orderNumber, shortName(rejectedOrder.clientName), "please review the details"].filter(Boolean).join(" · "),
           priority: "action_required",
           relatedId: rejectedOrder.id,
           relatedType: "order",

@@ -17,6 +17,9 @@ import { withProcess, dueAtForNewOrder } from "../orderProcess";
 import { refunds, orders as ordersTable, activityLogs as activityLogsTable } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import { WORK_TO_LEGACY, LEGACY_TO_WORK, SETTABLE_WORK_STATUSES, WORK_STATUS_LABELS, storedOrMappedWorkStatus, type WorkStatus } from "@shared/order-process";
+import { rsFromPaisa, shortName } from "@shared/notification-events";
+import { packageLabel } from "../lib/metaCapi";
+import { notifyDelivered, notifyOrderAssigned, notifyRevisionRequested } from "../orderNotifications";
 
 export function registerOrderRoutes(app: Express) {
   const sanitizeOrderForRole = <T extends { totalPrice?: number | null; advanceAmount?: number | null; remainingAmount?: number | null; assignee?: any }>(o: T, role: string) => ({
@@ -175,8 +178,8 @@ export function registerOrderRoutes(app: Express) {
         {
           event: "payment_verification_requested",
           type: "payment",
-          title: "Payment Verification Required",
-          message: "New payment verification request received. Review payment details.",
+          title: "💳 Verify payment",
+          message: [rsFromPaisa(order.advanceAmount), packageLabel(order.packageType), shortName(order.clientName)].filter(Boolean).join(" · "),
           priority: "action_required",
           relatedId: order.id,
           relatedType: "order",
@@ -497,6 +500,15 @@ export function registerOrderRoutes(app: Express) {
       await storage.createActivityLog({ orderId, actorId: user.id, activityType: "status_change", previousValue: WORK_STATUS_LABELS[previousWork], newValue: WORK_STATUS_LABELS[updates.workStatus as WorkStatus], details: { workStatus: updates.workStatus, previousWorkStatus: previousWork } });
     }
 
+    // Phase 3 notifications (after the save; failures never undo it).
+    if (updatedOrder.advancePaymentStatus === "approved") {
+      if ("assignedToId" in updates && updates.assignedToId && updates.assignedToId !== oldAssignedToId) {
+        void notifyOrderAssigned(updatedOrder, user.id);
+      }
+      if (updates.workStatus === "revisions" && previousWork !== "revisions") void notifyRevisionRequested(updatedOrder, user.id);
+      if (updates.workStatus === "delivered" && previousWork !== "delivered") void notifyDelivered(updatedOrder, user.id);
+    }
+
     // Only admins can replace an order's services (add / remove / edit quantity & instructions).
     if (incomingServices && user.role === 'admin') {
       // Replacing services deletes and reinserts rows — carry over each existing
@@ -568,8 +580,8 @@ export function registerOrderRoutes(app: Express) {
       await dispatchNotifications([order.createdById], {
         event: "order_pay_later_approved",
         type: "order",
-        title: "Order confirmed (pay later)",
-        message: `${order.orderNumber} for ${order.clientName} was approved to pay later and is now Confirmed.`,
+        title: "✅ Order confirmed (pay later)",
+        message: [order.orderNumber, shortName(order.clientName), "approved to pay later"].filter(Boolean).join(" · "),
         priority: "update",
         relatedId: order.id,
         relatedType: "order",

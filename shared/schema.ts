@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, uniqueIndex, smallint } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -481,6 +481,15 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Phase 3: per-user notification settings (no row = defaults).
+export const notificationPreferences = pgTable("notification_preferences", {
+  userId: integer("user_id").primaryKey().references(() => users.id),
+  mutedEvents: text("muted_events").array().notNull().default([]),
+  quietStart: smallint("quiet_start"),
+  quietEnd: smallint("quiet_end"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Security audit trail (Phase 0). Append-only from the app.
 export const auditEvents = pgTable("audit_events", {
   id: serial("id").primaryKey(),
@@ -600,6 +609,7 @@ export type InsertPlatformCatalogItem = z.infer<typeof insertPlatformsCatalogSch
 export type ComplaintCategoryConfig = typeof complaintCategoryConfigs.$inferSelect;
 export type InsertComplaintCategoryConfig = z.infer<typeof insertComplaintCategoryConfigSchema>;
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+export type NotificationPreferences = typeof notificationPreferences.$inferSelect;
 
 export type ClientCaseReport = {
   order: OrderWithServices;

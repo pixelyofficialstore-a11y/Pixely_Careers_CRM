@@ -1,3 +1,4 @@
+import { NOTIFICATION_LIST_DAYS } from "@shared/notification-events";
 import { 
   users, orders, notifications, orderServices, paymentVerifications, supportDesignerAssignments,
   servicesCatalog, packageConfigs, platformsCatalog, complaintCategoryConfigs, pushSubscriptions, activityLogs, complaints, complaintEvidence, complaintDesignerEvidence, complaintNotes, clientReviews, clientSuggestions, suggestionNotes,
@@ -45,6 +46,8 @@ export type OrderCancellation = {
   complaintNumber?: string;
 };
 
+export type NotificationListOptions = { limit?: number; offset?: number; types?: string[] };
+
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
@@ -64,7 +67,7 @@ export interface IStorage {
   deleteOrder(id: number): Promise<void>;
   generateOrderNumber(tx?: any): Promise<string>;
 
-  getNotifications(userId: number, limit?: number, beforeId?: number): Promise<Notification[]>;
+  getNotifications(userId: number, opts?: NotificationListOptions): Promise<Notification[]>;
   markNotificationRead(id: number, userId: number): Promise<Notification | undefined>;
   createNotification(userId: number, type: string, title: string, message: string, priority: string, relatedId?: number, relatedType?: string, dedupeKey?: string): Promise<{ notification: Notification; created: boolean }>;
 
@@ -356,13 +359,23 @@ export class DatabaseStorage implements IStorage {
     return `PX-${year}${month}-${(maxSeq + 1).toString().padStart(3, '0')}`;
   }
 
-  async getNotifications(userId: number, limit = 50, beforeId?: number): Promise<Notification[]> {
+  /**
+   * Bell list: last 30 days only (older rows are hidden, never deleted),
+   * unread first, optional type group, offset paging for infinite scroll.
+   */
+  async getNotifications(userId: number, opts: NotificationListOptions = {}): Promise<Notification[]> {
+    const limit = Math.min(Math.max(opts.limit ?? 30, 1), 100);
+    const offset = Math.max(opts.offset ?? 0, 0);
+    const conditions = [
+      eq(notifications.userId, userId),
+      sql`${notifications.createdAt} >= now() - (${NOTIFICATION_LIST_DAYS} * interval '1 day')`,
+    ];
+    if (opts.types?.length) conditions.push(inArray(notifications.type, opts.types));
     const rows = await db.select().from(notifications)
-      .where(beforeId
-        ? and(eq(notifications.userId, userId), sql`${notifications.id} < ${beforeId}`)
-        : eq(notifications.userId, userId))
-      .orderBy(desc(notifications.createdAt), desc(notifications.id))
-      .limit(Math.min(Math.max(limit, 1), 200));
+      .where(and(...conditions))
+      .orderBy(notifications.read, desc(notifications.createdAt), desc(notifications.id))
+      .limit(limit)
+      .offset(offset);
     const complaintIds = rows
       .filter(notification => notification.relatedType === "complaint" && notification.relatedId)
       .map(notification => notification.relatedId as number);
@@ -1126,7 +1139,11 @@ export class DatabaseStorage implements IStorage {
     const rows = await db
       .select({ id: notifications.id, relatedId: notifications.relatedId, relatedType: notifications.relatedType })
       .from(notifications)
-      .where(and(eq(notifications.userId, userId), eq(notifications.read, false)));
+      .where(and(
+        eq(notifications.userId, userId),
+        eq(notifications.read, false),
+        sql`${notifications.createdAt} >= now() - (${NOTIFICATION_LIST_DAYS} * interval '1 day')`,
+      ));
     const complaintIds = rows
       .filter(notification => notification.relatedType === "complaint" && notification.relatedId)
       .map(notification => notification.relatedId as number);
@@ -1149,12 +1166,19 @@ export class DatabaseStorage implements IStorage {
     await db
       .update(notifications)
       .set({ read: true })
-      .where(and(eq(notifications.userId, userId), eq(notifications.read, false)));
+      .where(and(
+        eq(notifications.userId, userId),
+        eq(notifications.read, false),
+        sql`${notifications.createdAt} >= now() - (${NOTIFICATION_LIST_DAYS} * interval '1 day')`,
+      ));
   }
 
   async savePushSubscription(userId: number, endpoint: string, p256dh: string, auth: string): Promise<PushSubscription> {
-    await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
-    const [sub] = await db.insert(pushSubscriptions).values({ userId, endpoint, p256dh, auth }).returning();
+    // Upsert on the unique endpoint (a device re-subscribing or switching user).
+    // No delete-then-insert: nothing is removed here.
+    const [sub] = await db.insert(pushSubscriptions).values({ userId, endpoint, p256dh, auth })
+      .onConflictDoUpdate({ target: pushSubscriptions.endpoint, set: { userId, p256dh, auth } })
+      .returning();
     return sub;
   }
 

@@ -12,6 +12,7 @@ import { refunds, orders, complaints, activityLogs, type User } from "@shared/sc
 import { getOrderAccounting } from "@shared/order-accounting";
 import { logAudit } from "../security/audit";
 import { dispatchNotification, dispatchNotifications, requireRole, safeUserSummary } from "./shared";
+import { shortName } from "@shared/notification-events";
 
 const fmt = (paisa: number) => `Rs ${Math.round(paisa / 100).toLocaleString("en-PK")}`;
 
@@ -119,8 +120,8 @@ export function registerRefundRoutes(app: Express) {
       await dispatchNotifications(admins.map(a => a.id), {
         event: "refund_requested",
         type: "payment",
-        title: "Refund requested",
-        message: `${actor.name} requested a ${fmt(input.amount)} refund on ${refund.order.orderNumber || "an order"} (${refund.order.clientName}).`,
+        title: "💸 Refund requested",
+        message: [fmt(input.amount), refund.order.orderNumber, shortName(refund.order.clientName), `by ${actor.name}`].filter(Boolean).join(" · "),
         priority: "action_required",
         relatedId: orderId,
         relatedType: "order",
@@ -218,7 +219,7 @@ export function registerRefundRoutes(app: Express) {
           recipientId: r.requestedById,
           event: "refund_decided",
           type: "payment",
-          title: input.decision === "approve" ? "Refund approved" : "Refund rejected",
+          title: input.decision === "approve" ? "💸 Refund approved" : "💸 Refund rejected",
           message: input.decision === "approve"
             ? `${fmt(r.approvedAmount || 0)} refund approved on ${result.order?.orderNumber || "the order"} (${result.order?.clientName}).`
             : `Refund on ${result.order?.orderNumber || "the order"} (${result.order?.clientName}) was rejected: ${input.note}`,

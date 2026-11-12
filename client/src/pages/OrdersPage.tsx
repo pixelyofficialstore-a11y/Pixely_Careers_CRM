@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { recordExport } from "@/lib/http";
 import { useQuery, useMutation, keepPreviousData } from "@tanstack/react-query";
 import { fetchOrderPage, fetchOrderByRef, fetchOrderById, orderListKey, patchOrderInCaches, snapshotOrderCaches, restoreOrderCaches, toQueryString, type OrderListParams } from "@/lib/orders";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { OrdersSkeleton } from "@/components/PageSkeleton";
 import { useAuth } from "@/hooks/use-auth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -362,7 +362,9 @@ export default function OrdersPage() {
   const [detailsTab, setDetailsTab] = useState<OrderDrawerTab>("overview");
   const [nestedReviewEditOpen, setNestedReviewEditOpen] = useState(false);
   const [deepLinkMessage, setDeepLinkMessage] = useState<string | null>(null);
-  const requestedOrderNumber = new URLSearchParams(window.location.search).get("order");
+  // Subscribed to the query string, so a notification click on /orders opens the new order.
+  const locationSearch = useSearch();
+  const requestedOrderNumber = new URLSearchParams(locationSearch).get("order");
   const activeDrawer = drawerStack[drawerStack.length - 1];
   const detailsSheetOpen = drawerStack.length > 0;
 

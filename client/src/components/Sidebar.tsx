@@ -12,7 +12,8 @@ import {
   Settings,
   FileWarning,
   MessageSquareHeart,
-  Globe
+  Globe,
+  BellRing
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -63,6 +64,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
     { href: "/users", label: "Team", icon: Users, roles: ["admin"] },
     { href: "/stats", label: "Analytics", icon: BarChart3, roles: ["admin"] },
     { href: "/admin-settings", label: "Settings", icon: Settings, roles: ["admin"] },
+    { href: "/settings/notifications", label: "Notifications", icon: BellRing, roles: ["admin", "support", "designer"] },
   ];
 
   const allowedLinks = links.filter(link => link.roles.includes(user.role));

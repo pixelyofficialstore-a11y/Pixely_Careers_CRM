@@ -4,6 +4,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { Loader2, Menu, X } from "lucide-react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
+import { NotificationBell } from "./NotificationBell";
+import { InstallPrompt } from "./InstallPrompt";
 
 export function Layout({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -39,6 +41,7 @@ export function Layout({ children }: { children: ReactNode }) {
           </Button>
            <span className="text-[15px] font-semibold tracking-tight text-foreground">Pixely CRM</span>
         </div>
+        <NotificationBell align="right" />
       </div>
 
       {/* Mobile Sidebar Overlay */}
@@ -65,6 +68,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <main className="flex-1 lg:pl-64 min-h-[100dvh] flex flex-col overflow-y-auto pt-14 lg:pt-0">
         {children}
       </main>
+      <InstallPrompt />
     </div>
   );
 }

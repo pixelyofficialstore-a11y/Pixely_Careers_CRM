@@ -30,7 +30,7 @@ const POLL_INTERVAL_MS = 10_000;
 const PAGE_SIZE = 50;
 
 export type RequestKind = "order" | "review" | "partner";
-type RequestSummary = { id: string; name: string | null; status: string; total?: number | null; currency?: string | null; kind?: RequestKind };
+type RequestSummary = { id: string; name: string | null; status: string; total?: number | null; currency?: string | null; kind?: RequestKind; package?: string | null };
 
 type Deps = {
   requireRole: (roles: string[]) => any;
@@ -838,13 +838,13 @@ function startNewRequestPoller(deps: Deps) {
     try {
       const { rows } = await pool.query(`
         SELECT * FROM (
-          SELECT id, name, status::text AS status, total, currency, 'order' AS kind, created_at FROM website.orders
+          SELECT id, name, status::text AS status, total, currency, 'order' AS kind, package::text AS package, created_at FROM website.orders
             WHERE ${ORDER_NEW_SQL} AND updated_at >= NOW() - interval '15 minutes'
           UNION ALL
-          SELECT id, name, status::text, NULL, NULL, 'review', created_at FROM website.cv_reviews
+          SELECT id, name, status::text, NULL, NULL, 'review', NULL, created_at FROM website.cv_reviews
             WHERE status = 'new' AND created_at >= NOW() - interval '15 minutes'
           UNION ALL
-          SELECT id, COALESCE(org_name, contact_name), status::text, NULL, NULL, 'partner', created_at FROM website.partners
+          SELECT id, COALESCE(org_name, contact_name), status::text, NULL, NULL, 'partner', NULL, created_at FROM website.partners
             WHERE status = 'new' AND created_at >= NOW() - interval '15 minutes'
         ) t ORDER BY created_at ASC LIMIT 50
       `);
