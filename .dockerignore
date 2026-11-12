@@ -17,3 +17,13 @@ dist
 attached_assets/*
 !attached_assets/rr__1500_x_500_px_-removebg-preview_1769447899946.png
 !attached_assets/rr__1500_x_500_px_-removebg-preview_1769451275347.png
+# Secrets, backups and private data never go into the image.
+.env
+.env.*
+backups
+*.dump
+*.sql.gz
+Fake
+screenshots
+uploads/*
+!uploads/avatars

@@ -5,12 +5,13 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
-import AuthPage from "@/pages/AuthPage";
-import DashboardPage from "@/pages/DashboardPage";
+import ChangePasswordScreen from "@/components/ChangePasswordScreen";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { Layout } from "@/components/Layout";
 import { Loader2 } from "lucide-react";
 
+const AuthPage = lazy(() => import("@/pages/AuthPage"));
+const DashboardPage = lazy(() => import("@/pages/DashboardPage"));
 const OrdersPage = lazy(() => import("@/pages/OrdersPage"));
 const TeamPage = lazy(() => import("@/pages/TeamPage"));
 const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage"));
@@ -50,6 +51,10 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Redirect to="/auth" />;
   }
 
+  if (user.mustChangePassword) {
+    return <ChangePasswordScreen />;
+  }
+
   return <>{children}</>;
 }
 
@@ -57,12 +62,12 @@ function Router() {
   return (
     <Switch>
       <Route path="/auth">
-        {(params) => <AuthPage />}
+        {(params) => <PageSuspense><AuthPage /></PageSuspense>}
       </Route>
       <Route path="/">
         <ProtectedRoute>
           <Layout>
-            <DashboardPage />
+            <PageSuspense><DashboardPage /></PageSuspense>
           </Layout>
         </ProtectedRoute>
       </Route>

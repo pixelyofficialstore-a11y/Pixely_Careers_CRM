@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
   AlertTriangle,
@@ -22,6 +22,8 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { OrderPicker, toOrderPick } from "@/components/OrderPicker";
+import type { OrderPick } from "@/lib/orders";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -171,9 +173,21 @@ function ScreenshotField({ value, onChange, folder }: { value: string; onChange:
   );
 }
 
-export function ReviewForm({ review, orders, open, onOpenChange, defaultOrderId }: { review?: Review | null; orders: OrderWithServices[]; open: boolean; onOpenChange: (open: boolean) => void; defaultOrderId?: number | null }) {
+/** Picker state for a form that may open pre-linked to an order. */
+function useLinkedOrderPick(open: boolean, initialId: number | null | undefined) {
+  const [selected, setSelected] = useState<OrderPick | null>(null);
+  const { data: initialOrder } = useQuery<OrderWithServices>({ queryKey: [`/api/orders/${initialId}`], enabled: open && Boolean(initialId) });
+  useEffect(() => {
+    if (!open) return;
+    setSelected(initialId && initialOrder?.id === initialId ? toOrderPick(initialOrder) : null);
+  }, [open, initialId, initialOrder?.id]);
+  return [selected, setSelected] as const;
+}
+
+export function ReviewForm({ review, open, onOpenChange, defaultOrderId }: { review?: Review | null; open: boolean; onOpenChange: (open: boolean) => void; defaultOrderId?: number | null }) {
   const { toast } = useToast();
-  const [orderId, setOrderId] = useState(review?.orderId ? String(review.orderId) : defaultOrderId ? String(defaultOrderId) : "");
+  const [selectedOrder, setSelectedOrder] = useLinkedOrderPick(open, review?.orderId ?? defaultOrderId ?? null);
+  const orderId = selectedOrder ? String(selectedOrder.id) : "";
   const [rating, setRating] = useState(review?.rating ? String(review.rating) : "not_rated");
   const [feedbackText, setFeedbackText] = useState(review?.feedbackText || "");
   const [whatsapp, setWhatsapp] = useState(review?.whatsappFeedbackReceived ?? false);
@@ -182,10 +196,8 @@ export function ReviewForm({ review, orders, open, onOpenChange, defaultOrderId 
   const [publicLink, setPublicLink] = useState(review?.publicReviewLink || "");
   const [marketingPermission, setMarketingPermission] = useState(review?.marketingPermission || "not_asked");
   const [screenshotUrl, setScreenshotUrl] = useState(review?.screenshotUrl || "");
-  const selectedOrder = orders.find(order => String(order.id) === orderId);
   useEffect(() => {
     if (!open) return;
-    setOrderId(review?.orderId ? String(review.orderId) : defaultOrderId ? String(defaultOrderId) : "");
     setRating(review?.rating ? String(review.rating) : "not_rated");
     setFeedbackText(review?.feedbackText || "");
     setWhatsapp(review?.whatsappFeedbackReceived ?? false);
@@ -217,7 +229,7 @@ export function ReviewForm({ review, orders, open, onOpenChange, defaultOrderId 
   });
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90vh] overflow-y-auto border-slate-800 bg-slate-900 text-white sm:max-w-xl"><DialogHeader><DialogTitle>{review ? "Update Review" : "New Review"}</DialogTitle></DialogHeader>
     <div className="space-y-4">
-      <div className="space-y-2"><Label>Order</Label><Select value={orderId} onValueChange={setOrderId} disabled={Boolean(review)}><SelectTrigger><SelectValue placeholder="Select an order" /></SelectTrigger><SelectContent>{orders.map(order => <SelectItem key={order.id} value={String(order.id)}>{order.orderNumber || `Order #${order.id}`} · {order.clientName}</SelectItem>)}</SelectContent></Select>{selectedOrder && <p className="text-xs text-slate-500">Designer: {selectedOrder.assignee?.name || "Unassigned"} · Client: {selectedOrder.clientName}</p>}</div>
+      <div className="space-y-2"><Label>Order</Label><OrderPicker value={selectedOrder} onChange={setSelectedOrder} disabled={Boolean(review)} />{selectedOrder && <p className="text-xs text-slate-500">Designer: {selectedOrder.assigneeName || "Unassigned"} · Client: {selectedOrder.clientName}</p>}</div>
       <div className="space-y-2"><Label>Client Rating</Label><Select value={rating} onValueChange={setRating}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="not_rated">Not Rated</SelectItem>{[1, 2, 3, 4, 5].map(value => <SelectItem key={value} value={String(value)}>{value} / 5</SelectItem>)}</SelectContent></Select></div>
       <div className="space-y-2"><Label htmlFor="review-feedback">Client Feedback</Label><Textarea id="review-feedback" value={feedbackText} onChange={event => setFeedbackText(event.target.value)} rows={5} placeholder="Record what the client shared…" /></div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">{[["WhatsApp", whatsapp, setWhatsapp], ["Facebook", facebook, setFacebook], ["Video", video, setVideo]].map(([label, checked, setter]) => <label key={label as string} className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-sm text-slate-300"><input type="checkbox" checked={checked as boolean} onChange={event => (setter as (value: boolean) => void)(event.target.checked)} />{label as string} received</label>)}</div>
@@ -229,12 +241,12 @@ export function ReviewForm({ review, orders, open, onOpenChange, defaultOrderId 
   </DialogContent></Dialog>;
 }
 
-function SuggestionForm({ orders, open, onOpenChange, defaultOrderId }: { orders: OrderWithServices[]; open: boolean; onOpenChange: (open: boolean) => void; defaultOrderId?: number | null }) {
+function SuggestionForm({ open, onOpenChange, defaultOrderId }: { open: boolean; onOpenChange: (open: boolean) => void; defaultOrderId?: number | null }) {
   const { toast } = useToast();
-  const [orderId, setOrderId] = useState(defaultOrderId ? String(defaultOrderId) : "");
+  const [selectedOrder, setSelectedOrder] = useLinkedOrderPick(open, defaultOrderId ?? null);
+  const orderId = selectedOrder ? String(selectedOrder.id) : "";
   const [suggestionText, setSuggestionText] = useState("");
   const [screenshotUrl, setScreenshotUrl] = useState("");
-  const selectedOrder = orders.find(order => String(order.id) === orderId);
   const mutation = useMutation({
     mutationFn: async () => (await apiRequest("POST", "/api/feedback/suggestions", { orderId: Number(orderId), suggestionText: suggestionText.trim(), screenshotUrl: screenshotUrl || null })).json(),
     onSuccess: () => {
@@ -242,13 +254,13 @@ function SuggestionForm({ orders, open, onOpenChange, defaultOrderId }: { orders
       queryClient.invalidateQueries({ queryKey: ["/api/feedback/stats"] });
       toast({ title: "Suggestion added" });
       onOpenChange(false);
-      setOrderId(""); setSuggestionText(""); setScreenshotUrl("");
+      setSelectedOrder(null); setSuggestionText(""); setScreenshotUrl("");
     },
     onError: (error: Error) => toast({ title: "Could not add suggestion", description: errorText(error), variant: "destructive" }),
   });
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90vh] overflow-y-auto border-slate-800 bg-slate-900 text-white sm:max-w-xl"><DialogHeader><DialogTitle>New Suggestion</DialogTitle></DialogHeader>
     <div className="space-y-4">
-      <div className="space-y-2"><Label>Order</Label><Select value={orderId} onValueChange={setOrderId}><SelectTrigger><SelectValue placeholder="Select an order" /></SelectTrigger><SelectContent>{orders.map(order => <SelectItem key={order.id} value={String(order.id)}>{order.orderNumber || `Order #${order.id}`} · {order.clientName}</SelectItem>)}</SelectContent></Select>{selectedOrder && <p className="text-xs text-slate-500">Designer: {selectedOrder.assignee?.name || "Unassigned"} · Client: {selectedOrder.clientName}</p>}</div>
+      <div className="space-y-2"><Label>Order</Label><OrderPicker value={selectedOrder} onChange={setSelectedOrder} />{selectedOrder && <p className="text-xs text-slate-500">Designer: {selectedOrder.assigneeName || "Unassigned"} · Client: {selectedOrder.clientName}</p>}</div>
       <div className="space-y-2"><Label htmlFor="suggestion-text">Suggestion</Label><Textarea id="suggestion-text" required value={suggestionText} onChange={event => setSuggestionText(event.target.value)} rows={6} placeholder="What could improve the client experience?" /></div>
       <ScreenshotField value={screenshotUrl} onChange={setScreenshotUrl} folder="suggestions" />
       <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90" disabled={!orderId || !suggestionText.trim() || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Add Suggestion</Button>
@@ -378,10 +390,20 @@ export default function FeedbackPage() {
   const effectiveSearch = search || (tab === "reviews" ? linkedReviewNumber || "" : linkedSuggestionNumber || "");
   const hasRecordDeepLink = Boolean(linkedReviewNumber || linkedSuggestionNumber);
   const params = new URLSearchParams({ ...(!hasRecordDeepLink ? { month, year } : {}), ...(effectiveSearch ? { search: effectiveSearch } : {}), ...(designerId !== "all" ? { designerId } : {}), ...(suggestionStatus !== "all" && tab === "suggestions" ? { status: suggestionStatus } : {}) }).toString();
-  const { data: reviews = [], isLoading: reviewsLoading } = useQuery<Review[]>({ queryKey: [`/api/feedback/reviews?${params}`], enabled: tab === "reviews" });
-  const { data: suggestions = [], isLoading: suggestionsLoading } = useQuery<Suggestion[]>({ queryKey: [`/api/feedback/suggestions?${params}`], enabled: tab === "suggestions" });
+  // Server pagination (50/page); paging resets when filters change.
+  const FEEDBACK_PAGE_SIZE = 50;
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [params, tab]);
+  const pageQs = `${params ? `${params}&` : ""}page=${page}&pageSize=${FEEDBACK_PAGE_SIZE}`;
+  const { data: reviewPage, isLoading: reviewsLoading, isFetching: reviewsFetching } = useQuery<{ rows: Review[]; total: number }>({ queryKey: [`/api/feedback/reviews?${pageQs}`], enabled: tab === "reviews", placeholderData: keepPreviousData });
+  const { data: suggestionPage, isLoading: suggestionsLoading, isFetching: suggestionsFetching } = useQuery<{ rows: Suggestion[]; total: number }>({ queryKey: [`/api/feedback/suggestions?${pageQs}`], enabled: tab === "suggestions", placeholderData: keepPreviousData });
+  const reviews = useMemo(() => reviewPage?.rows ?? [], [reviewPage]);
+  const suggestions = useMemo(() => suggestionPage?.rows ?? [], [suggestionPage]);
+  const feedbackTotal = (tab === "reviews" ? reviewPage?.total : suggestionPage?.total) ?? 0;
+  const feedbackPages = Math.max(1, Math.ceil(feedbackTotal / FEEDBACK_PAGE_SIZE));
+  const feedbackFetching = tab === "reviews" ? reviewsFetching : suggestionsFetching;
+  const feedbackPager = feedbackTotal > FEEDBACK_PAGE_SIZE ? <div className="flex items-center justify-between gap-3 border-t border-slate-800 p-4 text-sm text-slate-400" data-testid="feedback-pagination"><span>Showing {(page - 1) * FEEDBACK_PAGE_SIZE + 1}–{Math.min(page * FEEDBACK_PAGE_SIZE, feedbackTotal)} of {feedbackTotal}</span><div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={page <= 1 || feedbackFetching} onClick={() => setPage(p => Math.max(1, p - 1))}>Previous</Button><span className="tabular-nums">Page {page} of {feedbackPages}</span><Button variant="outline" size="sm" disabled={page >= feedbackPages || feedbackFetching} onClick={() => setPage(p => Math.min(feedbackPages, p + 1))}>Next</Button></div></div> : null;
   const { data: stats } = useQuery<FeedbackStats>({ queryKey: [`/api/feedback/stats?month=${month}&year=${year}${designerId !== "all" ? `&designerId=${designerId}` : ""}`] });
-  const { data: orders = [] } = useQuery<OrderWithServices[]>({ queryKey: ["/api/orders"] });
   const { data: teamMembers = [] } = useQuery<User[]>({ queryKey: ["/api/users"], staleTime: 300000 });
   const isAdmin = user?.role === "admin";
   const designers = teamMembers.filter(member => member.role === "designer");
@@ -390,8 +412,7 @@ export default function FeedbackPage() {
   const isLoading = tab === "reviews" ? reviewsLoading : suggestionsLoading;
   const openReview = (review: Review) => setSelectedReview(review);
   const openOrder = (orderId: number) => {
-    const order = orders.find(item => item.id === orderId);
-    setLocation(`/orders?order=${encodeURIComponent(order?.orderNumber || String(orderId))}`);
+    setLocation(`/orders?order=${encodeURIComponent(String(orderId))}`);
   };
   useEffect(() => {
     if (!linkedReviewNumber || tab !== "reviews" || reviewsLoading) return;
@@ -441,13 +462,13 @@ export default function FeedbackPage() {
       <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${tab === "reviews" ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}>
       {tab === "reviews" ? <><MetricCard title="All Reviews" value={stats?.reviews.all ?? 0} icon={ClipboardList} testId="stat-feedback-reviews-all" /><MetricCard title="Average Rating" value={stats?.reviews.averageRating == null ? "—" : `${stats.reviews.averageRating.toFixed(1)}/5`} icon={Star} color="orange" testId="stat-feedback-average-rating" /><MetricCard title="WhatsApp Feedback" value={stats?.reviews.whatsapp ?? 0} icon={MessageSquare} color="green" /><MetricCard title="Facebook Reviews" value={stats?.reviews.facebook ?? 0} icon={Facebook} color="purple" /><MetricCard title="Video Reviews" value={stats?.reviews.video ?? 0} icon={Video} color="red" /></> : <><MetricCard title="All Suggestions" value={stats?.suggestions.all ?? 0} icon={ClipboardList} /><MetricCard title="New" value={stats?.suggestions.new ?? 0} icon={AlertTriangle} color="orange" /><MetricCard title="Implemented" value={stats?.suggestions.implemented ?? 0} icon={ThumbsUp} color="blue" /><MetricCard title="Rejected" value={stats?.suggestions.rejected ?? 0} icon={X} color="red" /></>}
     </div>
-       <TabsContent value="reviews" className="mt-0 space-y-0"><FeedbackResultsHeader title="Reviews" count={displayReviews.length} month={reportMonth} year={year} setYear={setYear} monthValue={month} setMonth={setMonth} /><div className="crm-section overflow-hidden rounded-b-lg border-t-0"><div className="table-scroll-wrapper"><Table><TableHeader><TableRow className="hover:bg-transparent"><TableHead className="whitespace-nowrap">Review ID</TableHead><TableHead>Date</TableHead><TableHead>Client</TableHead><TableHead>Designer</TableHead><TableHead>Order ID</TableHead><TableHead>Rating</TableHead><TableHead>Channels</TableHead><TableHead className="text-right">Details</TableHead></TableRow></TableHeader><TableBody>{isLoading ? <TableRow><TableCell colSpan={8} className="py-16 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-cyan-300" /></TableCell></TableRow> : displayReviews.length ? displayReviews.map(review => <TableRow key={review.id} className="cursor-pointer" onClick={() => openReview(review)}><TableCell className="whitespace-nowrap"><button className="whitespace-nowrap font-mono text-xs text-cyan-300 hover:underline" onClick={event => { event.stopPropagation(); openReview(review); }}>{review.reviewNumber}</button></TableCell><TableCell className="whitespace-nowrap text-xs text-slate-400">{review.createdAt ? format(new Date(review.createdAt), "MMM dd, yyyy") : "—"}</TableCell><TableCell className="text-sm font-medium text-white">{review.clientName}</TableCell><TableCell className="text-sm text-slate-300">{review.reviewForDesigner?.name || "Unassigned"}</TableCell><TableCell className="whitespace-nowrap"><button className="whitespace-nowrap font-mono text-xs text-cyan-300 hover:underline" onClick={event => { event.stopPropagation(); openOrder(review.orderId); }}>{review.orderNumber || `#${review.orderId}`}</button></TableCell><TableCell className="text-amber-400">{review.rating ? <span className="inline-flex items-center gap-1"><Star className="h-3.5 w-3.5 fill-current" />{review.rating}/5</span> : <span className="text-slate-500">Not Rated</span>}</TableCell><TableCell><ChannelBadges review={review} /></TableCell><TableCell className="text-right"><Button variant="outline" size="sm" onClick={event => { event.stopPropagation(); openReview(review); }}>View Details</Button></TableCell></TableRow>) : <TableRow><TableCell colSpan={8} className="py-16 text-center text-slate-500"><Star className="mx-auto mb-3 h-8 w-8 text-slate-700" />No reviews found for this period.</TableCell></TableRow>}</TableBody></Table></div></div></TabsContent>
-        <TabsContent value="suggestions" className="mt-0 space-y-0"><FeedbackResultsHeader title="Suggestions" count={displaySuggestions.length} month={reportMonth} year={year} setYear={setYear} monthValue={month} setMonth={setMonth} /><div className="crm-section overflow-hidden rounded-b-lg border-t-0"><div className="table-scroll-wrapper"><Table><TableHeader><TableRow className="hover:bg-transparent"><TableHead className="whitespace-nowrap">Suggestion ID</TableHead><TableHead>Date</TableHead><TableHead>Client</TableHead><TableHead>Designer</TableHead><TableHead>Order ID</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Details</TableHead></TableRow></TableHeader><TableBody>{isLoading ? <TableRow><TableCell colSpan={7} className="py-16 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-cyan-300" /></TableCell></TableRow> : displaySuggestions.length ? displaySuggestions.map(suggestion => <TableRow key={suggestion.id} className="cursor-pointer" onClick={() => setSelectedSuggestion(suggestion)}><TableCell><button className="font-mono text-xs text-cyan-300 hover:underline" onClick={event => { event.stopPropagation(); setSelectedSuggestion(suggestion); }}>{suggestion.suggestionNumber}</button></TableCell><TableCell className="whitespace-nowrap text-xs text-slate-400">{suggestion.createdAt ? format(new Date(suggestion.createdAt), "MMM dd, yyyy") : "—"}</TableCell><TableCell className="text-sm font-medium text-white">{suggestion.clientName}</TableCell><TableCell className="text-sm text-slate-300">{suggestion.relatedDesigner?.name || "Unassigned"}</TableCell><TableCell><button className="font-mono text-xs text-cyan-300 hover:underline" onClick={event => { event.stopPropagation(); openOrder(suggestion.orderId); }}>{suggestion.orderNumber || `#${suggestion.orderId}`}</button></TableCell><TableCell><SuggestionStatusBadge status={suggestion.status} /></TableCell><TableCell className="text-right"><Button variant="outline" size="sm" onClick={event => { event.stopPropagation(); setSelectedSuggestion(suggestion); }}>View Details</Button></TableCell></TableRow>) : <TableRow><TableCell colSpan={7} className="py-16 text-center text-slate-500"><ThumbsUp className="mx-auto mb-3 h-8 w-8 text-slate-700" />No suggestions found for this period.</TableCell></TableRow>}</TableBody></Table></div></div></TabsContent>
+       <TabsContent value="reviews" className="mt-0 space-y-0"><FeedbackResultsHeader title="Reviews" count={reviewPage?.total ?? 0} month={reportMonth} year={year} setYear={setYear} monthValue={month} setMonth={setMonth} /><div className="crm-section overflow-hidden rounded-b-lg border-t-0"><div className="table-scroll-wrapper"><Table><TableHeader><TableRow className="hover:bg-transparent"><TableHead className="whitespace-nowrap">Review ID</TableHead><TableHead>Date</TableHead><TableHead>Client</TableHead><TableHead>Designer</TableHead><TableHead>Order ID</TableHead><TableHead>Rating</TableHead><TableHead>Channels</TableHead><TableHead className="text-right">Details</TableHead></TableRow></TableHeader><TableBody>{isLoading ? <TableRow><TableCell colSpan={8} className="py-16 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-cyan-300" /></TableCell></TableRow> : displayReviews.length ? displayReviews.map(review => <TableRow key={review.id} className="cursor-pointer" onClick={() => openReview(review)}><TableCell className="whitespace-nowrap"><button className="whitespace-nowrap font-mono text-xs text-cyan-300 hover:underline" onClick={event => { event.stopPropagation(); openReview(review); }}>{review.reviewNumber}</button></TableCell><TableCell className="whitespace-nowrap text-xs text-slate-400">{review.createdAt ? format(new Date(review.createdAt), "MMM dd, yyyy") : "—"}</TableCell><TableCell className="text-sm font-medium text-white">{review.clientName}</TableCell><TableCell className="text-sm text-slate-300">{review.reviewForDesigner?.name || "Unassigned"}</TableCell><TableCell className="whitespace-nowrap"><button className="whitespace-nowrap font-mono text-xs text-cyan-300 hover:underline" onClick={event => { event.stopPropagation(); openOrder(review.orderId); }}>{review.orderNumber || `#${review.orderId}`}</button></TableCell><TableCell className="text-amber-400">{review.rating ? <span className="inline-flex items-center gap-1"><Star className="h-3.5 w-3.5 fill-current" />{review.rating}/5</span> : <span className="text-slate-500">Not Rated</span>}</TableCell><TableCell><ChannelBadges review={review} /></TableCell><TableCell className="text-right"><Button variant="outline" size="sm" onClick={event => { event.stopPropagation(); openReview(review); }}>View Details</Button></TableCell></TableRow>) : <TableRow><TableCell colSpan={8} className="py-16 text-center text-slate-500"><Star className="mx-auto mb-3 h-8 w-8 text-slate-700" />No reviews found for this period.</TableCell></TableRow>}</TableBody></Table></div>{feedbackPager}</div></TabsContent>
+        <TabsContent value="suggestions" className="mt-0 space-y-0"><FeedbackResultsHeader title="Suggestions" count={suggestionPage?.total ?? 0} month={reportMonth} year={year} setYear={setYear} monthValue={month} setMonth={setMonth} /><div className="crm-section overflow-hidden rounded-b-lg border-t-0"><div className="table-scroll-wrapper"><Table><TableHeader><TableRow className="hover:bg-transparent"><TableHead className="whitespace-nowrap">Suggestion ID</TableHead><TableHead>Date</TableHead><TableHead>Client</TableHead><TableHead>Designer</TableHead><TableHead>Order ID</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Details</TableHead></TableRow></TableHeader><TableBody>{isLoading ? <TableRow><TableCell colSpan={7} className="py-16 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-cyan-300" /></TableCell></TableRow> : displaySuggestions.length ? displaySuggestions.map(suggestion => <TableRow key={suggestion.id} className="cursor-pointer" onClick={() => setSelectedSuggestion(suggestion)}><TableCell><button className="font-mono text-xs text-cyan-300 hover:underline" onClick={event => { event.stopPropagation(); setSelectedSuggestion(suggestion); }}>{suggestion.suggestionNumber}</button></TableCell><TableCell className="whitespace-nowrap text-xs text-slate-400">{suggestion.createdAt ? format(new Date(suggestion.createdAt), "MMM dd, yyyy") : "—"}</TableCell><TableCell className="text-sm font-medium text-white">{suggestion.clientName}</TableCell><TableCell className="text-sm text-slate-300">{suggestion.relatedDesigner?.name || "Unassigned"}</TableCell><TableCell><button className="font-mono text-xs text-cyan-300 hover:underline" onClick={event => { event.stopPropagation(); openOrder(suggestion.orderId); }}>{suggestion.orderNumber || `#${suggestion.orderId}`}</button></TableCell><TableCell><SuggestionStatusBadge status={suggestion.status} /></TableCell><TableCell className="text-right"><Button variant="outline" size="sm" onClick={event => { event.stopPropagation(); setSelectedSuggestion(suggestion); }}>View Details</Button></TableCell></TableRow>) : <TableRow><TableCell colSpan={7} className="py-16 text-center text-slate-500"><ThumbsUp className="mx-auto mb-3 h-8 w-8 text-slate-700" />No suggestions found for this period.</TableCell></TableRow>}</TableBody></Table></div>{feedbackPager}</div></TabsContent>
      </Tabs>
     <ReviewDetails review={selectedReview} open={Boolean(selectedReview)} onOpenChange={open => !open && setSelectedReview(null)} onEdit={() => { setEditingReview(selectedReview); setSelectedReview(null); setReviewDialogOpen(true); }} onOpenOrder={openOrder} />
     <SuggestionDetails suggestion={selectedSuggestion} open={Boolean(selectedSuggestion)} onOpenChange={open => !open && setSelectedSuggestion(null)} onOpenOrder={openOrder} onUpdated={setSelectedSuggestion} />
-    <ReviewForm review={editingReview} orders={orders} open={reviewDialogOpen} onOpenChange={open => { setReviewDialogOpen(open); if (!open) setEditingReview(null); }} defaultOrderId={linkedOrderId} />
-    <SuggestionForm orders={orders} open={suggestionDialogOpen} onOpenChange={setSuggestionDialogOpen} defaultOrderId={linkedOrderId} />
+    <ReviewForm review={editingReview} open={reviewDialogOpen} onOpenChange={open => { setReviewDialogOpen(open); if (!open) setEditingReview(null); }} defaultOrderId={linkedOrderId} />
+    <SuggestionForm open={suggestionDialogOpen} onOpenChange={setSuggestionDialogOpen} defaultOrderId={linkedOrderId} />
   </div>;
 }
 

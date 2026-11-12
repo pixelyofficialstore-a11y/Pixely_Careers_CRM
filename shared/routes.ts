@@ -15,6 +15,12 @@ import {
   type ClientCaseReport,
 } from "./schema";
 
+/** An uploaded image: a legacy https URL, or a private file served at /api/files/<id>. */
+export const fileRef = z.string().trim().max(2000).refine(
+  v => /^\/api\/files\/\d+$/.test(v) || /^https:\/\/\S+$/.test(v),
+  "Upload the image again.",
+);
+
 export const errorSchemas = {
   validation: z.object({
     message: z.string(),
@@ -32,6 +38,9 @@ export const errorSchemas = {
   forbidden: z.object({
     message: z.string(),
   }),
+  conflict: z.object({
+    message: z.string(),
+  }),
 };
 
 export const api = {
@@ -42,6 +51,7 @@ export const api = {
       input: z.object({
         username: z.string(),
         password: z.string(),
+        totpCode: z.string().optional(),
       }),
       responses: {
         200: z.custom<typeof users.$inferSelect>(),
@@ -192,9 +202,9 @@ export const api = {
         complaintAgainstUserId: z.number().int().positive().optional(),
         category: z.string().trim().min(1, "Category is required").max(100),
         description: z.string().trim().min(1, "Description is required").max(5000),
-        screenshotUrl: z.string().url().optional(),
+        screenshotUrl: fileRef.optional(),
         evidence: z.array(z.object({
-          url: z.string().url(),
+          url: fileRef,
           fileName: z.string().trim().min(1).max(255),
           fileSize: z.number().int().nonnegative().max(5 * 1024 * 1024),
         })).max(5).optional(),
@@ -219,7 +229,7 @@ export const api = {
         adminNotes: z.string().trim().max(5000).nullable().optional(),
         resolution: z.string().trim().max(5000).nullable().optional(),
         resolutionOutcome: z.enum(complaintResolutionOutcomes).nullable().optional(),
-        resolutionScreenshotUrl: z.string().url().nullable().optional(),
+        resolutionScreenshotUrl: fileRef.nullable().optional(),
         dismissalReason: z.string().trim().max(5000).nullable().optional(),
         refundConfirmed: z.boolean().optional(),
         confirmDecision: z.boolean().optional(),
@@ -237,7 +247,7 @@ export const api = {
       input: z.object({
         explanation: z.string().trim().min(1, "Please explain your side.").max(5000),
         evidence: z.array(z.object({
-          url: z.string().url(),
+          url: fileRef,
           fileName: z.string().trim().min(1).max(255),
           fileSize: z.number().int().nonnegative().max(5 * 1024 * 1024),
         })).max(5).optional(),
@@ -271,17 +281,17 @@ export const api = {
   feedback: {
     reviews: {
       list: { method: "GET" as const, path: "/api/feedback/reviews", responses: { 200: z.array(z.any()) } },
-      create: { method: "POST" as const, path: "/api/feedback/reviews", input: z.object({ orderId: z.number().int().positive(), rating: z.number().int().min(1).max(5).nullable(), feedbackText: z.string().trim().max(5000), whatsappFeedbackReceived: z.boolean(), facebookReviewReceived: z.boolean(), videoReviewReceived: z.boolean(), publicReviewLink: z.string().url().nullable(), marketingPermission: z.enum(["yes", "no", "not_asked"]), screenshotUrl: z.string().url().nullable() }), responses: { 201: z.any(), 400: errorSchemas.validation } },
-      update: { method: "PATCH" as const, path: "/api/feedback/reviews/:id", input: z.object({ rating: z.number().int().min(1).max(5).nullable().optional(), feedbackText: z.string().trim().max(5000).optional(), whatsappFeedbackReceived: z.boolean().optional(), facebookReviewReceived: z.boolean().optional(), videoReviewReceived: z.boolean().optional(), publicReviewLink: z.string().url().nullable().optional(), marketingPermission: z.enum(["yes", "no", "not_asked"]).optional(), screenshotUrl: z.string().url().nullable().optional() }), responses: { 200: z.any() } },
+      create: { method: "POST" as const, path: "/api/feedback/reviews", input: z.object({ orderId: z.number().int().positive(), rating: z.number().int().min(1).max(5).nullable(), feedbackText: z.string().trim().max(5000), whatsappFeedbackReceived: z.boolean(), facebookReviewReceived: z.boolean(), videoReviewReceived: z.boolean(), publicReviewLink: z.string().url().nullable(), marketingPermission: z.enum(["yes", "no", "not_asked"]), screenshotUrl: fileRef.nullable() }), responses: { 201: z.any(), 400: errorSchemas.validation } },
+      update: { method: "PATCH" as const, path: "/api/feedback/reviews/:id", input: z.object({ rating: z.number().int().min(1).max(5).nullable().optional(), feedbackText: z.string().trim().max(5000).optional(), whatsappFeedbackReceived: z.boolean().optional(), facebookReviewReceived: z.boolean().optional(), videoReviewReceived: z.boolean().optional(), publicReviewLink: z.string().url().nullable().optional(), marketingPermission: z.enum(["yes", "no", "not_asked"]).optional(), screenshotUrl: fileRef.nullable().optional() }), responses: { 200: z.any() } },
     },
     suggestions: {
       list: { method: "GET" as const, path: "/api/feedback/suggestions", responses: { 200: z.array(z.any()) } },
-       create: { method: "POST" as const, path: "/api/feedback/suggestions", input: z.object({ orderId: z.number().int().positive(), suggestionText: z.string().trim().min(1).max(5000), screenshotUrl: z.string().url().nullable() }), responses: { 201: z.any() } },
+       create: { method: "POST" as const, path: "/api/feedback/suggestions", input: z.object({ orderId: z.number().int().positive(), suggestionText: z.string().trim().min(1).max(5000), screenshotUrl: fileRef.nullable() }), responses: { 201: z.any() } },
       update: { method: "PATCH" as const, path: "/api/feedback/suggestions/:id", input: z.object({
         status: z.enum(suggestionStatuses).optional(),
         adminNote: z.string().trim().min(1).max(5000).optional(),
         implementationDetails: z.string().trim().min(1).max(5000).optional(),
-        implementationScreenshotUrl: z.string().url().nullable().optional(),
+        implementationScreenshotUrl: fileRef.nullable().optional(),
         rejectionReason: z.string().trim().min(1).max(5000).optional(),
         confirmDecision: z.boolean().optional(),
       }), responses: { 200: z.any() } },

@@ -96,6 +96,12 @@ export const users = pgTable("users", {
   avatar: text("avatar"),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
+  // Phase 0 security (all nullable; existing rows untouched)
+  mustChangePassword: boolean("must_change_password"),
+  passwordChangedAt: timestamp("password_changed_at", { withTimezone: true }),
+  sessionsValidAfter: timestamp("sessions_valid_after", { withTimezone: true }),
+  totpSecret: text("totp_secret"),
+  totpEnabled: boolean("totp_enabled"),
 });
 
 export const orders = pgTable("orders", {
@@ -447,7 +453,40 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
+// Security audit trail (Phase 0). Append-only from the app.
+export const auditEvents = pgTable("audit_events", {
+  id: serial("id").primaryKey(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  actorId: integer("actor_id").references(() => users.id),
+  actorRole: text("actor_role"),
+  action: text("action").notNull(),
+  targetType: text("target_type"),
+  targetId: text("target_id"),
+  success: boolean("success").notNull().default(true),
+  ip: text("ip"),
+  userAgent: text("user_agent"),
+  details: jsonb("details"),
+});
+
+// Private uploads (Cloudinary authenticated delivery), served via GET /api/files/:id.
+export const files = pgTable("files", {
+  id: serial("id").primaryKey(),
+  publicId: text("public_id").notNull(),
+  resourceType: text("resource_type").notNull().default("image"),
+  deliveryType: text("delivery_type").notNull().default("authenticated"),
+  format: text("format"),
+  mimeType: text("mime_type"),
+  bytes: integer("bytes"),
+  kind: text("kind").notNull(),
+  orderId: integer("order_id").references(() => orders.id),
+  uploadedById: integer("uploaded_by_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type AuditEvent = typeof auditEvents.$inferSelect;
+export type FileRecord = typeof files.$inferSelect;
+
+export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, mustChangePassword: true, passwordChangedAt: true, sessionsValidAfter: true, totpSecret: true, totpEnabled: true });
 export const insertOrderSchema = createInsertSchema(orders).omit({ id: true, createdAt: true });
 export const insertOrderServiceSchema = createInsertSchema(orderServices).omit({ id: true });
 export const insertActivityLogSchema = createInsertSchema(activityLogs).omit({ id: true, createdAt: true });

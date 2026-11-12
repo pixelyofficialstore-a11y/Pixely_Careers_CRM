@@ -444,10 +444,10 @@ export function registerWebsiteRequestRoutes(app: Express, deps: Deps) {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ message: "Invalid request id" });
     const body = z.object({
-      reason: z.enum(REJECT_REASONS, { errorMap: () => ({ message: "Pick a reason" }) }),
+      reason: z.enum(REJECT_REASONS, { error: "Pick a reason" }),
       note: z.string().trim().max(500).optional().nullable(),
     }).safeParse(req.body);
-    if (!body.success) return res.status(400).json({ message: body.error.errors[0]?.message || "A reason is required" });
+    if (!body.success) return res.status(400).json({ message: body.error.issues[0]?.message || "A reason is required" });
     const user = req.user as User;
     try {
       const outcome = await db.transaction(async tx => {
@@ -512,7 +512,7 @@ export function registerWebsiteRequestRoutes(app: Express, deps: Deps) {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ message: "Invalid request id" });
     const parsed = placeSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0].message });
     const data = parsed.data;
     if (data.amountReceived > data.totalPrice) return res.status(400).json({ message: "Amount received cannot be greater than total bill." });
     if (data.orderType === "documentation" && data.services.length === 0) return res.status(400).json({ message: "At least one service is required" });
@@ -682,7 +682,7 @@ export function registerWebsiteRequestRoutes(app: Express, deps: Deps) {
     }).refine(b => b.status !== undefined || b.notes !== undefined, "Nothing to update")
       .refine(b => b.status !== "rejected" || !!b.reason, "Pick a reason")
       .safeParse(req.body);
-    if (!body.success) return res.status(400).json({ message: body.error.errors[0]?.message || "Invalid update" });
+    if (!body.success) return res.status(400).json({ message: body.error.issues[0]?.message || "Invalid update" });
     const user = req.user as User;
     const { status, notes, reason } = body.data;
     try {
@@ -795,7 +795,7 @@ export function registerWebsiteRequestRoutes(app: Express, deps: Deps) {
       status: z.enum(PARTNER_STATUS_VALUES).optional(),
       notes: z.string().max(5000).optional(),
     }).refine(b => b.status !== undefined || b.notes !== undefined, "Nothing to update").safeParse(req.body);
-    if (!body.success) return res.status(400).json({ message: body.error.errors[0]?.message || "Invalid update" });
+    if (!body.success) return res.status(400).json({ message: body.error.issues[0]?.message || "Invalid update" });
     const user = req.user as User;
     const { status, notes } = body.data;
     try {
@@ -858,6 +858,7 @@ function startNewRequestPoller(deps: Deps) {
       running = false;
     }
   };
+  if (process.env.CRM_DISABLE_BACKGROUND === "1") return; // tests
   setInterval(tick, POLL_INTERVAL_MS).unref?.();
   setTimeout(tick, 5_000).unref?.();
 }

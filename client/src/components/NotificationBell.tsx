@@ -7,6 +7,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { format, differenceInMinutes, isToday } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
+import { useRealtime } from "@/lib/realtime";
 import { useAuth } from "@/hooks/use-auth";
 
 interface Notification {
@@ -191,101 +192,41 @@ export function NotificationBell({ align = 'right' }: NotificationBellProps = {}
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  // SSE: connect to server-sent events for instant notification delivery
-  useEffect(() => {
-    let es: EventSource | null = null;
-    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
-    let reconnecting = false;
-
-    function connect() {
-      reconnecting = false;
-      es = new EventSource("/api/notifications/stream", { withCredentials: true });
-
-      es.onopen = () => {
-        // Reconcile all server-owned counts after a reconnect so events missed
-        // while the browser was offline do not leave stale badges behind.
-        queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/complaints/actionable-count"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/payment-verifications/pending-count"] });
-      };
-
-      es.onmessage = (event) => {
-        let payload: IncomingNotification = {};
-        try { payload = JSON.parse(event.data); } catch (_) {}
-        const scopes = payload.scopes || [];
-        if (scopes.includes("complaints")) {
-          queryClient.invalidateQueries({ queryKey: ["/api/complaints/actionable-count"] });
-          queryClient.invalidateQueries({ predicate: query => String(query.queryKey[0]).startsWith("/api/complaints") });
-        }
-        if (scopes.includes("payments")) {
-          queryClient.invalidateQueries({ queryKey: ["/api/payment-verifications/pending-count"] });
-          queryClient.invalidateQueries({ queryKey: ["/api/payment-verifications"] });
-        }
-        if (scopes.includes("orders")) queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
-        if (scopes.includes("stats")) queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-        if (scopes.includes("website_requests")) queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/website-requests") });
-        if (payload.event === "notification" && typeof payload.id === "number") {
-          if (seenNotificationIds.current.has(payload.id)) return;
-          seenNotificationIds.current.add(payload.id);
-          if (seenNotificationIds.current.size > 500) {
-            const oldest = seenNotificationIds.current.values().next().value;
-            if (typeof oldest === "number") seenNotificationIds.current.delete(oldest);
-          }
-           const title = payload.title || "Pixely CRM";
-          const message = payload.message || "You have a new notification";
-          toast({ title, description: message });
-          if ("Notification" in window && Notification.permission === "granted") {
-            try {
-               new Notification("Pixely CRM", {
-                 body: title === "Pixely CRM" ? message : `${title}: ${message}`,
-                tag: `pixelcrm-notification-${payload.id}`,
-                icon: "/favicon.ico",
-              });
-            } catch (_) {}
-          }
-          if (payload.sound && (user?.role === "admin" || (user?.role === "support" && payload.eventType === "website_request_new"))) playNotificationSound();
-        }
-        // Notification inserts and generic reconciliation both refresh the
-        // server-owned bell state.
-        queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
-      };
-
-      es.onerror = () => {
-        if (reconnecting) return;
-        reconnecting = true;
-        es?.close();
-        es = null;
-        // Reconnect after 5 s on error (guard ensures only one timer is active)
-        if (retryTimeout) clearTimeout(retryTimeout);
-        retryTimeout = setTimeout(connect, 5000);
-      };
+  // Live updates: one shared SSE connection (client/src/lib/realtime.ts)
+  // refreshes caches; this handler only shows the toast / sound / OS alert.
+  useRealtime(Boolean(user), (payload) => {
+    const p = payload as IncomingNotification;
+    if (p.event !== "notification" || typeof p.id !== "number") return;
+    if (seenNotificationIds.current.has(p.id)) return;
+    seenNotificationIds.current.add(p.id);
+    if (seenNotificationIds.current.size > 500) {
+      const oldest = seenNotificationIds.current.values().next().value;
+      if (typeof oldest === "number") seenNotificationIds.current.delete(oldest);
     }
-
-    connect();
-
-    return () => {
-      es?.close();
-      if (retryTimeout) clearTimeout(retryTimeout);
-    };
-  }, []);
+    const title = p.title || "Pixely CRM";
+    const message = p.message || "You have a new notification";
+    toast({ title, description: message });
+    if ("Notification" in window && Notification.permission === "granted") {
+      try {
+        new Notification("Pixely CRM", {
+          body: title === "Pixely CRM" ? message : `${title}: ${message}`,
+          tag: `pixelcrm-notification-${p.id}`,
+          icon: "/favicon.ico",
+        });
+      } catch (_) {}
+    }
+    if (p.sound && (user?.role === "admin" || (user?.role === "support" && p.eventType === "website_request_new"))) playNotificationSound();
+  });
 
   const { data: unreadData } = useQuery<{ count: number }>({
     queryKey: ["/api/notifications/unread-count"],
     retry: false,
-    refetchInterval: 5000,
-    refetchIntervalInBackground: true,
-    staleTime: 0,
   });
 
   const { data: notifsList = [] } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
     retry: false,
     enabled: open,
-    refetchInterval: open ? 5000 : false,
-    refetchIntervalInBackground: true,
-    staleTime: 0,
   });
 
   const markAllMutation = useMutation({

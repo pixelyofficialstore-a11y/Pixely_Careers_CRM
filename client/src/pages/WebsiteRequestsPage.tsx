@@ -625,9 +625,6 @@ export default function WebsiteRequestsPage() {
   const { data: counts } = useQuery<Counts>({
     queryKey: [`${BASE}/counts`],
     enabled: allowed,
-    refetchInterval: 10_000,
-    refetchIntervalInBackground: true,
-    staleTime: 0,
   });
 
   const { data: orderStats } = useQuery<OrderStats>({ queryKey: [`${BASE}/orders/stats`], enabled: allowed && tab === "orders", staleTime: 30_000 });

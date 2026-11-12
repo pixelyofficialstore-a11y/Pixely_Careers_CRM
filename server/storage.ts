@@ -15,6 +15,7 @@ import {
   type ClientReview, type InsertClientReview, type ClientSuggestion, type InsertClientSuggestion, type ActivityLogWithActor, type SuggestionNote,
 } from "@shared/schema";
 import { db } from "./db";
+import { userColumns, stripUserSecurityFields } from "./schemaCompat";
 import { eq, ne, desc, sql, and, isNotNull, inArray, asc, getTableColumns } from "drizzle-orm";
 
 // Arbitrary constant key for pg_advisory_xact_lock around order-number allocation.
@@ -28,6 +29,8 @@ export type ComplaintListFilters = {
   status?: string;
   category?: string;
   orderId?: number;
+  /** Load a single complaint (detail view). */
+  id?: number;
   designerId?: number;
   month?: number;
   year?: number;
@@ -50,7 +53,6 @@ export interface IStorage {
   getUsers(): Promise<User[]>;
 
   getOrder(id: number): Promise<OrderWithServices | undefined>;
-  getOrders(role: string, userId: number): Promise<OrderWithServices[]>;
   createOrder(order: InsertOrder, services?: Omit<InsertOrderService, 'orderId'>[]): Promise<Order>;
   updateOrder(id: number, updates: Partial<InsertOrder>): Promise<Order>;
   cancelOrder(id: number, cancellation: OrderCancellation): Promise<Order | undefined>;
@@ -66,17 +68,12 @@ export interface IStorage {
   markNotificationRead(id: number, userId: number): Promise<Notification | undefined>;
   createNotification(userId: number, type: string, title: string, message: string, priority: string, relatedId?: number, relatedType?: string, dedupeKey?: string): Promise<{ notification: Notification; created: boolean }>;
 
-  getStats(role: string, userId: number, complaintFilters?: ComplaintListFilters): Promise<any>;
-  invalidateStatsCache(): void;
   invalidateUsersCache(): void;
 
-  getPaymentVerifications(role: string, userId: number): Promise<PaymentVerificationWithUsers[]>;
   getPaymentVerification(id: number): Promise<PaymentVerificationWithUsers | undefined>;
-  getPaymentVerificationsWithOrders(role: string, userId: number): Promise<Array<{ verification: PaymentVerificationWithUsers; order: { id: number; orderNumber: string | null; clientName: string; totalPrice: number } | null }>>;
   getPaymentVerificationsByOrder(orderId: number): Promise<PaymentVerificationWithUsers[]>;
   getPaymentVerificationByScreenshotUrl(url: string): Promise<PaymentVerification | undefined>;
   createPaymentVerification(data: InsertPaymentVerification): Promise<PaymentVerification>;
-  updatePaymentVerification(id: number, updates: Partial<InsertPaymentVerification>): Promise<PaymentVerification>;
 
   getDesignerAssignments(supportUserId: number): Promise<SupportDesignerAssignment[]>;
   getAllDesignerAssignments(): Promise<SupportDesignerAssignment[]>;
@@ -167,23 +164,23 @@ export class DatabaseStorage implements IStorage {
       ? this.usersCache.rows.find(u => u.id === id)
       : undefined;
     if (cached) return cached;
-    const [user] = await db.select().from(users).where(eq(users.id, id));
+    const [user] = await db.select(userColumns()).from(users).where(eq(users.id, id));
     return user;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
+    const [user] = await db.select(userColumns()).from(users).where(eq(users.username, username));
     return user;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db.insert(users).values(insertUser).returning();
+    const [user] = await db.insert(users).values(stripUserSecurityFields(insertUser)).returning(userColumns());
     this.invalidateUsersCache();
     return user;
   }
 
   async updateUser(id: number, updates: Partial<InsertUser>): Promise<User> {
-    const [user] = await db.update(users).set(updates).where(eq(users.id, id)).returning();
+    const [user] = await db.update(users).set(stripUserSecurityFields(updates)).where(eq(users.id, id)).returning(userColumns());
     this.invalidateUsersCache();
     return user;
   }
@@ -193,7 +190,7 @@ export class DatabaseStorage implements IStorage {
       return [...this.usersCache.rows];
     }
     if (!this.usersInflight) {
-      const inflight = db.select().from(users).orderBy(users.id)
+      const inflight = db.select(userColumns()).from(users).orderBy(users.id)
         .then(rows => {
           if (this.usersInflight === inflight) this.usersCache = { at: Date.now(), rows };
           return rows;
@@ -215,31 +212,6 @@ export class DatabaseStorage implements IStorage {
     if (!order) return undefined;
     const assignee = order.assignedToId ? allUsers.find(u => u.id === order.assignedToId) : null;
     return { ...order, services, assignee };
-  }
-
-  async getOrders(role: string, userId: number): Promise<OrderWithServices[]> {
-    // Support can view all orders (all months), like admin. Deleting remains admin-only.
-    const visible = role === "admin" || role === "support"
-      ? ne(orders.status, "pending_payment")
-      : and(eq(orders.assignedToId, userId), ne(orders.status, "pending_payment"));
-    // Orders, their services and the users list are fetched in parallel; the
-    // services query filters with a sub-select so it doesn't wait for orders.
-    const [orderList, relevantServices, allUsers] = await Promise.all([
-      db.select().from(orders).where(visible).orderBy(desc(orders.createdAt)),
-      db.select().from(orderServices).where(inArray(orderServices.orderId, db.select({ id: orders.id }).from(orders).where(visible))),
-      this.getUsers(),
-    ]);
-    const servicesByOrder = new Map<number, OrderService[]>();
-    for (const svc of relevantServices) {
-      const list = servicesByOrder.get(svc.orderId);
-      if (list) list.push(svc); else servicesByOrder.set(svc.orderId, [svc]);
-    }
-    const usersById = new Map(allUsers.map(u => [u.id, u]));
-    return orderList.map(order => ({
-      ...order,
-      services: servicesByOrder.get(order.id) || [],
-      assignee: order.assignedToId ? usersById.get(order.assignedToId) : null
-    }));
   }
 
   async createOrder(order: InsertOrder, services?: Omit<InsertOrderService, 'orderId'>[]): Promise<Order> {
@@ -435,155 +407,6 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  // Dashboard stats are cached for 30s per (role, user, filters) and dropped
-  // whenever an order/payment/complaint is changed (see invalidateStatsCache).
-  private statsCache = new Map<string, { at: number; value: Promise<any> }>();
-  private static STATS_TTL_MS = 30_000;
-
-  invalidateStatsCache() {
-    this.statsCache.clear();
-  }
-
-  async getStats(role: string, userId: number, complaintFilters: ComplaintListFilters = {}): Promise<any> {
-    const key = JSON.stringify([role, userId, complaintFilters.month ?? null, complaintFilters.year ?? null, complaintFilters.designerId ?? null]);
-    const hit = this.statsCache.get(key);
-    if (hit && Date.now() - hit.at < DatabaseStorage.STATS_TTL_MS) return structuredClone(await hit.value);
-    const value = this.computeStats(role, userId, complaintFilters);
-    this.statsCache.set(key, { at: Date.now(), value });
-    value.catch(() => { if (this.statsCache.get(key)?.value === value) this.statsCache.delete(key); });
-    return structuredClone(await value);
-  }
-
-  private async computeStats(role: string, userId: number, complaintFilters: ComplaintListFilters = {}): Promise<any> {
-    // All independent reads run in parallel. Only the columns the accounting
-    // needs are selected (no notes/links/text blobs).
-    const [allOrdersRaw, allPaymentVerifications, allUsers, complaintStats] = await Promise.all([
-      db.select().from(orders).where(eq(orders.advancePaymentStatus, "approved")),
-      db.select({
-        orderId: paymentVerifications.orderId,
-        status: paymentVerifications.status,
-        reviewedAt: paymentVerifications.reviewedAt,
-        amount: paymentVerifications.amount,
-        paymentType: paymentVerifications.paymentType,
-      }).from(paymentVerifications).where(eq(paymentVerifications.status, "approved")),
-      this.getUsers(),
-      this.getComplaintStats(role, userId, complaintFilters),
-    ]);
-    const allOrders = allOrdersRaw.filter(o =>
-      o.advancePaymentStatus === 'approved' &&
-      canAccessOrderCase(role as CaseRole, userId, o.assignedToId)
-    );
-    // Canceled orders retain original amounts for audit. Their accounting
-    // projection decides whether an advance was refunded or retained.
-    const collectedOrderIds = new Set(allOrders.filter(order => getOrderAccounting(order).netCollected > 0).map(order => order.id));
-
-    const today = getStartOfBusinessDay();
-    const todayOrders = allOrders.filter(o => new Date(o.createdAt!) >= today);
-    const thisMonth = getStartOfBusinessMonth();
-    const monthlyOrders = allOrders.filter(o => new Date(o.createdAt!) >= thisMonth);
-    
-    const orderStats = {
-      total: allOrders.length,
-      today: todayOrders.length,
-      monthly: monthlyOrders.length,
-      new: allOrders.filter(o => o.status === 'new').length,
-      working: allOrders.filter(o => o.status === 'working').length,
-      ready: allOrders.filter(o => o.status === 'ready').length,
-      delivered: allOrders.filter(o => o.status === 'delivered').length,
-      canceled: allOrders.filter(o => o.status === 'canceled').length,
-    };
-
-    const totalRevenue = allOrders.reduce((acc, order) => acc + getOrderAccounting(order).netCollected, 0);
-    const pendingPayments = allOrders.reduce((acc, order) => acc + getOrderAccounting(order).remainingReceivable, 0);
-    const adminUserIds = new Set(allUsers.filter(user => user.role === "admin").map(user => user.id));
-    const allOrderIds = new Set(allOrders.map(order => order.id));
-    const approvedPaymentsThisMonth = allPaymentVerifications.filter(payment =>
-      payment.status === "approved" &&
-      allOrderIds.has(payment.orderId) &&
-      payment.reviewedAt &&
-      new Date(payment.reviewedAt) >= thisMonth
-    );
-    const paymentTotalsByOrderThisMonth = new Map<number, number>();
-    const initialPaymentOrderIdsThisMonth = new Set<number>();
-    for (const payment of approvedPaymentsThisMonth) {
-      paymentTotalsByOrderThisMonth.set(
-        payment.orderId,
-        (paymentTotalsByOrderThisMonth.get(payment.orderId) || 0) + (payment.amount || 0),
-      );
-      if (payment.paymentType === "advance" || payment.paymentType === "full") {
-        initialPaymentOrderIdsThisMonth.add(payment.orderId);
-      }
-    }
-    // Admin-created orders are auto-approved without a payment verification
-    // row. Count only the amount not already represented by payment events.
-    const directAdminCashInflowThisMonth = monthlyOrders
-      .filter(order =>
-        adminUserIds.has(order.createdById || -1) &&
-        order.createdAt &&
-        new Date(order.createdAt) >= thisMonth &&
-        !initialPaymentOrderIdsThisMonth.has(order.id)
-      )
-      .reduce((sum, order) => sum + Math.max(
-        0,
-        Number(order.advanceAmount || 0) - (paymentTotalsByOrderThisMonth.get(order.id) || 0),
-      ), 0);
-    const paymentCashInflowThisMonth = approvedPaymentsThisMonth
-      .reduce((sum, payment) => sum + (payment.amount || 0), 0);
-    const cashInflowThisMonth = paymentCashInflowThisMonth + directAdminCashInflowThisMonth;
-    const refundsThisMonth = allOrders
-      .filter(order =>
-        order.status === "canceled" &&
-        Number(order.refundAmount || 0) > 0 &&
-        order.refundRecordedAt &&
-        new Date(order.refundRecordedAt) >= thisMonth
-      )
-      .reduce((sum, order) => sum + Number(order.refundAmount || 0), 0);
-    const approvedPaymentsToday = allPaymentVerifications.filter(payment =>
-      payment.status === "approved" &&
-       collectedOrderIds.has(payment.orderId) &&
-      payment.reviewedAt &&
-      new Date(payment.reviewedAt) >= today
-    );
-    const approvedAdvancePaymentsToday = approvedPaymentsToday
-      .filter(payment => payment.paymentType === "advance" || payment.paymentType === "full")
-    const verifiedAdvanceOrderIdsToday = new Set(approvedAdvancePaymentsToday.map(payment => payment.orderId));
-    const verifiedAdvanceToday = approvedAdvancePaymentsToday
-      .reduce((sum, payment) => sum + (payment.amount || 0), 0);
-    const directAdminAdvanceToday = allOrders
-      .filter(order =>
-        adminUserIds.has(order.createdById || -1) &&
-        order.createdAt &&
-        new Date(order.createdAt) >= today &&
-        getOrderAccounting(order).netCollected > 0 &&
-        !verifiedAdvanceOrderIdsToday.has(order.id)
-      )
-      .reduce((sum, order) => sum + getOrderAccounting(order).netCollected, 0);
-    const remainingReceivedToday = approvedPaymentsToday
-      .filter(payment => payment.paymentType === "remaining")
-      .reduce((sum, payment) => sum + (payment.amount || 0), 0);
-    const advanceReceivedToday = verifiedAdvanceToday + directAdminAdvanceToday;
-
-    return {
-      orders: orderStats,
-      complaints: complaintStats,
-      finance: {
-        totalRevenue,
-        monthlyRevenue: monthlyOrders.reduce((acc, order) => acc + getOrderAccounting(order).netCollected, 0),
-        pendingPayments,
-        todayCashFlow: {
-          advance: advanceReceivedToday,
-          remaining: remainingReceivedToday,
-          total: advanceReceivedToday + remainingReceivedToday,
-        },
-        monthlyCashFlow: {
-          inflow: cashInflowThisMonth,
-          refunds: refundsThisMonth,
-          net: cashInflowThisMonth - refundsThisMonth,
-        },
-      },
-    };
-  }
-
   async createActivityLog(log: InsertActivityLog): Promise<ActivityLog> {
     const [created] = await db.insert(activityLogs).values(log).returning();
     return created;
@@ -652,16 +475,33 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db.update(clientSuggestions).set({ ...updates, updatedAt: new Date() }).where(eq(clientSuggestions.id, id)).returning();
     return updated;
   }
-  async getSuggestionNotes(suggestionId: number): Promise<Array<SuggestionNote & { createdBy: Pick<User, "id" | "name" | "role"> | null }>> {
+  /** Notes for many suggestions in one query (feedback list). */
+  async getSuggestionNotesFor(suggestionIds: number[]) {
+    const out = new Map<number, Array<SuggestionNote & { createdBy: Pick<User, "id" | "name" | "role"> | null }>>();
+    if (suggestionIds.length === 0) return out;
     const [notes, usersList] = await Promise.all([
-      db.select().from(suggestionNotes).where(eq(suggestionNotes.suggestionId, suggestionId)).orderBy(desc(suggestionNotes.createdAt)),
+      db.select().from(suggestionNotes).where(inArray(suggestionNotes.suggestionId, suggestionIds)).orderBy(desc(suggestionNotes.createdAt)),
       this.getUsers(),
     ]);
     const usersById = new Map(usersList.map(user => [user.id, user]));
-    return notes.map(note => {
+    for (const note of notes) {
       const author = note.createdByUserId ? usersById.get(note.createdByUserId) : undefined;
-      return { ...note, createdBy: author ? { id: author.id, name: author.name, role: author.role } : null };
-    });
+      const list = out.get(note.suggestionId) ?? [];
+      list.push({ ...note, createdBy: author ? { id: author.id, name: author.name, role: author.role } : null });
+      out.set(note.suggestionId, list);
+    }
+    return out;
+  }
+  /** Orders with their services for many ids in two queries (feedback list). */
+  async getOrdersWithServicesByIds(ids: number[]) {
+    const out = new Map<number, Order & { services: OrderService[] }>();
+    if (ids.length === 0) return out;
+    const [orderRows, serviceRows] = await Promise.all([
+      db.select().from(orders).where(inArray(orders.id, ids)),
+      db.select().from(orderServices).where(inArray(orderServices.orderId, ids)),
+    ]);
+    for (const o of orderRows) out.set(o.id, { ...o, services: serviceRows.filter(sv => sv.orderId === o.id) });
+    return out;
   }
   async addSuggestionNote(suggestionId: number, noteText: string, createdByUserId: number): Promise<SuggestionNote> {
     const [note] = await db.insert(suggestionNotes).values({ suggestionId, noteText, createdByUserId }).returning();
@@ -864,7 +704,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getComplaints(role: string, userId: number, filters: ComplaintListFilters = {}): Promise<ComplaintResponse[]> {
-    let visible = (await db.select().from(complaints).orderBy(desc(complaints.createdAt)))
+    let visible = (await (filters.id
+      ? db.select().from(complaints).where(eq(complaints.id, filters.id))
+      : db.select().from(complaints).orderBy(desc(complaints.createdAt))))
       .filter(complaint => isSupportedComplaintTarget(complaint.complaintTargetType))
       .filter(complaint => canAccessComplaintCase(
         role as CaseRole,
@@ -893,12 +735,16 @@ export class DatabaseStorage implements IStorage {
       visible = visible.filter(complaint => (complaint.createdAt?.getMonth() ?? -1) + 1 === filters.month);
     }
 
+    // Load related rows only for the complaints being returned (not every order).
+    const orderIds = Array.from(new Set(visible.map(c => c.orderId)));
+    const complaintIds = visible.map(c => c.id);
+    if (complaintIds.length === 0) return [];
     const [allOrders, allUsers, allServices, allEvidence, allDesignerEvidence] = await Promise.all([
-      db.select().from(orders),
+      db.select().from(orders).where(inArray(orders.id, orderIds)),
       this.getUsers(),
-      db.select().from(orderServices),
-      db.select().from(complaintEvidence).orderBy(asc(complaintEvidence.createdAt)),
-      db.select().from(complaintDesignerEvidence).orderBy(asc(complaintDesignerEvidence.createdAt)),
+      db.select().from(orderServices).where(inArray(orderServices.orderId, orderIds)),
+      db.select().from(complaintEvidence).where(inArray(complaintEvidence.complaintId, complaintIds)).orderBy(asc(complaintEvidence.createdAt)),
+      db.select().from(complaintDesignerEvidence).where(inArray(complaintDesignerEvidence.complaintId, complaintIds)).orderBy(asc(complaintDesignerEvidence.createdAt)),
     ]);
     const ordersById = new Map(allOrders.map(order => [order.id, order]));
     const usersById = new Map(allUsers.map(user => [user.id, user]));
@@ -934,7 +780,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getComplaintForUser(id: number, role: string, userId: number): Promise<ComplaintResponse | undefined> {
-    const complaintsForUser = await this.getComplaints(role, userId);
+    const complaintsForUser = await this.getComplaints(role, userId, { id });
     const response = complaintsForUser.find(complaint => complaint.id === id);
     if (response && role === "admin") {
       response.adminNotesLog = await this.getComplaintNotes(id);
@@ -1131,47 +977,6 @@ export class DatabaseStorage implements IStorage {
     )).length;
   }
 
-  async getPaymentVerifications(role: string, userId: number): Promise<PaymentVerificationWithUsers[]> {
-    // screenshot_data (legacy base64 blobs) is never sent to the client, so it
-    // is not read from the database either.
-    const { screenshotData: _omit, ...pvColumns } = getTableColumns(paymentVerifications);
-    const [verificationList, allUsers] = await Promise.all([
-      role === "admin"
-        ? db.select(pvColumns).from(paymentVerifications).orderBy(desc(paymentVerifications.createdAt))
-        : db.select(pvColumns).from(paymentVerifications)
-          .where(eq(paymentVerifications.submittedById, userId))
-          .orderBy(desc(paymentVerifications.createdAt)),
-      this.getUsers(),
-    ]);
-    const usersById = new Map(allUsers.map(u => [u.id, u]));
-    return verificationList.map(pv => ({
-      ...pv,
-      screenshotData: null,
-      submittedBy: usersById.get(pv.submittedById) || null,
-      reviewedBy: pv.reviewedById ? usersById.get(pv.reviewedById) || null : null,
-    }));
-  }
-
-  /** Payment list joined with the order summary in one query (no per-row getOrder). */
-  async getPaymentVerificationsWithOrders(role: string, userId: number) {
-    const [verifications, orderRows] = await Promise.all([
-      this.getPaymentVerifications(role, userId),
-      db.select({
-        id: orders.id,
-        orderNumber: orders.orderNumber,
-        clientName: orders.clientName,
-        totalPrice: orders.totalPrice,
-      }).from(orders).where(inArray(
-        orders.id,
-        role === "admin"
-          ? db.select({ id: paymentVerifications.orderId }).from(paymentVerifications)
-          : db.select({ id: paymentVerifications.orderId }).from(paymentVerifications).where(eq(paymentVerifications.submittedById, userId)),
-      )),
-    ]);
-    const ordersById = new Map(orderRows.map(o => [o.id, o]));
-    return verifications.map(v => ({ verification: v, order: ordersById.get(v.orderId) || null }));
-  }
-
   async getPaymentVerification(id: number): Promise<PaymentVerificationWithUsers | undefined> {
     const { screenshotData: _omit, ...pvColumns } = getTableColumns(paymentVerifications);
     const [[pv], allUsers] = await Promise.all([
@@ -1209,11 +1014,6 @@ export class DatabaseStorage implements IStorage {
 
   async createPaymentVerification(data: InsertPaymentVerification): Promise<PaymentVerification> {
     const [verification] = await db.insert(paymentVerifications).values(data).returning();
-    return verification;
-  }
-
-  async updatePaymentVerification(id: number, updates: Partial<InsertPaymentVerification>): Promise<PaymentVerification> {
-    const [verification] = await db.update(paymentVerifications).set(updates).where(eq(paymentVerifications.id, id)).returning();
     return verification;
   }
 
@@ -1315,7 +1115,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAdmins(): Promise<User[]> {
-    return await db.select().from(users).where(and(eq(users.role, "admin"), eq(users.isActive, true)));
+    return await db.select(userColumns()).from(users).where(and(eq(users.role, "admin"), eq(users.isActive, true)));
   }
 
   async getUnreadNotificationCount(userId: number): Promise<number> {

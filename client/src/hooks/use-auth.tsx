@@ -1,15 +1,37 @@
-import { createContext, ReactNode, useContext } from "react";
+import { createContext, ReactNode, useContext, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { User } from "@shared/schema";
-import { api } from "@shared/routes";
+import type { User } from "@shared/schema";
+import type { api as apiContract } from "@shared/routes";
 import { useLocation } from "wouter";
-import { z } from "zod";
+import type { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 
-type LoginData = z.infer<typeof api.auth.login.input>;
+type LoginData = z.infer<typeof apiContract.auth.login.input>;
+
+// Plain paths (not the @shared/routes value) keep drizzle and the schema out of the main bundle.
+const api = {
+  auth: {
+    login: { path: "/api/login", method: "POST" },
+    logout: { path: "/api/logout", method: "POST" },
+    me: { path: "/api/user", method: "GET" },
+  },
+} as const;
+
+/** User as returned by the API (secrets stripped, flags as booleans). */
+export type SessionUser = Omit<User, "password" | "totpSecret" | "sessionsValidAfter" | "mustChangePassword" | "totpEnabled"> & {
+  mustChangePassword: boolean;
+  totpEnabled: boolean;
+};
+
+/** Login failure with the server error code (e.g. TOTP_REQUIRED, LOGIN_LOCKED). */
+export class LoginError extends Error {
+  constructor(message: string, public code?: string) {
+    super(message);
+  }
+}
 
 interface AuthContextType {
-  user: User | null;
+  user: SessionUser | null;
   isLoading: boolean;
   error: Error | null;
   loginMutation: ReturnType<typeof useAuthMutation>["loginMutation"];
@@ -30,23 +52,25 @@ function useAuthMutation() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(credentials),
       });
-      
+
       if (!res.ok) {
         let serverMessage = "";
+        let code: string | undefined;
         try {
           const data = await res.json();
           serverMessage = data?.message || "";
+          code = data?.code;
         } catch {
           serverMessage = "";
         }
         if (res.status === 403) {
-          throw new Error(serverMessage || "Your account has been disabled. Please contact the admin.");
+          throw new LoginError(serverMessage || "Your account has been disabled. Please contact the admin.", code);
         }
-        if (res.status === 401) throw new Error(serverMessage || "Invalid username or password");
-        throw new Error(serverMessage || "Login failed");
+        if (res.status === 401) throw new LoginError(serverMessage || "Invalid username or password", code);
+        throw new LoginError(serverMessage || "Login failed", code);
       }
-      
-      return api.auth.login.responses[200].parse(await res.json());
+
+      return (await res.json()) as SessionUser;
     },
     onSuccess: (user) => {
       queryClient.setQueryData([api.auth.me.path], user);
@@ -62,10 +86,12 @@ function useAuthMutation() {
       setLocation("/");
     },
     onError: (error: Error) => {
-      toast({ 
-        title: "Login Failed", 
+      // The login form asks for the 2FA code itself.
+      if (error instanceof LoginError && error.code === "TOTP_REQUIRED") return;
+      toast({
+        title: "Login Failed",
         description: error.message,
-        variant: "destructive" 
+        variant: "destructive"
       });
     },
   });
@@ -79,6 +105,7 @@ function useAuthMutation() {
     },
     onSuccess: () => {
       queryClient.setQueryData([api.auth.me.path], null);
+      queryClient.clear();
       setLocation("/auth");
     },
   });
@@ -93,7 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await fetch(api.auth.me.path);
       if (res.status === 401) return null;
       if (!res.ok) throw new Error("Failed to fetch user");
-      return api.auth.me.responses[200].parse(await res.json());
+      return (await res.json()) as SessionUser;
     },
     retry: false,
     staleTime: 5 * 60 * 1000,
@@ -102,6 +129,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const { loginMutation, logoutMutation } = useAuthMutation();
+  const queryClient = useQueryClient();
+
+  // The server answered 403 PASSWORD_CHANGE_REQUIRED: reload the user so the
+  // forced change-password screen shows.
+  useEffect(() => {
+    const onRequired = () => queryClient.invalidateQueries({ queryKey: [api.auth.me.path] });
+    window.addEventListener("pixely:password-change-required", onRequired);
+    return () => window.removeEventListener("pixely:password-change-required", onRequired);
+  }, [queryClient]);
 
   return (
     <AuthContext.Provider

@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { recordExport } from "@/lib/http";
+import { useQuery, useMutation, keepPreviousData } from "@tanstack/react-query";
+import { fetchOrderPage, fetchOrderByRef, fetchOrderById, orderListKey, patchOrderInCaches, snapshotOrderCaches, restoreOrderCaches, toQueryString, type OrderListParams } from "@/lib/orders";
 import { useLocation } from "wouter";
 import { OrdersSkeleton } from "@/components/PageSkeleton";
 import { useAuth } from "@/hooks/use-auth";
@@ -66,8 +68,12 @@ import {
   Link2
 } from "lucide-react";
 import { ImageDropzone } from "@/components/ImageDropzone";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+// jsPDF is ~400 KB; load it only when a PDF is actually generated.
+const loadPdf = async () => {
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
+  return { jsPDF, autoTable };
+};
+const ORDERS_PAGE_SIZE = 50;
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -350,24 +356,61 @@ export default function OrdersPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const { data: orders, isLoading } = useQuery<OrderWithServices[]>({
-    queryKey: ["/api/orders"],
-    refetchInterval: 30 * 1000,
-    staleTime: 15 * 1000,
+  const [page, setPage] = useState(1);
+  const trimmedSearch = debouncedSearch.trim();
+  const listParams: OrderListParams = {
+    page,
+    pageSize: ORDERS_PAGE_SIZE,
+    search: trimmedSearch || undefined,
+    status: selectedStatusFilter,
+    designerId: selectedDesignerFilter,
+    orderType: selectedServiceTypeFilter,
+    period: trimmedSearch ? "all" : activeOrdersTab === "today" ? "today" : "month",
+    year: Number(selectedYear),
+    month: Number(selectedMonth) + 1,
+  };
+  // Any filter change starts again at page 1.
+  useEffect(() => { setPage(1); }, [trimmedSearch, selectedStatusFilter, selectedDesignerFilter, selectedServiceTypeFilter, activeOrdersTab, selectedMonth, selectedYear]);
+
+  // Server-side filtering, search and pagination (50 per page). Live updates
+  // arrive over SSE, which invalidates ["/api/orders"]; no polling here.
+  const { data: orderPage, isLoading, isFetching: listFetching } = useQuery({
+    queryKey: orderListKey(listParams),
+    queryFn: () => fetchOrderPage(listParams),
+    placeholderData: keepPreviousData,
+  });
+  const pageRows = orderPage?.rows ?? [];
+  const totalRows = orderPage?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalRows / ORDERS_PAGE_SIZE));
+
+  const summaryParams = { year: Number(selectedYear), month: Number(selectedMonth) + 1, status: selectedStatusFilter, designerId: selectedDesignerFilter, orderType: selectedServiceTypeFilter };
+  const { data: orderSummary } = useQuery<{ monthCount: number; monthSales: number; monthCollected: number; monthRemaining: number; todaySales: number }>({
+    queryKey: ["/api/orders", "summary", summaryParams],
+    queryFn: async () => {
+      const res = await fetch(`/api/orders/summary?${toQueryString(summaryParams)}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+      return res.json();
+    },
+    enabled: user?.role === "admin",
   });
 
+  // ?order=PC-1234 deep links load that one order from the server.
   useEffect(() => {
-    if (!requestedOrderNumber || isLoading) return;
-    const order = orders?.find(item => item.orderNumber === requestedOrderNumber || String(item.id) === requestedOrderNumber);
-    if (order) {
-      setSelectedOrder(order);
-      setDetailsTab("overview");
-      setDrawerStack([{ kind: "order", tab: "overview" }]);
-      setDeepLinkMessage(null);
-    } else {
-      setDeepLinkMessage(`Order ${requestedOrderNumber} was not found, or you do not have permission to view it.`);
-    }
-  }, [orders, isLoading, requestedOrderNumber]);
+    if (!requestedOrderNumber) return;
+    let cancelled = false;
+    fetchOrderByRef(requestedOrderNumber).then(order => {
+      if (cancelled) return;
+      if (order) {
+        setSelectedOrder(order);
+        setDetailsTab("overview");
+        setDrawerStack([{ kind: "order", tab: "overview" }]);
+        setDeepLinkMessage(null);
+      } else {
+        setDeepLinkMessage(`Order ${requestedOrderNumber} was not found, or you do not have permission to view it.`);
+      }
+    }).catch(() => { if (!cancelled) setDeepLinkMessage(`Order ${requestedOrderNumber} could not be loaded.`); });
+    return () => { cancelled = true; };
+  }, [requestedOrderNumber]);
 
   const { data: teamMembers } = useQuery<User[]>({
     queryKey: ["/api/users"],
@@ -390,11 +433,6 @@ export default function OrdersPage() {
   const { data: packageConfigs = [] } = useQuery<PackageConfig[]>({
     queryKey: ["/api/package-configs"],
     staleTime: 5 * 60 * 1000,
-  });
-
-  const { data: paymentVerifications = [] } = useQuery<PaymentVerification[]>({
-    queryKey: ["/api/payment-verifications"],
-    staleTime: 30 * 1000,
   });
 
   const { data: selectedOrderComplaints = [] } = useQuery<ComplaintResponse[]>({
@@ -431,9 +469,7 @@ export default function OrdersPage() {
   // open details drawer — avoids refetching the entire order list (which can
   // be 1000+ rows) for a small, single-order change.
   const patchOrderInPlace = (id: number, updates: Partial<OrderWithServices>) => {
-    queryClient.setQueryData<OrderWithServices[]>(["/api/orders"], (old) =>
-      old?.map(o => (o.id === id ? { ...o, ...updates } : o))
-    );
+    patchOrderInCaches(queryClient, id, o => ({ ...o, ...updates }));
     setSelectedOrder(current => (current && current.id === id ? { ...current, ...updates } : current));
   };
 
@@ -443,13 +479,11 @@ export default function OrdersPage() {
       return res.json();
     },
     onMutate: async ({ id, orderId, deliverableLink }) => {
-      await queryClient.cancelQueries({ queryKey: ["/api/orders"] });
-      const previousOrders = queryClient.getQueryData<OrderWithServices[]>(["/api/orders"]);
+      await queryClient.cancelQueries({ queryKey: ["/api/orders", "list"] });
+      const previousOrders = snapshotOrderCaches(queryClient);
       const patchServices = (services: OrderWithServices["services"]) =>
         services.map(s => (s.id === id ? { ...s, deliverableLink } : s));
-      queryClient.setQueryData<OrderWithServices[]>(["/api/orders"], (old) =>
-        old?.map(o => (o.id === orderId ? { ...o, services: patchServices(o.services) } : o))
-      );
+      patchOrderInCaches(queryClient, orderId, o => ({ ...o, services: patchServices(o.services) }));
       setSelectedOrder(current => (current && current.id === orderId ? { ...current, services: patchServices(current.services) } : current));
       return { previousOrders };
     },
@@ -457,7 +491,7 @@ export default function OrdersPage() {
       toast({ title: "Success", description: "Link saved" });
     },
     onError: (_err, _variables, context) => {
-      if (context?.previousOrders) queryClient.setQueryData(["/api/orders"], context.previousOrders);
+      if (context?.previousOrders) restoreOrderCaches(queryClient, context.previousOrders);
       toast({ title: "Error", description: "Failed to save link", variant: "destructive" });
     },
   });
@@ -468,8 +502,8 @@ export default function OrdersPage() {
       return res.json();
     },
     onMutate: async ({ id, updates }) => {
-      await queryClient.cancelQueries({ queryKey: ["/api/orders"] });
-      const previousOrders = queryClient.getQueryData<OrderWithServices[]>(["/api/orders"]);
+      await queryClient.cancelQueries({ queryKey: ["/api/orders", "list"] });
+      const previousOrders = snapshotOrderCaches(queryClient);
       patchOrderInPlace(id, updates);
       return { previousOrders };
     },
@@ -478,7 +512,7 @@ export default function OrdersPage() {
       toast({ title: "Success", description: "Order updated successfully" });
     },
     onError: (_err, _variables, context) => {
-      if (context?.previousOrders) queryClient.setQueryData(["/api/orders"], context.previousOrders);
+      if (context?.previousOrders) restoreOrderCaches(queryClient, context.previousOrders);
       toast({ title: "Error", description: "Failed to update order", variant: "destructive" });
     },
   });
@@ -486,12 +520,11 @@ export default function OrdersPage() {
   const metaRetryMutation = useMutation({
     mutationFn: async (id: number) => (await apiRequest("POST", `/api/orders/${id}/meta-retry`)).json(),
     onMutate: (id: number) => { if (selectedOrder?.id === id) setSelectedOrder(current => current ? { ...current, metaStatus: "pending" } : current); },
-    onSuccess: () => {
+    onSuccess: (_data, id: number) => {
       toast({ title: "Retrying Meta Purchase" });
       // The send runs in the background (with retries); re-read the order once it has had time to finish.
       for (const delay of [3_000, 15_000]) setTimeout(async () => {
-        const fresh = await queryClient.fetchQuery<OrderWithServices[]>({ queryKey: ["/api/orders"], staleTime: 0 });
-        const match = fresh.find(o => o.id === selectedOrder?.id);
+        const match = await fetchOrderById(id).catch(() => null);
         if (match) setSelectedOrder(current => current && current.id === match.id ? { ...current, metaStatus: match.metaStatus, metaPurchaseSentAt: match.metaPurchaseSentAt } : current);
       }, delay);
     },
@@ -519,11 +552,7 @@ export default function OrdersPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
       try {
-        const refreshedOrders = await queryClient.fetchQuery<OrderWithServices[]>({
-          queryKey: ["/api/orders"],
-          staleTime: 0,
-        });
-        const refreshed = refreshedOrders.find(order => order.id === variables.id);
+        const refreshed = await fetchOrderById(variables.id);
         if (refreshed?.status === "canceled") {
           if (selectedOrder?.id === refreshed.id) setSelectedOrder(current => current ? { ...current, ...refreshed } : current);
           setOrderToCancel(null);
@@ -545,7 +574,8 @@ export default function OrdersPage() {
       if (!response.ok) throw new Error("The client case report could not be generated.");
       return response.json();
     },
-    onSuccess: (report: Record<string, any>) => {
+    onSuccess: async (report: Record<string, any>) => {
+      const { jsPDF, autoTable } = await loadPdf();
       const doc = new jsPDF({ unit: "pt", format: "a4" });
       const order = (report.order || {}) as Record<string, any>;
       const payments = Array.isArray(report.payments) ? report.payments as Array<Record<string, any>> : [];
@@ -790,6 +820,7 @@ export default function OrdersPage() {
         doc.text(`Confidential Internal Record · Page ${page} of ${pageCount}`, pageWidth - margin, pageHeight - 19, { align: "right" });
       }
       doc.save(`Pixely_Careers_Client_Case_Report_${orderNumber.replace(/[^A-Za-z0-9-]/g, "_")}.pdf`);
+      void recordExport("client case report", "pdf");
       toast({ title: "Client case report downloaded" });
     },
     onError: (error: Error) => toast({ title: "Could not generate report", description: error.message, variant: "destructive" }),
@@ -812,35 +843,8 @@ export default function OrdersPage() {
     },
   });
 
-  const SEARCH_RESULT_LIMIT = 100;
-  const searchQueryNormalized = debouncedSearch.trim().toLowerCase();
-  const phoneSearchQuery = debouncedSearch.replace(/\D/g, "");
-  const isSearchActive = searchQueryNormalized.length > 0;
-  const isSearchSettling = search.trim() !== debouncedSearch.trim();
-
-  // Universal search: debounced + memoized so the UI never freezes while typing.
-  // Searches across ALL orders (every month/year). Matches order ID, client name,
-  // and client phone (formatting characters stripped on both sides).
-  // Designers are additionally limited to their own assigned orders.
-  const { results: universalSearchResults, totalMatches: searchTotalMatches } = useMemo(() => {
-    if (!isSearchActive) return { results: [] as OrderWithServices[], totalMatches: 0 };
-    const matches = (orders || [])
-      .filter(order => {
-        if (order.advancePaymentStatus !== 'approved') return false;
-        if (user?.role === 'designer' && order.assignedToId !== user.id) return false;
-        const statusFilter = ORDER_STATUS_FILTERS.find(filter => filter.value === selectedStatusFilter);
-        if (statusFilter && !statusFilter.statuses.includes(order.status)) return false;
-        if (selectedDesignerFilter !== "all" && String(order.assignedToId ?? "") !== selectedDesignerFilter) return false;
-        if (selectedServiceTypeFilter !== "all" && (order.orderType || "documentation") !== selectedServiceTypeFilter) return false;
-        const orderIdMatch = (order.orderNumber?.toLowerCase() ?? "").includes(searchQueryNormalized);
-        const clientNameMatch = (order.clientName?.toLowerCase() ?? "").includes(searchQueryNormalized);
-        const clientPhoneNormalized = (order.clientPhone || "").replace(/\D/g, "");
-        const phoneMatch = phoneSearchQuery.length > 0 && clientPhoneNormalized.includes(phoneSearchQuery);
-        return orderIdMatch || clientNameMatch || phoneMatch;
-      })
-      .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
-    return { results: matches.slice(0, SEARCH_RESULT_LIMIT), totalMatches: matches.length };
-  }, [orders, isSearchActive, searchQueryNormalized, phoneSearchQuery, user?.role, user?.id, selectedStatusFilter, selectedDesignerFilter, selectedServiceTypeFilter]);
+  const isSearchActive = trimmedSearch.length > 0;
+  const isSearchSettling = search.trim() !== trimmedSearch || listFetching;
 
   if (isLoading) return <OrdersSkeleton />;
 
@@ -894,48 +898,12 @@ export default function OrdersPage() {
     ));
   };
 
-  // All roles only see approved orders in the Orders Page
-  // Unapproved orders are reviewed exclusively in the Payments page
-  const visibleOrders = orders?.filter(order => {
-    if (order.advancePaymentStatus !== 'approved') return false;
-    const statusFilter = ORDER_STATUS_FILTERS.find(filter => filter.value === selectedStatusFilter);
-    if (statusFilter && !statusFilter.statuses.includes(order.status)) return false;
-    if (isDesigner && order.assignedToId !== user?.id) return false;
-    if ((isAdmin || isSupport) && selectedDesignerFilter !== "all" && String(order.assignedToId ?? "") !== selectedDesignerFilter) return false;
-    if (selectedServiceTypeFilter !== "all" && (order.orderType || "documentation") !== selectedServiceTypeFilter) return false;
-    return true;
-  }) || [];
-  const approvedOrders = visibleOrders;
+  // The server applies visibility (placed orders only; designers see their own),
+  // filters, search and the today/month period. This is one page of results.
   const hasActiveOrderFilters = selectedStatusFilter !== "all" || selectedDesignerFilter !== "all" || selectedServiceTypeFilter !== "all";
-
-  const todayOrders = visibleOrders.filter(order => {
-    const createdDate = new Date(order.createdAt!);
-    // Only show orders created today
-    if (!isToday(createdDate)) {
-      return false;
-    }
-    return true;
-  });
-
-  const monthlyOrders = visibleOrders.filter(order => {
-    const createdDate = new Date(order.createdAt!);
-    const inMonth = createdDate.getMonth().toString() === selectedMonth;
-    const inYear = createdDate.getFullYear().toString() === selectedYear;
-    return inMonth && inYear;
-  });
-
-  // Approved monthly orders - same logic as dashboard (advancePaymentStatus === 'approved')
-  const approvedMonthlyOrders = monthlyOrders.filter(o => o.advancePaymentStatus === 'approved');
-
-  // Monthly Revenue: total order value (full order amount) for all approved orders
-  // placed in the selected month/year — distinct from Collected (advance received)
-  // and Remaining (unpaid balance).
-  const monthlyRevenue = approvedMonthlyOrders.reduce((sum, order) => {
-    return sum + getOrderAccounting(order).accountedTotal;
-  }, 0);
-
-  // Approved today's orders — for Total Revenue of the day
-  const approvedTodayOrders = todayOrders;
+  const universalSearchResults = pageRows;
+  const todayOrders = pageRows;
+  const monthlyOrders = pageRows;
 
   const getStatusBadge = (status: string) => <OrderStatusBadge status={status} />;
   const getAdvancePaymentStatusBadge = (status: string | null | undefined) => <AdvancePaymentStatusBadge status={status} />;
@@ -1070,21 +1038,29 @@ export default function OrdersPage() {
   const getClientTypeLabel = (order: OrderWithServices) =>
     order.clientType === "international" ? "International" : "National";
 
-  const exportOrdersPDF = () => {
-    let exportOrders: OrderWithServices[];
+  const exportOrdersPDF = async () => {
     let reportSubtitle: string;
-
     if (isSearchActive) {
-      exportOrders = universalSearchResults;
       reportSubtitle = "Search Results";
     } else if (activeOrdersTab === "today") {
-      exportOrders = todayOrders;
       reportSubtitle = `Today — ${format(new Date(), "MMMM dd, yyyy")}`;
     } else {
-      exportOrders = monthlyOrders;
       reportSubtitle = format(new Date(parseInt(selectedYear), parseInt(selectedMonth), 1), "MMMM yyyy");
     }
 
+    const exportOrders: OrderWithServices[] = [];
+    try {
+      for (let p = 1; p <= 200; p++) {
+        const chunk = await fetchOrderPage({ ...listParams, page: p, pageSize: 100 });
+        exportOrders.push(...chunk.rows);
+        if (chunk.rows.length === 0 || exportOrders.length >= chunk.total) break;
+      }
+    } catch (error) {
+      toast({ title: "Export failed", description: getErrorMessage(error), variant: "destructive" });
+      return;
+    }
+
+    const { jsPDF, autoTable } = await loadPdf();
     const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth();
     const marginX = 32;
@@ -1215,6 +1191,7 @@ export default function OrdersPage() {
       : format(new Date(parseInt(selectedYear), parseInt(selectedMonth), 1), "MMMM-yyyy");
 
     doc.save(`orders-${fileSuffix}.pdf`);
+    void recordExport("orders list", "pdf");
   };
 
   // ── Shared order table (used by Search, Today, and Monthly so they stay identical) ──
@@ -1645,12 +1622,12 @@ export default function OrdersPage() {
 
       {isAdmin && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
-          <CRMMetricCard label="Total monthly" value={approvedMonthlyOrders.length} icon={Package} />
-          <CRMMetricCard label="Average order value" value={`Rs${(approvedMonthlyOrders.length > 0 ? Math.round(monthlyRevenue / approvedMonthlyOrders.length / 100) : 0).toLocaleString()}`} icon={TrendingUp} />
-          <CRMMetricCard label="Monthly revenue" value={`Rs${Math.round(monthlyRevenue / 100).toLocaleString()}`} icon={TrendingUp} testId="text-monthly-revenue" />
-          <CRMMetricCard label="Collected" value={`Rs${Math.round(approvedMonthlyOrders.reduce((acc, o) => acc + getOrderAccounting(o).netCollected, 0) / 100).toLocaleString()}`} icon={TrendingUp} tone="success" />
-          <CRMMetricCard label="Remaining" value={`Rs${Math.round(approvedMonthlyOrders.reduce((acc, o) => acc + getOrderAccounting(o).remainingReceivable, 0) / 100).toLocaleString()}`} icon={AlertCircle} tone="warning" />
-          <CRMMetricCard label="Today's revenue" value={`Rs${Math.round(approvedTodayOrders.reduce((acc, o) => acc + getOrderAccounting(o).accountedTotal, 0) / 100).toLocaleString()}`} icon={CalendarIcon} />
+          <CRMMetricCard label="Total monthly" value={orderSummary?.monthCount ?? 0} icon={Package} />
+          <CRMMetricCard label="Average order value" value={formatRs(orderSummary && orderSummary.monthCount > 0 ? orderSummary.monthSales / orderSummary.monthCount : 0)} icon={TrendingUp} />
+          <CRMMetricCard label="Monthly revenue" value={formatRs(orderSummary?.monthSales)} icon={TrendingUp} testId="text-monthly-revenue" />
+          <CRMMetricCard label="Collected" value={formatRs(orderSummary?.monthCollected)} icon={TrendingUp} tone="success" />
+          <CRMMetricCard label="Remaining" value={formatRs(orderSummary?.monthRemaining)} icon={AlertCircle} tone="warning" />
+          <CRMMetricCard label="Today's revenue" value={formatRs(orderSummary?.todaySales)} icon={CalendarIcon} />
         </div>
       )}
 
@@ -1659,9 +1636,7 @@ export default function OrdersPage() {
           <div className="p-6 border-b border-slate-800">
             <h3 className="text-lg font-bold text-white">Search Results</h3>
             <p className="text-sm text-slate-500" data-testid="text-search-result-count">
-              {searchTotalMatches > universalSearchResults.length
-                ? `Showing first ${universalSearchResults.length} of ${searchTotalMatches} matching orders — refine your search to see the rest`
-                : `${searchTotalMatches} matching order${searchTotalMatches === 1 ? "" : "s"} — active filters apply while month/year filters are ignored during search`}
+              {`${totalRows} matching order${totalRows === 1 ? "" : "s"} — active filters apply while month/year filters are ignored during search`}
             </p>
           </div>
           <div className="table-scroll-wrapper">
@@ -1764,6 +1739,19 @@ export default function OrdersPage() {
           </div>
         </TabsContent>
       </Tabs>
+      )}
+
+      {totalRows > 0 && (
+        <div className="flex flex-col items-center justify-between gap-3 text-sm text-slate-400 sm:flex-row" data-testid="orders-pagination">
+          <span>
+            Showing {(page - 1) * ORDERS_PAGE_SIZE + 1}–{Math.min(page * ORDERS_PAGE_SIZE, totalRows)} of {totalRows}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" disabled={page <= 1 || listFetching} onClick={() => setPage(p => Math.max(1, p - 1))} data-testid="button-orders-prev">Previous</Button>
+            <span className="tabular-nums">Page {page} of {totalPages}</span>
+            <Button variant="outline" size="sm" disabled={page >= totalPages || listFetching} onClick={() => setPage(p => Math.min(totalPages, p + 1))} data-testid="button-orders-next">Next</Button>
+          </div>
+        </div>
       )}
 
       <Sheet open={detailsSheetOpen} onOpenChange={open => { if (!open) closeDrawer(); }}>
@@ -2095,7 +2083,6 @@ export default function OrdersPage() {
        />
       <ReviewForm
         review={(selectedOrderReviews.find(item => item.id === (activeDrawer?.kind === "review" ? activeDrawer.id : -1)) as unknown as Review) || null}
-        orders={orders || []}
         open={nestedReviewEditOpen}
         onOpenChange={open => {
           setNestedReviewEditOpen(open);

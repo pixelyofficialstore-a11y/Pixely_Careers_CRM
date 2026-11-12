@@ -52,8 +52,8 @@
   
   --radius: 0.4rem;
   
-  --font-sans: 'DM Sans', sans-serif;
-  --font-display: 'DM Sans', sans-serif;
+  --font-sans: 'DM Sans Variable', 'DM Sans', sans-serif;
+  --font-display: 'DM Sans Variable', 'DM Sans', sans-serif;
   --font-mono: 'Space Mono', monospace;
 }
 

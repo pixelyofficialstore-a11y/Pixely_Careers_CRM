@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, keepPreviousData } from "@tanstack/react-query";
+import { toQueryString } from "@/lib/orders";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { PaymentsSkeleton } from "@/components/PageSkeleton";
@@ -47,6 +48,7 @@ import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/CRMPrimitives";
 import { PaymentStatusBadge } from "@/components/StatusBadge";
 import { ImageDropzone } from "@/components/ImageDropzone";
+import type { OrderPick } from "@/lib/orders";
 
 interface PaymentVerification {
   id: number;
@@ -113,19 +115,49 @@ export default function PaymentsPage() {
   const isAdmin = user?.role === "admin";
   const isDesigner = user?.role === "designer";
 
-  const { data: verifications, isLoading } = useQuery<PaymentVerification[]>({
-    queryKey: ["/api/payment-verifications"],
+  // Server-side filters + pagination (50/page). Live updates arrive over SSE.
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 50;
+  const paymentParams = {
+    page,
+    pageSize: PAGE_SIZE,
+    status: statusFilter,
+    type: typeFilter,
+    role: roleFilter,
+    year: filterYear,
+    month: filterMonth === "all" ? "all" : String(Number(filterMonth) + 1),
+    day: filterDay,
+  };
+  useEffect(() => { setPage(1); }, [statusFilter, typeFilter, roleFilter, filterYear, filterMonth, filterDay]);
+  const { data: paymentPage, isLoading, isFetching } = useQuery<{ rows: PaymentVerification[]; total: number; page: number; pageSize: number }>({
+    queryKey: ["/api/payment-verifications", "list", paymentParams],
+    queryFn: async () => {
+      const res = await fetch(`/api/payment-verifications?${toQueryString(paymentParams)}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+      return res.json();
+    },
+    placeholderData: keepPreviousData,
+  });
+  const totalPayments = paymentPage?.total ?? 0;
+  const totalPaymentPages = Math.max(1, Math.ceil(totalPayments / PAGE_SIZE));
+  const fetchPayment = async (id: number): Promise<PaymentVerification | null> => {
+    const res = await fetch(`/api/payment-verifications/${id}`, { credentials: "include" });
+    return res.ok ? res.json() : null;
+  };
+
+  // Designer's own open orders that still have a balance (server-filtered, max 50).
+  const { data: ordersWithRemaining = [] } = useQuery<OrderPick[]>({
+    queryKey: ["/api/orders/lookup?withBalance=1&limit=50"],
+    enabled: isDesigner,
   });
 
-  const { data: orders } = useQuery<any[]>({
-    queryKey: ["/api/orders"],
-  });
-
+  // ?payment=123 deep links load that one payment from the server.
   useEffect(() => {
-    if (!linkedPaymentId || !verifications) return;
-    const linkedPayment = verifications.find(payment => payment.id === linkedPaymentId);
-    if (linkedPayment) setSelectedPayment(linkedPayment);
-  }, [linkedPaymentId, verifications]);
+    if (!linkedPaymentId) return;
+    let cancelled = false;
+    void fetchPayment(linkedPaymentId).then(payment => { if (!cancelled && payment) setSelectedPayment(payment); });
+    return () => { cancelled = true; };
+  }, [linkedPaymentId]);
 
   const approveMutation = useMutation({
     mutationFn: async ({ id, notes }: { id: number; notes: string }) => {
@@ -144,11 +176,7 @@ export default function PaymentsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/payment-verifications"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       try {
-        const refreshedPayments = await queryClient.fetchQuery<PaymentVerification[]>({
-          queryKey: ["/api/payment-verifications"],
-          staleTime: 0,
-        });
-        const refreshed = refreshedPayments.find(payment => payment.id === variables.id);
+        const refreshed = await fetchPayment(variables.id);
         if (refreshed?.status === "approved") {
           setSelectedPayment(refreshed);
           setShowApproveDialog(false);
@@ -206,10 +234,8 @@ export default function PaymentsPage() {
       const orderId = Number(formData.get("orderId"));
       const amount = Number(formData.get("amount"));
       try {
-        const refreshedPayments = await queryClient.fetchQuery<PaymentVerification[]>({
-          queryKey: ["/api/payment-verifications"],
-          staleTime: 0,
-        });
+        const recent = await fetch("/api/payment-verifications?type=remaining&status=pending_confirmation&pageSize=20", { credentials: "include" });
+        const refreshedPayments: PaymentVerification[] = recent.ok ? (await recent.json()).rows : [];
         const committed = refreshedPayments.some(payment =>
           payment.orderId === orderId &&
           payment.paymentType === "remaining" &&
@@ -231,31 +257,8 @@ export default function PaymentsPage() {
     },
   });
 
-  // Filter verifications — exclude admin-submitted advance/full (admin orders are auto-approved, those are erroneous records)
-  const filteredVerifications = verifications?.filter(v => {
-    // Never show advance/full verifications submitted by admin (they shouldn't exist after server-side block)
-    if (v.submittedBy?.role === 'admin' && (v.paymentType === 'advance' || v.paymentType === 'full')) return false;
-
-    if (statusFilter !== "all" && v.status !== statusFilter) return false;
-    if (typeFilter !== "all" && v.paymentType !== typeFilter) return false;
-    if (roleFilter !== "all" && v.submittedBy?.role !== roleFilter) return false;
-    
-    // Date filters
-    if (filterYear !== "all" || filterMonth !== "all" || filterDay !== "all") {
-      const vDate = new Date(v.createdAt);
-      if (filterYear !== "all" && vDate.getFullYear().toString() !== filterYear) return false;
-      if (filterMonth !== "all" && vDate.getMonth().toString() !== filterMonth) return false;
-      if (filterDay !== "all" && vDate.getDate().toString() !== filterDay) return false;
-    }
-    
-    return true;
-  }) || [];
-
-  // Get orders with remaining balance for designer to submit
-  const ordersWithRemaining = orders?.filter(o => {
-    if (isDesigner && o.assignedToId !== user?.id) return false;
-    return o.status !== "canceled" && (o.remainingAmount || 0) > 0 && o.paymentStatus !== "paid";
-  }) || [];
+  // Filtering (including hiding admin-submitted advance/full records) happens on the server.
+  const filteredVerifications = paymentPage?.rows ?? [];
 
   const getStatusBadge = (status: string) => <PaymentStatusBadge status={status} />;
 
@@ -541,6 +544,16 @@ export default function PaymentsPage() {
           </TableBody>
         </Table>
         </div>
+        {totalPayments > 0 && (
+          <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-800 p-4 text-sm text-slate-400 sm:flex-row" data-testid="payments-pagination">
+            <span>Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalPayments)} of {totalPayments}</span>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1 || isFetching} onClick={() => setPage(p => Math.max(1, p - 1))}>Previous</Button>
+              <span className="tabular-nums">Page {page} of {totalPaymentPages}</span>
+              <Button variant="outline" size="sm" disabled={page >= totalPaymentPages || isFetching} onClick={() => setPage(p => Math.min(totalPaymentPages, p + 1))}>Next</Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Approve Dialog */}

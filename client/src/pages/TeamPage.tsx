@@ -43,7 +43,7 @@ import {
   Palette,
   Link2
 } from "lucide-react";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { User, SupportDesignerAssignment } from "@shared/schema";
 import { useLocation } from "wouter";
@@ -368,8 +368,8 @@ function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
       return;
     }
 
-    if (password.length < 8) {
-      toast({ title: "Error", description: "Password must be at least 8 characters", variant: "destructive" });
+    if (password.length < 10 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+      toast({ title: "Error", description: "Use at least 10 characters with letters and a number. The user will choose their own password at first sign-in.", variant: "destructive" });
       return;
     }
 
@@ -405,7 +405,7 @@ function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
           value={password} 
           onChange={(e) => setPassword(e.target.value)} 
           className="bg-slate-950 border-slate-800 text-white"
-          placeholder="Min 8 characters"
+          placeholder="Temporary password (10+ chars, letters + number)"
           data-testid="input-password"
         />
       </div>
@@ -478,7 +478,7 @@ function EditUserForm({ user, onSuccess }: { user: User; onSuccess: () => void }
       </div>
       <div className="space-y-2">
         <Label className="text-slate-300">Role</Label>
-        <Select value={role} onValueChange={setRole}>
+        <Select value={role} onValueChange={(v) => setRole(v as typeof role)}>
           <SelectTrigger className="bg-slate-950 border-slate-800 text-white" data-testid="select-edit-role">
             <SelectValue />
           </SelectTrigger>
@@ -500,52 +500,54 @@ function EditUserForm({ user, onSuccess }: { user: User; onSuccess: () => void }
 
 function ResetPasswordForm({ user, onSuccess }: { user: User; onSuccess: () => void }) {
   const { toast } = useToast();
-  const [newPassword, setNewPassword] = useState("");
+  const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
 
   const resetMutation = useMutation({
-    mutationFn: async (data: any) => {
-      return apiRequest("PATCH", `/api/users/${user.id}`, data);
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/users/${user.id}/reset-password`);
+      return (await res.json()) as { temporaryPassword: string };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
-      toast({ title: "Success", description: "Password reset successfully" });
-      onSuccess();
+      setTemporaryPassword(data.temporaryPassword);
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to reset password", variant: "destructive" });
+    onError: (error: Error) => {
+      toast({ title: "Error", description: getErrorMessage(error, "Failed to reset password"), variant: "destructive" });
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (newPassword.length < 8) {
-      toast({ title: "Error", description: "Password must be at least 8 characters", variant: "destructive" });
-      return;
-    }
-
-    resetMutation.mutate({ password: newPassword });
-  };
+  if (temporaryPassword) {
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-slate-300">
+          Give this temporary password to <span className="font-semibold text-white">{user.name}</span>. It is shown only once.
+          They will be asked to choose their own password when they sign in, and all their other sessions have been signed out.
+        </p>
+        <div className="flex items-center gap-2">
+          <code className="flex-1 select-all rounded-md border border-slate-800 bg-slate-950 px-3 py-2.5 font-mono text-base text-white" data-testid="text-temp-password">{temporaryPassword}</code>
+          <Button type="button" variant="outline" onClick={() => { navigator.clipboard?.writeText(temporaryPassword).then(() => toast({ title: "Copied" })).catch(() => {}); }}>
+            Copy
+          </Button>
+        </div>
+        <DialogFooter className="pt-2">
+          <Button type="button" className="bg-primary" onClick={() => { setTemporaryPassword(null); onSuccess(); }}>Done</Button>
+        </DialogFooter>
+      </div>
+    );
+  }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label className="text-slate-300">New Password</Label>
-        <Input 
-          type="password"
-          value={newPassword} 
-          onChange={(e) => setNewPassword(e.target.value)} 
-          className="bg-slate-950 border-slate-800 text-white"
-          placeholder="Min 8 characters"
-          data-testid="input-new-password"
-        />
-      </div>
+    <div className="space-y-4">
+      <p className="text-sm text-slate-300">
+        This creates a one-time temporary password for <span className="font-semibold text-white">{user.name}</span>, signs them out everywhere,
+        and asks them to set a new password at their next sign-in.
+      </p>
       <DialogFooter className="pt-4">
-        <Button type="submit" className="bg-primary" disabled={resetMutation.isPending} data-testid="button-reset-password">
+        <Button type="button" className="bg-primary" disabled={resetMutation.isPending} onClick={() => resetMutation.mutate()} data-testid="button-reset-password">
           {resetMutation.isPending ? "Resetting..." : "Reset Password"}
         </Button>
       </DialogFooter>
-    </form>
+    </div>
   );
 }
 

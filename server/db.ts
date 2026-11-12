@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { AsyncLocalStorage } from "node:async_hooks";
 import * as schema from "@shared/schema";
+import { sslConfigFor, stripSslParams } from "./dbSsl";
 
 const { Pool } = pg;
 
@@ -22,8 +23,8 @@ const SLOW_QUERY_MS = Number(process.env.SLOW_QUERY_MS || 200);
 // statements when a query is given a `name`, and nothing here names queries,
 // so it is safe behind Supabase's transaction pooler (port 6543).
 export const pool = new Pool({
-  connectionString: databaseUrl,
-  ssl: databaseUrl.includes("supabase") ? { rejectUnauthorized: false } : undefined,
+  connectionString: stripSslParams(databaseUrl),
+  ssl: sslConfigFor(databaseUrl),
   max: Number(process.env.PG_POOL_MAX || 10),
   idleTimeoutMillis: 20_000,
   connectionTimeoutMillis: 10_000,

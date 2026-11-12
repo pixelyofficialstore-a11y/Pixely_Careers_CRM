@@ -90,7 +90,7 @@ export function ImageDropzone({
 
   useEffect(() => {
     if (!listenForPaste || disabled) return;
-    const handleDocumentPaste = (event: ClipboardEvent) => {
+    const handleDocumentPaste = (event: globalThis.ClipboardEvent) => {
       const imageItem = Array.from(event.clipboardData?.items || []).find(item => item.type.startsWith("image/"));
       const image = imageItem?.getAsFile() || Array.from(event.clipboardData?.files || []).find(file => file.type.startsWith("image/"));
       if (!image) return;

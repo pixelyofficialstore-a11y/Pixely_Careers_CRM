@@ -29,7 +29,7 @@ const allowlist = [
   "stripe",
   "uuid",
   "ws",
-  "xlsx",
+  "helmet",
   "zod",
   "zod-validation-error",
 ];

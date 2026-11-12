@@ -38,17 +38,12 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   const { data: actionableComplaintData } = useQuery<{ count: number }>({
     queryKey: ["/api/complaints/actionable-count"],
     retry: false,
-    refetchInterval: 5000,
-    refetchIntervalInBackground: true,
-    staleTime: 0,
   });
   const canSeeWebsiteRequests = user?.role === "admin" || user?.role === "support";
   const { data: websiteRequestData } = useQuery<{ orders_new: number; reviews_new: number; partners_new: number; awaiting_approval: number }>({
     queryKey: ["/api/website-requests/counts"],
     enabled: canSeeWebsiteRequests,
     retry: false,
-    refetchInterval: 10000,
-    refetchIntervalInBackground: true,
   });
   // Admins also count requests support sent for approval.
   const websiteRequestCount = (websiteRequestData?.orders_new ?? 0) + (websiteRequestData?.reviews_new ?? 0) + (websiteRequestData?.partners_new ?? 0)

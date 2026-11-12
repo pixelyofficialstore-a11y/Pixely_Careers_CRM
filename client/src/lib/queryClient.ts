@@ -19,7 +19,7 @@ export function getErrorMessage(error: unknown, fallback = "Something went wrong
   const body = raw.replace(/^\d{3}:\s*/, "");
   try {
     const parsed = JSON.parse(body);
-    const message = parsed?.error || parsed?.message;
+    const message = parsed?.message || (typeof parsed?.error === "object" ? parsed.error?.message : parsed?.error);
     if (typeof message === "string" && message.trim()) return message;
   } catch {
     // not JSON

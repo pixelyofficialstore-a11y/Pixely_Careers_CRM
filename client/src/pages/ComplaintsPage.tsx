@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { recordExport } from "@/lib/http";
+import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
 import { format } from "date-fns";
 import { AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, ClipboardCheck, Clock, Download, FileWarning, Filter, Loader2, Search, X, XCircle, DollarSign, MessageSquareText } from "lucide-react";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import { complaintCategories, complaintStatuses, type ComplaintHistoryEntry, type ComplaintCategoryConfig, type ComplaintResponse, type ComplaintStats, type OrderWithServices } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -246,31 +245,29 @@ export default function ComplaintsPage() {
   const deepComplaintNumber = new URLSearchParams(window.location.search).get("complaint");
   const [search, setSearch] = useState(""); const [status, setStatus] = useState("all"); const [outcome, setOutcome] = useState(""); const [category, setCategory] = useState("all"); const [designerId, setDesignerId] = useState("all"); const [createOpen, setCreateOpen] = useState(false); const [selectedId, setSelectedId] = useState<number | null>(routeParams?.id ? Number(routeParams.id) : null);
   const now = new Date(); const [month, setMonth] = useState(String(now.getMonth() + 1)); const [year, setYear] = useState(String(now.getFullYear()));
-  const query = new URLSearchParams({ month, year, ...(search || deepComplaintNumber ? { search: search || deepComplaintNumber || "" } : {}), ...(status !== "all" ? { status } : {}), ...(category !== "all" ? { category } : {}), ...(designerId !== "all" ? { designerId } : {}) }).toString();
-  const complaintsUrl = `/api/complaints?${query}`;
+  const query = new URLSearchParams({ month, year, ...(search || deepComplaintNumber ? { search: search || deepComplaintNumber || "" } : {}), ...(status !== "all" ? { status } : {}), ...(category !== "all" ? { category } : {}), ...(designerId !== "all" ? { designerId } : {}), ...(outcome === "refund" ? { outcome } : {}) }).toString();
+  const [page, setPage] = useState(1);
+  const COMPLAINTS_PAGE_SIZE = 50;
+  useEffect(() => { setPage(1); }, [query]);
+  const complaintsUrl = `/api/complaints?${query}&page=${page}&pageSize=${COMPLAINTS_PAGE_SIZE}`;
   const statsUrl = `/api/stats?month=${month}&year=${year}${designerId !== "all" ? `&designerId=${designerId}` : ""}`;
   const fetchJson = async <T,>(url: string): Promise<T> => {
     const response = await fetch(url, { credentials: "include" });
     if (!response.ok) throw new Error(`${response.status}: ${await response.text()}`);
     return response.json();
   };
-  const { data: complaints = [], isLoading, isError, refetch } = useQuery<ComplaintResponse[]>({
-    queryKey: ["/api/complaints", query],
-    queryFn: () => fetchJson<ComplaintResponse[]>(complaintsUrl),
-    refetchInterval: 10000,
-    refetchIntervalInBackground: true,
-    staleTime: 0,
+  const { data: complaintPage, isLoading, isFetching: complaintsFetching, isError, refetch } = useQuery<{ rows: ComplaintResponse[]; total: number }>({
+    queryKey: ["/api/complaints", query, page],
+    queryFn: () => fetchJson<{ rows: ComplaintResponse[]; total: number }>(complaintsUrl),
+    placeholderData: keepPreviousData,
   });
   const { data: statsResponse } = useQuery<{ complaints: ComplaintStats }>({
     queryKey: ["/api/stats", statsUrl],
     queryFn: () => fetchJson<{ complaints: ComplaintStats }>(statsUrl),
-    refetchInterval: 10000,
-    refetchIntervalInBackground: true,
-    staleTime: 0,
   });
   const { data: categories = [] } = useQuery<ComplaintCategoryConfig[]>({ queryKey: ["/api/complaint-categories"], staleTime: 300000 });
   const { data: teamMembers = [] } = useQuery<{ id: number; name: string; role: string; isActive: boolean }[]>({ queryKey: ["/api/users"], enabled: user?.role === "admin" || user?.role === "support", staleTime: 300000 });
-  const { data: orders = [] } = useQuery<OrderWithServices[]>({ queryKey: ["/api/orders"], enabled: user?.role === "admin" || user?.role === "support" });
+  const complaints = complaintPage?.rows ?? [];
   const stats = statsResponse?.complaints; const isAdmin = user?.role === "admin"; const canCreate = isAdmin || user?.role === "support";
   const categoryOptions = categories.length ? categories.filter(c => c.isActive) : complaintCategories.map(key => ({ key, label: complaintCategoryLabels[key] }));
   const cards = [
@@ -281,10 +278,10 @@ export default function ComplaintsPage() {
     { key: "resolved", label: "Resolved", value: stats?.resolved ?? complaints.filter(c => c.status === "resolved").length, icon: ClipboardCheck, iconClass: "bg-emerald-500/10 text-emerald-400", testId: "stat-complaints-resolved" },
     { key: "refund", label: "Refund", value: stats?.refund ?? complaints.filter(c => c.resolutionOutcome === "refund").length, icon: DollarSign, iconClass: "bg-violet-500/10 text-violet-400", testId: "stat-complaints-refund" },
   ];
-  const filteredComplaints = useMemo(
-    () => outcome === "refund" ? complaints.filter(complaint => complaint.resolutionOutcome === "refund") : complaints,
-    [complaints, outcome],
-  );
+  // Refund-outcome filter and paging are applied on the server.
+  const filteredComplaints = complaints;
+  const complaintTotal = complaintPage?.total ?? 0;
+  const complaintPages = Math.max(1, Math.ceil(complaintTotal / COMPLAINTS_PAGE_SIZE));
   const [deepLinkMessage, setDeepLinkMessage] = useState<string | null>(null);
   useEffect(() => {
     if (!deepComplaintNumber || isLoading) return;
@@ -304,7 +301,11 @@ export default function ComplaintsPage() {
     setMonth(String(now.getMonth() + 1));
     setYear(String(now.getFullYear()));
   };
-  const exportComplaintsPDF = () => {
+  const exportComplaintsPDF = async () => {
+    // Export covers every matching complaint, not just the visible page.
+    const exportList = await fetchJson<ComplaintResponse[]>(`/api/complaints?${query}`);
+    // jsPDF is ~400 KB; load it only when exporting.
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
     const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth();
     const marginX = 32;
@@ -332,8 +333,8 @@ export default function ComplaintsPage() {
     doc.setFontSize(8.5);
     doc.text(`Generated ${format(new Date(), "MMM dd, yyyy · h:mm a")}`, pageWidth - marginX, 68, { align: "right" });
 
-    const rows = filteredComplaints.length > 0
-      ? filteredComplaints.map(complaint => [
+    const rows = exportList.length > 0
+      ? exportList.map(complaint => [
         complaint.complaintNumber,
         complaint.orderNumber || `#${complaint.orderId}`,
         complaint.clientName || "Not Specified",
@@ -373,6 +374,7 @@ export default function ComplaintsPage() {
 
     const suffix = `${year}-${String(month).padStart(2, "0")}`;
     doc.save(`complaints-${suffix}.pdf`);
+    void recordExport("complaints list", "pdf");
   };
   const complaintTableHead = (
     <TableHeader className="bg-slate-900/50">
@@ -455,7 +457,7 @@ export default function ComplaintsPage() {
      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-6">{cards.map(card => <CRMMetricCard key={card.key} label={card.label} value={card.value} icon={card.icon} testId={card.testId} tone={card.key === "new" || card.key === "confirmed" ? "warning" : card.key === "resolved" ? "success" : card.key === "refund" ? "danger" : "cyan"} />)}</div>
      {isLoading ? <div className="glass-panel p-16 text-center"><Loader2 className="mx-auto animate-spin text-cyan-300" /></div> : isError ? <div className="glass-panel p-12 text-center"><AlertTriangle className="mx-auto mb-3 text-rose-400" /><p className="text-white">Could not load complaints</p><Button variant="outline" className="mt-4" onClick={() => refetch()}>Try Again</Button></div> : !filteredComplaints.length ? <div className="crm-section"><EmptyState title="No complaints found" description="Try another month or filter." icon={ClipboardCheck} /></div> : <div className="crm-section">
       <div className="flex flex-col items-start justify-between gap-4 border-b border-slate-800 p-6 sm:flex-row sm:items-center">
-        <div><h3 className="text-lg font-bold text-white">Complaints</h3><p className="text-sm text-slate-500">{filteredComplaints.length} complaint{filteredComplaints.length === 1 ? "" : "s"} for {format(new Date(Number(year), Number(month) - 1, 1), "MMMM yyyy")}</p></div>
+        <div><h3 className="text-lg font-bold text-white">Complaints</h3><p className="text-sm text-slate-500">{complaintTotal} complaint{complaintTotal === 1 ? "" : "s"} for {format(new Date(Number(year), Number(month) - 1, 1), "MMMM yyyy")}</p></div>
         <div className="flex flex-wrap gap-2">
           <Select value={year} onValueChange={setYear}><SelectTrigger className="w-24 bg-slate-900 text-white" data-testid="select-year"><SelectValue /></SelectTrigger><SelectContent className="bg-slate-900 border-slate-800 text-white">{[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(v => <SelectItem key={v} value={String(v)}>{v}</SelectItem>)}</SelectContent></Select>
           <Select value={month} onValueChange={setMonth}><SelectTrigger className="w-36 bg-slate-900 text-white" data-testid="select-month"><CalendarDays className="mr-2 h-4 w-4" /><SelectValue /></SelectTrigger><SelectContent className="bg-slate-900 border-slate-800 text-white">{Array.from({ length: 12 }, (_, i) => <SelectItem key={i + 1} value={String(i + 1)}>{format(new Date(2024, i, 1), "MMMM")}</SelectItem>)}</SelectContent></Select>
@@ -463,7 +465,8 @@ export default function ComplaintsPage() {
         </div>
       </div>
       <div className="table-scroll-wrapper"><Table className="min-w-[980px]">{complaintTableHead}<TableBody>{filteredComplaints.map(renderComplaintRow)}</TableBody></Table></div>
+      {complaintTotal > COMPLAINTS_PAGE_SIZE && <div className="flex items-center justify-between gap-3 border-t border-slate-800 p-4 text-sm text-slate-400" data-testid="complaints-pagination"><span>Showing {(page - 1) * COMPLAINTS_PAGE_SIZE + 1}–{Math.min(page * COMPLAINTS_PAGE_SIZE, complaintTotal)} of {complaintTotal}</span><div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={page <= 1 || complaintsFetching} onClick={() => setPage(p => Math.max(1, p - 1))}>Previous</Button><span className="tabular-nums">Page {page} of {complaintPages}</span><Button variant="outline" size="sm" disabled={page >= complaintPages || complaintsFetching} onClick={() => setPage(p => Math.min(complaintPages, p + 1))}>Next</Button></div></div>}
     </div>}
-    <ComplaintDetails id={selectedId} open={selectedId !== null} onOpenChange={open => { if (!open) { setSelectedId(null); setLocation("/complaints"); } }} /><ComplaintDialog order={null} orders={orders} open={createOpen} onOpenChange={setCreateOpen} />
+    <ComplaintDetails id={selectedId} open={selectedId !== null} onOpenChange={open => { if (!open) { setSelectedId(null); setLocation("/complaints"); } }} /><ComplaintDialog order={null} pickOrder open={createOpen} onOpenChange={setCreateOpen} />
   </div>;
 }

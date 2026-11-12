@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Loader2, X } from "lucide-react";
 import { complaintCategories, type ComplaintCategoryConfig, type OrderWithServices } from "@shared/schema";
@@ -10,6 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ImageDropzone } from "@/components/ImageDropzone";
+import { OrderPicker, toOrderPick } from "@/components/OrderPicker";
+import type { OrderPick } from "@/lib/orders";
 
 export const complaintCategoryLabels: Record<(typeof complaintCategories)[number], string> = {
   communication_issue: "Communication Issue", slow_response: "Slow Response", delivery_delay: "Delivery Delay",
@@ -18,24 +20,23 @@ export const complaintCategoryLabels: Record<(typeof complaintCategories)[number
   unprofessional_behavior: "Unprofessional Behavior", process_policy_violation: "Process / Policy Violation",
   unauthorized_commitment: "Unauthorized Commitment", other: "Other",
 };
-type Props = { order: OrderWithServices | null; orders?: OrderWithServices[]; open: boolean; onOpenChange: (open: boolean) => void };
+/** Pass `order` to file against that order, or `pickOrder` to let the user search for one. */
+type Props = { order: OrderWithServices | null; pickOrder?: boolean; open: boolean; onOpenChange: (open: boolean) => void };
 const errorText = (error: Error) => error.message.match(/"message":"([^"]+)"/)?.[1] || "Check the complaint details and try again.";
 
-export function ComplaintDialog({ order, orders = [], open, onOpenChange }: Props) {
+export function ComplaintDialog({ order, pickOrder = false, open, onOpenChange }: Props) {
   const { toast } = useToast();
-  const [selectedOrderId, setSelectedOrderId] = useState(order ? String(order.id) : "");
+  const [selectedOrder, setSelectedOrder] = useState<OrderPick | null>(order ? toOrderPick(order) : null);
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
   const [evidencePreviews, setEvidencePreviews] = useState<string[]>([]);
   const { data: categoryConfigs = [] } = useQuery<ComplaintCategoryConfig[]>({ queryKey: ["/api/complaint-categories"], staleTime: 300000 });
   const availableCategories = categoryConfigs.length ? categoryConfigs.filter(item => item.isActive) : complaintCategories.map((key, i) => ({ id: -i - 1, key, label: complaintCategoryLabels[key], isActive: true, sortOrder: i, createdAt: null }));
-  const eligibleOrders = useMemo(() => orders.filter(item => item.assignedToId), [orders]);
-  const selectedOrder = order && !orders.length ? order : eligibleOrders.find(item => String(item.id) === selectedOrderId) || null;
 
   useEffect(() => {
     if (!open) return;
-    setSelectedOrderId(order ? String(order.id) : "");
+    setSelectedOrder(order ? toOrderPick(order) : null);
     setCategory(""); setDescription("");
     setEvidencePreviews(previous => { previous.forEach(URL.revokeObjectURL); return []; });
     setEvidenceFiles([]);
@@ -91,9 +92,9 @@ export function ComplaintDialog({ order, orders = [], open, onOpenChange }: Prop
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="bg-slate-900 border-slate-800 text-white sm:max-w-lg max-h-[90vh] overflow-y-auto">
     <DialogHeader><DialogTitle>New Complaint</DialogTitle><DialogDescription className="text-slate-400">Link a clear account of the issue to an assigned order.</DialogDescription></DialogHeader>
     <div className="space-y-5 py-2">
-      {orders.length > 0 && <div className="space-y-2"><Label htmlFor="complaint-order">Order</Label><Select value={selectedOrderId} onValueChange={setSelectedOrderId}><SelectTrigger id="complaint-order" className="bg-slate-950 border-slate-700"><SelectValue placeholder="Select an eligible order" /></SelectTrigger><SelectContent>{eligibleOrders.map(item => <SelectItem key={item.id} value={String(item.id)}>#{item.orderNumber || item.id} · {item.clientName} · {item.assignee?.name || "Assigned designer"}</SelectItem>)}</SelectContent></Select></div>}
+      {pickOrder && <div className="space-y-2"><Label htmlFor="complaint-order">Order</Label><OrderPicker id="complaint-order" value={selectedOrder} onChange={setSelectedOrder} assignedOnly /></div>}
        {!selectedOrder ? <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200 flex gap-3"><AlertTriangle className="w-5 h-5 shrink-0" />Select an eligible order with an assigned designer.</div> :
-           <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-300">Complaint against <span className="font-medium text-white">{selectedOrder.assignee?.name || "Assigned designer"}</span><span className="ml-1 text-xs text-slate-500">(Designer)</span></div>}
+           <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-300">Complaint against <span className="font-medium text-white">{selectedOrder.assigneeName || "Assigned designer"}</span><span className="ml-1 text-xs text-slate-500">(Designer)</span></div>}
       <div className="space-y-2"><Label htmlFor="complaint-category">Category</Label><Select value={category} onValueChange={setCategory}><SelectTrigger id="complaint-category" className="bg-slate-950 border-slate-700"><SelectValue placeholder="Select a category" /></SelectTrigger><SelectContent>{availableCategories.map(item => <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>)}</SelectContent></Select></div>
       <div className="space-y-2"><Label htmlFor="complaint-description">Description</Label><Textarea id="complaint-description" value={description} onChange={e => setDescription(e.target.value)} placeholder="Describe what happened and include the relevant facts." rows={5} maxLength={5000} className="bg-slate-950 border-slate-700 resize-none" /><p className="text-xs text-slate-500">{description.length}/5000</p></div>
        <div className="space-y-3"><Label>Evidence <span className="text-slate-500">(optional · up to 5 images)</span></Label>

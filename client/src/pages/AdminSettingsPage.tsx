@@ -36,7 +36,9 @@ import {
   EyeOff,
   Globe,
   FileWarning,
+  Shield,
 } from "lucide-react";
+import SecuritySettings from "@/components/SecuritySettings";
 import type { ServiceCatalogItem, PackageConfig, PlatformCatalogItem, ComplaintCategoryConfig } from "@shared/schema";
 import { PageHeader } from "@/components/CRMPrimitives";
 
@@ -52,7 +54,7 @@ export default function AdminSettingsPage() {
 
   return (
     <div className="crm-page admin-settings-page space-y-5">
-      <PageHeader eyebrow="System configuration" title="Admin Settings" description="Manage services, marketing platforms, and complaint categories." />
+      <PageHeader eyebrow="System configuration" title="Admin Settings" description="Manage services, marketing platforms, complaint categories and security." />
 
       <Tabs defaultValue="services" className="space-y-5">
         <TabsList className="w-full justify-start overflow-x-auto sm:w-fit">
@@ -68,6 +70,10 @@ export default function AdminSettingsPage() {
             <FileWarning className="w-4 h-4" />
             Complaint Categories
           </TabsTrigger>
+          <TabsTrigger value="security" className="gap-2">
+            <Shield className="w-4 h-4" />
+            Security
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="services">
@@ -80,6 +86,10 @@ export default function AdminSettingsPage() {
 
         <TabsContent value="complaints">
           <ComplaintCategoriesSection />
+        </TabsContent>
+
+        <TabsContent value="security">
+          <SecuritySettings />
         </TabsContent>
       </Tabs>
     </div>

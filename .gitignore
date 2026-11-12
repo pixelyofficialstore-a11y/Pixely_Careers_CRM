@@ -35,3 +35,18 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.swp
+
+# Sensitive / leftover files (removed from git in the rebuild; never commit again)
+attached_assets/*.zip
+*export*.json
+uploads/*
+!uploads/avatars/
+screenshots/
+replit.md
+do_restore.mjs
+Fake
+.claude/*
+!.claude/launch.json
+backups/
+*.dump
+*.sql.gz

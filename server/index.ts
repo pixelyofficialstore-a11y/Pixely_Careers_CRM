@@ -1,11 +1,12 @@
 import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
+import { detectSchemaCompat } from "./schemaCompat";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { seedDatabase } from "./seed";
-import { startCleanupJob } from "./cleanup";
-import { runMigrations } from "./migrate";
+import { applySecurityHeaders } from "./security/headers";
+import { apiErrorFormat, errorBody } from "./security/errors";
+import { ZodError } from "zod";
 import { pool, requestContext } from "./db";
 import path from "path";
 import fs from "fs";
@@ -17,7 +18,14 @@ process.on("unhandledRejection", (reason) => {
   console.error("[unhandledRejection]", reason);
 });
 
+// Refuse to boot without a strong session secret (checked before listening).
+if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) {
+  console.error("[startup] SESSION_SECRET must be set (at least 32 characters). Refusing to start.");
+  process.exit(1);
+}
+
 const app = express();
+app.disable("x-powered-by");
 const httpServer = createServer(app);
 
 // Tag every request so slow-query logs show which route ran the SQL.
@@ -29,15 +37,20 @@ declare module "http" {
   }
 }
 
+applySecurityHeaders(app);
+// Every /api error response uses { error: { code, message } }.
+app.use(apiErrorFormat);
+
 app.use(
   express.json({
+    limit: "1mb",
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
   }),
 );
 
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: false, limit: "100kb" }));
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -108,19 +121,24 @@ httpServer.listen(
 );
 
 (async () => {
-  // Run schema migrations before anything else touches the DB
-  await runMigrations();
-  await seedDatabase();
-  // Disabled for local dev against the live Supabase DB — startCleanupJob() deletes
-  // notifications/payment_verifications older than 5 days. Do not re-enable without
-  // explicit confirmation; this must never run unintentionally against real data.
-  // startCleanupJob();
+  // No schema changes or seeding at boot (Rule 0): schema changes are reviewed SQL
+  // files in migrations/, applied manually with scripts/apply-migration.ts.
+
+  await detectSchemaCompat();
 
   // Register all API routes
   await registerRoutes(httpServer, app);
 
+  // Unknown API paths return JSON 404 (never the SPA page).
+  app.use("/api", (_req, res) => res.status(404).json(errorBody(404)));
+
   app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
+    if (err instanceof ZodError) {
+      return res.status(400).json(errorBody(400, err.issues[0]?.message || "Invalid request.", "VALIDATION_ERROR"));
+    }
+    if (err?.type === "entity.too.large") return res.status(413).json(errorBody(413, "Request is too large."));
+    if (err?.type === "entity.parse.failed") return res.status(400).json(errorBody(400, "Invalid JSON body."));
+    const status = Number(err.status || err.statusCode) || 500;
     const user = (req as any).user as { id?: number; username?: string; role?: string } | undefined;
     // One structured line per failure so it can be found in the Railway logs.
     console.error(
@@ -132,11 +150,8 @@ httpServer.listen(
       return next(err);
     }
 
-    // Never leak SQL/internal details to the browser for 5xx errors.
-    const message = status >= 500
-      ? "Server error - the action may not have completed. Please refresh and check before retrying."
-      : (err.message || "Request failed");
-    return res.status(status).json({ message, error: message });
+    // Never leak SQL/stack/internal details to the browser for 5xx errors.
+    return res.status(status).json(errorBody(status, status >= 500 ? undefined : err.message));
   });
 
   if (process.env.NODE_ENV === "production") {
