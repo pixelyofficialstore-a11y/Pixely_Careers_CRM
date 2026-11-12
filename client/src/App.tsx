@@ -9,6 +9,7 @@ import ChangePasswordScreen from "@/components/ChangePasswordScreen";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { Layout } from "@/components/Layout";
 import { Loader2 } from "lucide-react";
+import { ThemeProvider } from "@/lib/theme";
 
 const AuthPage = lazy(() => import("@/pages/AuthPage"));
 const DashboardPage = lazy(() => import("@/pages/DashboardPage"));
@@ -20,6 +21,7 @@ const AdminSettingsPage = lazy(() => import("@/pages/AdminSettingsPage"));
 const ComplaintsPage = lazy(() => import("@/pages/ComplaintsPage"));
 const FeedbackPage = lazy(() => import("@/pages/FeedbackPage"));
 const WebsiteRequestsPage = lazy(() => import("@/pages/WebsiteRequestsPage"));
+const BoardPage = lazy(() => import("@/pages/BoardPage"));
 const NotificationSettingsPage = lazy(() => import("@/pages/NotificationSettingsPage"));
 
 // Heavy pages (Orders, Analytics charts, ...) are code-split and loaded on first visit.
@@ -42,8 +44,8 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-950">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -76,6 +78,13 @@ function Router() {
         <ProtectedRoute>
           <Layout>
             <PageSuspense><OrdersPage /></PageSuspense>
+          </Layout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/board">
+        <ProtectedRoute>
+          <Layout>
+            <PageSuspense><BoardPage /></PageSuspense>
           </Layout>
         </ProtectedRoute>
       </Route>
@@ -147,14 +156,23 @@ function Router() {
   );
 }
 
+function ThemedApp() {
+  const { user } = useAuth();
+  return (
+    <ThemeProvider userId={user?.id ?? null}>
+      <TooltipProvider>
+        <Toaster />
+        <Router />
+      </TooltipProvider>
+    </ThemeProvider>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Router />
-        </TooltipProvider>
+        <ThemedApp />
       </AuthProvider>
     </QueryClientProvider>
   );

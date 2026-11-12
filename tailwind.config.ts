@@ -1,5 +1,10 @@
 import type { Config } from "tailwindcss";
 
+/** Tailwind palette names → theme-aware CSS variables (see scripts/gen-theme-css.mjs). */
+const SHADES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950] as const;
+const ramp = (name: string) => Object.fromEntries(SHADES.map((s) => [s, `rgb(var(--${name}-${s}) / <alpha-value>)`]));
+const ink = ramp("ink"), brand = ramp("primary"), ok = ramp("success"), warn = ramp("warning"), bad = ramp("danger");
+
 export default {
   darkMode: ["class"],
   content: ["./client/index.html", "./client/src/**/*.{js,jsx,ts,tsx}"],
@@ -11,6 +16,21 @@ export default {
         sm: ".1875rem", /* 3px */
       },
       colors: {
+        // Legacy palette classes follow the theme.
+        slate: ink, gray: ink, zinc: ink, neutral: ink,
+        cyan: brand, blue: brand, sky: brand, indigo: brand,
+        emerald: ok, green: ok, teal: ok,
+        amber: warn, yellow: warn, orange: warn,
+        rose: bad, red: bad,
+        white: "rgb(var(--ink-50) / <alpha-value>)",
+        "on-color": "hsl(var(--primary-foreground) / <alpha-value>)",
+        ink, brand,
+        "brand-cyan": "hsl(var(--brand-cyan) / <alpha-value>)",
+        gold: "hsl(var(--gold) / <alpha-value>)",
+        success: "hsl(var(--success) / <alpha-value>)",
+        warning: "hsl(var(--warning) / <alpha-value>)",
+        danger: "hsl(var(--danger) / <alpha-value>)",
+        "page-tint": "hsl(var(--page-tint) / <alpha-value>)",
         // Flat / base colors (regular buttons)
         background: "hsl(var(--background) / <alpha-value>)",
         foreground: "hsl(var(--foreground) / <alpha-value>)",
@@ -110,10 +130,15 @@ export default {
       },
       fontFamily: {
         sans: ["var(--font-sans)"],
+        display: ["var(--font-display)"],
         serif: ["var(--font-serif)"],
         mono: ["var(--font-mono)"],
       },
+      height: { control: "var(--control-h)" },
+      minHeight: { control: "var(--control-h)", touch: "44px" },
       keyframes: {
+        shimmer: { "100%": { transform: "translateX(100%)" } },
+        "fade-in": { from: { opacity: "0", transform: "translateY(4px)" }, to: { opacity: "1", transform: "none" } },
         "accordion-down": {
           from: { height: "0" },
           to: { height: "var(--radix-accordion-content-height)" },
@@ -126,6 +151,7 @@ export default {
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "fade-in": "fade-in 180ms ease-out both",
       },
     },
   },

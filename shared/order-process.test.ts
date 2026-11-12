@@ -86,3 +86,13 @@ test("due date: stored on new orders, computed for old ones; overdue only while 
   assert.equal(isOverdue("request", computed, now), false);
   assert.equal(isOverdue("in_progress", stored, now), false);
 });
+
+test("board drag targets follow role rules", async () => {
+  const { allowedWorkTargets } = await import("./order-process");
+  assert.deepEqual(allowedWorkTargets("designer", "in_progress", false), ["confirmed", "in_progress", "draft_sent"]);
+  assert.ok(allowedWorkTargets("designer", "revisions", true).includes("delivered"));
+  assert.deepEqual(allowedWorkTargets("designer", "delivered", true), []);
+  assert.ok(!allowedWorkTargets("admin", "in_progress", false).includes("delivered"));
+  assert.ok(allowedWorkTargets("support", "in_progress", true).includes("revisions"));
+  assert.deepEqual(allowedWorkTargets("admin", "request", true), []);
+});

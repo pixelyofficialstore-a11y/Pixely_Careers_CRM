@@ -139,6 +139,18 @@ export default function PaymentsPage() {
     },
     placeholderData: keepPreviousData,
   });
+  // Verification queue (admin): every payment still waiting, oldest first.
+  const queueParams = { page: 1, pageSize: 50, status: "pending_confirmation", type: "all", role: "all", year: "all", month: "all", day: "all" };
+  const { data: queuePage, isLoading: queueLoading } = useQuery<{ rows: PaymentVerification[]; total: number }>({
+    queryKey: ["/api/payment-verifications", "queue"],
+    queryFn: async () => {
+      const res = await fetch(`/api/payment-verifications?${toQueryString(queueParams)}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+      return res.json();
+    },
+    enabled: isAdmin,
+  });
+  const verifyQueue = [...(queuePage?.rows ?? [])].sort((a, b) => String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? "")));
   const totalPayments = paymentPage?.total ?? 0;
   const totalPaymentPages = Math.max(1, Math.ceil(totalPayments / PAGE_SIZE));
   const fetchPayment = async (id: number): Promise<PaymentVerification | null> => {
@@ -307,7 +319,7 @@ export default function PaymentsPage() {
   return (
     <div className="crm-page space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <PageHeader eyebrow="Financial operations" title="Payment Verification" testId="text-payments-title" description={isAdmin ? "Review and approve payment requests from the team." : "View status of your submitted payment requests."} />
+        <PageHeader title="Payments" testId="text-payments-title" />
 
         {isDesigner && ordersWithRemaining.length > 0 && (
           <Dialog open={showSubmitDialog} onOpenChange={setShowSubmitDialog}>
@@ -331,14 +343,14 @@ export default function PaymentsPage() {
                     <SelectContent className="bg-slate-900 border-slate-800 text-white">
                       {ordersWithRemaining.map(o => (
                         <SelectItem key={o.id} value={o.id.toString()}>
-                          {o.orderNumber} - {o.clientName} (₨{Math.round((o.remainingAmount || 0) / 100).toLocaleString()} remaining)
+                          {o.orderNumber} - {o.clientName} (Rs {Math.round((o.remainingAmount || 0) / 100).toLocaleString()} remaining)
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-slate-300">Amount (₨)</Label>
+                  <Label className="text-slate-300">Amount (Rs )</Label>
                   <Input 
                     type="number" 
                     value={remainingAmount} 
@@ -367,9 +379,59 @@ export default function PaymentsPage() {
         )}
       </div>
 
+      {isAdmin && (
+        <section aria-labelledby="verify-heading" className="space-y-3">
+          <h2 id="verify-heading" className="flex items-center gap-2 text-base font-semibold text-slate-200">
+            To verify
+            <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", verifyQueue.length ? "bg-amber-500/15 text-amber-400" : "bg-[hsl(var(--surface-3))] text-slate-400")}>{queuePage?.total ?? 0}</span>
+          </h2>
+          {queueLoading ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{[0, 1, 2].map(i => <div key={i} className="skeleton h-80 rounded-xl" />)}</div>
+          ) : verifyQueue.length === 0 ? (
+            <p className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-6 text-sm text-slate-500"><CheckCircle2 className="h-4 w-4 text-emerald-400" />No payments waiting for verification.</p>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {verifyQueue.map(payment => (
+                <article key={payment.id} className="flex flex-col overflow-hidden rounded-xl border border-border bg-card animate-fade-in" data-testid={`verify-card-${payment.id}`}>
+                  {payment.screenshotUrl ? (
+                    <a href={payment.screenshotUrl} target="_blank" rel="noopener noreferrer" className="block bg-[hsl(var(--surface-2))]" aria-label="Open screenshot full size">
+                      <img src={payment.screenshotUrl} alt={`Payment screenshot for ${payment.order?.orderNumber || "request"}`} loading="lazy" className="h-64 w-full object-contain" />
+                    </a>
+                  ) : (
+                    <div className="flex h-64 items-center justify-center bg-[hsl(var(--surface-2))] text-sm text-slate-500">No screenshot</div>
+                  )}
+                  <div className="flex flex-1 flex-col gap-3 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        {payment.order?.orderNumber
+                          ? <button className="font-mono text-sm font-semibold text-primary hover:underline" onClick={() => setLocation(`/orders?order=${encodeURIComponent(payment.order!.orderNumber)}`)}>{payment.order.orderNumber}</button>
+                          : <p className="font-mono text-sm font-semibold text-amber-400">Request #{payment.id}</p>}
+                        <p className="truncate text-sm font-medium text-slate-200">{payment.order?.clientName || "—"}</p>
+                      </div>
+                      <p className="shrink-0 text-lg font-semibold tabular-nums text-slate-100">Rs {Math.round((payment.amount || 0) / 100).toLocaleString("en-PK")}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                      {getTypeBadge(payment.paymentType)}
+                      <span>{payment.submittedBy?.name || "Unknown"}</span>
+                      <span>·</span>
+                      <span>{payment.createdAt ? format(new Date(payment.createdAt), "MMM d, h:mm a") : "—"}</span>
+                    </div>
+                    <div className="mt-auto grid grid-cols-2 gap-2">
+                      <Button onClick={() => handleApprove(payment)} className="bg-success text-on-color hover:bg-success/90" data-testid={`button-approve-${payment.id}`}><CheckCircle2 className="h-4 w-4" />Approve</Button>
+                      <Button variant="outline" onClick={() => handleDisapprove(payment)} className="text-rose-400 hover:bg-rose-500/10 hover:text-rose-400" data-testid={`button-disapprove-${payment.id}`}><XCircle className="h-4 w-4" />Disapprove</Button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+          <h2 className="pt-2 text-base font-semibold text-slate-200">History</h2>
+        </section>
+      )}
+
       {/* Filters - Admin only */}
       {isAdmin && (
-        <div className="flex flex-wrap gap-4 p-4 bg-slate-900/50 rounded-xl border border-slate-800">
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3">
           <div className="flex items-center gap-2">
             <Filter className="w-4 h-4 text-slate-500" />
             <span className="text-sm text-slate-400">Filters:</span>
@@ -408,7 +470,7 @@ export default function PaymentsPage() {
           </Select>
           
           {/* Date Filters */}
-          <div className="flex items-center gap-2 border-l border-slate-700 pl-4 ml-2">
+          <div className="flex flex-wrap items-center gap-2 sm:ml-2 sm:border-l sm:border-border sm:pl-4">
             <span className="text-sm text-slate-400">Date:</span>
             <Select value={filterMonth} onValueChange={setFilterMonth}>
               <SelectTrigger className="w-32 bg-slate-950 border-slate-800 text-white" data-testid="select-filter-month">
@@ -422,7 +484,7 @@ export default function PaymentsPage() {
               </SelectContent>
             </Select>
             <Select value={filterDay} onValueChange={setFilterDay}>
-              <SelectTrigger className="w-24 bg-slate-950 border-slate-800 text-white" data-testid="select-filter-day">
+              <SelectTrigger className="w-28" data-testid="select-filter-day">
                 <SelectValue placeholder="Day" />
               </SelectTrigger>
               <SelectContent className="bg-slate-900 border-slate-800 text-white">
@@ -448,8 +510,32 @@ export default function PaymentsPage() {
       )}
 
       {/* Payment Requests Table */}
-      <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
-        <div className="table-scroll-wrapper">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
+        {/* Phones: cards */}
+        <ul className="divide-y divide-[hsl(var(--border))] md:hidden" data-testid="payments-cards">
+          {filteredVerifications.map(payment => (
+            <li key={payment.id} className="space-y-2 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  {payment.order?.orderNumber
+                    ? <button className="font-mono text-xs font-semibold text-primary" onClick={() => setLocation(`/orders?order=${encodeURIComponent(payment.order!.orderNumber)}`)}>{payment.order.orderNumber}</button>
+                    : <p className="font-mono text-xs font-semibold text-amber-400">#{payment.id}</p>}
+                  <p className="truncate text-sm font-semibold text-slate-100">{payment.order?.clientName || "—"}</p>
+                </div>
+                <p className="shrink-0 font-semibold tabular-nums text-slate-100">Rs {Math.round((payment.amount || 0) / 100).toLocaleString("en-PK")}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                {getTypeBadge(payment.paymentType)}
+                {getStatusBadge(payment.status)}
+                <span>{payment.submittedBy?.name || "Unknown"}</span>
+                <span>· {payment.createdAt ? format(new Date(payment.createdAt), "MMM d, h:mm a") : "—"}</span>
+                {payment.screenshotUrl && <a href={payment.screenshotUrl} target="_blank" rel="noopener noreferrer" className="ml-auto flex min-h-touch items-center gap-1 text-primary"><Eye className="h-4 w-4" />Screenshot</a>}
+              </div>
+            </li>
+          ))}
+          {filteredVerifications.length === 0 && <li className="p-8 text-center text-sm text-slate-500">No payment requests found</li>}
+        </ul>
+        <div className="table-scroll-wrapper hidden md:block">
         <Table className="min-w-[1040px]">
           <TableHeader className="bg-slate-900/50">
             <TableRow className="border-slate-800">
@@ -480,7 +566,7 @@ export default function PaymentsPage() {
                 </TableCell>
                 <TableCell className="whitespace-nowrap">{getTypeBadge(payment.paymentType)}</TableCell>
                 <TableCell className="whitespace-nowrap text-white font-medium">
-                  ₨{Math.round((payment.amount || 0) / 100).toLocaleString()}
+                  Rs {Math.round((payment.amount || 0) / 100).toLocaleString()}
                 </TableCell>
                 <TableCell className="whitespace-nowrap">
                   {payment.screenshotUrl ? (
@@ -510,7 +596,7 @@ export default function PaymentsPage() {
                           variant="ghost" 
                           className="text-green-500 hover:text-green-400 hover:bg-green-500/10"
                           onClick={() => handleApprove(payment)}
-                          data-testid={`button-approve-${payment.id}`}
+                          data-testid={`button-approve-row-${payment.id}`}
                         >
                           <CheckCircle2 className="w-4 h-4 mr-1" />
                           Approve
@@ -520,7 +606,7 @@ export default function PaymentsPage() {
                           variant="ghost" 
                           className="text-red-500 hover:text-red-400 hover:bg-red-500/10"
                           onClick={() => handleDisapprove(payment)}
-                          data-testid={`button-disapprove-${payment.id}`}
+                          data-testid={`button-disapprove-row-${payment.id}`}
                         >
                           <XCircle className="w-4 h-4 mr-1" />
                           Disapprove
@@ -568,7 +654,7 @@ export default function PaymentsPage() {
               <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-2">
                 <p className="text-sm text-slate-400">Request: <span className="text-white font-mono">{selectedPayment.order?.orderNumber || `#${selectedPayment.id}`}</span></p>
                 <p className="text-sm text-slate-400">Client: <span className="text-white">{selectedPayment.order?.clientName || "—"}</span></p>
-                <p className="text-sm text-slate-400">Amount: <span className="text-green-400 font-bold">₨{Math.round((selectedPayment.amount || 0) / 100).toLocaleString()}</span></p>
+                <p className="text-sm text-slate-400">Amount: <span className="text-green-400 font-bold">Rs {Math.round((selectedPayment.amount || 0) / 100).toLocaleString()}</span></p>
                 <p className="text-sm text-slate-400">Type: <span className="text-white capitalize">{selectedPayment.paymentType}</span></p>
               </div>
             )}
@@ -607,7 +693,7 @@ export default function PaymentsPage() {
               <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-2">
                 <p className="text-sm text-slate-400">Request: <span className="text-white font-mono">{selectedPayment.order?.orderNumber || `#${selectedPayment.id}`}</span></p>
                 <p className="text-sm text-slate-400">Client: <span className="text-white">{selectedPayment.order?.clientName || "—"}</span></p>
-                <p className="text-sm text-slate-400">Amount: <span className="text-red-400 font-bold">₨{Math.round((selectedPayment.amount || 0) / 100).toLocaleString()}</span></p>
+                <p className="text-sm text-slate-400">Amount: <span className="text-red-400 font-bold">Rs {Math.round((selectedPayment.amount || 0) / 100).toLocaleString()}</span></p>
               </div>
             )}
             <div className="space-y-2">

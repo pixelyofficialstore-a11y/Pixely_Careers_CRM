@@ -22,11 +22,11 @@ export const ORDER_STATUS_FILTERS: Record<string, string[]> = {
 const int = z.coerce.number().int();
 export const orderListQuerySchema = z.object({
   page: int.min(1).max(100_000).default(1),
-  pageSize: int.min(1).max(100).default(50),
+  pageSize: int.min(1).max(300).default(50),
   search: z.string().trim().max(100).optional(),
   status: z.enum(["pending", "working", "ready", "delivered", "canceled", "overdue"]).optional(),
   /** Phase 2: "requests" = orders still waiting for a verified payment or pay-later approval (admin, support). */
-  view: z.enum(["requests"]).optional(),
+  view: z.enum(["requests", "board"]).optional(),
   designerId: int.positive().optional(),
   orderType: z.enum(["documentation", "resume_distribution", "portfolio_website"]).optional(),
   period: z.enum(["today", "month", "all"]).default("all"),
@@ -66,7 +66,7 @@ function searchCondition(raw: string): SQL | undefined {
 }
 
 /** Who can see what: everyone sees placed (approved) orders only; designers only their own. */
-function visibility(user: Pick<User, "id" | "role">): SQL {
+export function visibility(user: Pick<User, "id" | "role">): SQL {
   const placed = eq(orders.advancePaymentStatus, "approved");
   return user.role === "designer" ? and(placed, eq(orders.assignedToId, user.id))! : placed;
 }
@@ -80,6 +80,10 @@ function sqlDeliveryDays(): SQL {
     case lower(trim(coalesce(${orders.packageType}, ''))) ${sql.join(pkg, sql` `)} else null end,
     case ${orders.orderType} ${sql.join(type, sql` `)} else null end,
     ${FALLBACK_DELIVERY_DAYS}::int)`;
+}
+/** Stored due date, or the computed one for old orders. Mirrors effectiveDueAt(). */
+export function sqlEffectiveDue(): SQL {
+  return sql`coalesce(${orders.dueAt}, ${orders.createdAt} + make_interval(days => ${sqlDeliveryDays()}))`;
 }
 /** Overdue (Confirmed / In progress past the stored or computed due date). Mirrors isOverdue(). */
 export function sqlOverdue(): SQL {
@@ -95,6 +99,11 @@ export function buildOrderListWhere(user: Pick<User, "id" | "role">, q: OrderLis
     return and(...where.filter(Boolean) as SQL[])!;
   }
   const where: Array<SQL | undefined> = [visibility(user)];
+  if (q.view === "board") {
+    // Kanban: everything still being worked on, plus orders delivered in the last 14 days.
+    where.push(sql`(${orders.status} in ('new', 'working', 'ready')
+      or (${orders.status} = 'delivered' and coalesce(${orders.deliveredAt}, ${orders.createdAt}) >= now() - interval '14 days'))`);
+  }
   if (q.status === "overdue") where.push(sqlOverdue());
   else if (q.status) where.push(inArray(orders.status, ORDER_STATUS_FILTERS[q.status] as any));
   if (q.designerId && user.role !== "designer") where.push(eq(orders.assignedToId, q.designerId));

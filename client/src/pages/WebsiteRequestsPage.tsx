@@ -527,7 +527,7 @@ function NotesEditor({ value, busy, onSave, testId }: { value: string | null; bu
   useEffect(() => { setDraft(value ?? ""); }, [value]);
   return (
     <>
-      <Textarea value={draft} onChange={e => setDraft(e.target.value)} rows={3} className="resize-none border-slate-800 bg-slate-900 text-white" placeholder="Visible to the CRM team only..." data-testid={`input-${testId}`} />
+      <Textarea value={draft} onChange={e => setDraft(e.target.value)} rows={3} className="resize-none " placeholder="Visible to the CRM team only..." data-testid={`input-${testId}`} />
       <div className="flex justify-end">
         <Button size="sm" variant="outline" disabled={busy || draft === (value ?? "")} onClick={() => onSave(draft)} data-testid={`button-save-${testId}`}>Save notes</Button>
       </div>
@@ -896,36 +896,43 @@ export default function WebsiteRequestsPage() {
 
   return (
     <div className="crm-page space-y-5">
-      <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-        <div className="max-w-md">
-          <PageHeader eyebrow="Client operations" title="Website Requests" description="Orders, free CV reviews and agency partners from pixelycareers.com." testId="text-page-title" />
-        </div>
+      <PageHeader title="Website Requests" testId="text-page-title" actions={
+        <Button variant="outline" asChild data-testid="button-export-csv">
+          <a href={exportHref} download><Download className="mr-2 h-4 w-4" />Export CSV</a>
+        </Button>
+      } />
 
-        <div className="flex w-full flex-col gap-3 xl:w-auto xl:min-w-[680px]">
+      <Tabs value={tab} onValueChange={v => switchTab(v as TabKey)} className="w-full">
+        <TabsList className="w-full justify-start overflow-x-auto sm:w-fit">
+          {(["orders", "reviews", "partners"] as TabKey[]).map(t => (
+            <TabsTrigger key={t} value={t} className="px-5" data-testid={`tab-${t}`}>
+              {TAB_LABELS[t]}
+              {tabBadge[t] > 0 && <span className="ml-2 rounded-full bg-primary px-1.5 text-[10px] font-bold text-on-color" data-testid={`badge-tab-${t}`}>{tabBadge[t]}</span>}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+
+      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative min-w-0 flex-1 sm:min-w-[280px]">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
               <Input
                 placeholder={TABLE_TEXT[tab].search}
-                className="h-10 border-slate-800 bg-slate-900 pl-10 text-white"
+                className="pl-10"
                 value={searchInput}
                 onChange={e => setSearchInput(e.target.value)}
                 data-testid="input-search-website-requests"
               />
               {(list.isFetching || searchInput.trim() !== filters.q) && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-500" />}
             </div>
-            <div className="flex shrink-0 flex-wrap gap-2">
-              <Button variant="outline" asChild data-testid="button-export-csv">
-                <a href={exportHref} download><Download className="mr-2 h-4 w-4" />Export CSV</a>
-              </Button>
-            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2" data-testid="website-request-filters">
             <Filter className="mr-1 hidden h-4 w-4 text-slate-500 md:block" aria-hidden="true" />
             <Select value={status} onValueChange={v => setFilters({ status: v === DEFAULT_STATUS[tab] ? "" : v })}>
-              <SelectTrigger className="w-44 border-slate-800 bg-slate-900 text-white" data-testid="select-status-filter"><SelectValue /></SelectTrigger>
-              <SelectContent className="border-slate-800 bg-slate-900 text-white">
+              <SelectTrigger className="w-52" data-testid="select-status-filter"><SelectValue /></SelectTrigger>
+              <SelectContent className="">
                 {filterOptions.map(o => (
                   <SelectItem key={o.value} value={o.value}>
                     {o.label}{statusCounts?.[o.value] !== undefined ? ` (${statusCounts[o.value]})` : ""}
@@ -936,15 +943,15 @@ export default function WebsiteRequestsPage() {
             {tab === "orders" && (
               <>
                 <Select value={filters.market} onValueChange={v => setFilters({ market: v })}>
-                  <SelectTrigger className="w-32 border-slate-800 bg-slate-900 text-white" data-testid="select-market-filter"><SelectValue placeholder="All markets" /></SelectTrigger>
-                  <SelectContent className="border-slate-800 bg-slate-900 text-white">
+                  <SelectTrigger className="w-32 " data-testid="select-market-filter"><SelectValue placeholder="All markets" /></SelectTrigger>
+                  <SelectContent className="">
                     <SelectItem value="all">All markets</SelectItem>
                     {(orderStats?.markets ?? []).map(m => <SelectItem key={m} value={m}>{m.toUpperCase()}</SelectItem>)}
                   </SelectContent>
                 </Select>
                 <Select value={filters.package} onValueChange={v => setFilters({ package: v })}>
-                  <SelectTrigger className="w-44 border-slate-800 bg-slate-900 text-white" data-testid="select-package-filter"><SelectValue placeholder="All packages" /></SelectTrigger>
-                  <SelectContent className="border-slate-800 bg-slate-900 text-white">
+                  <SelectTrigger className="w-44 " data-testid="select-package-filter"><SelectValue placeholder="All packages" /></SelectTrigger>
+                  <SelectContent className="">
                     <SelectItem value="all">All packages</SelectItem>
                     {(orderStats?.packages ?? []).map(p => <SelectItem key={p} value={p}>{packageLabel(p)}</SelectItem>)}
                   </SelectContent>
@@ -953,16 +960,16 @@ export default function WebsiteRequestsPage() {
             )}
             {tab === "partners" && (
               <Select value={filters.country} onValueChange={v => setFilters({ country: v })}>
-                <SelectTrigger className="w-40 border-slate-800 bg-slate-900 text-white" data-testid="select-country-filter"><SelectValue placeholder="All countries" /></SelectTrigger>
-                <SelectContent className="border-slate-800 bg-slate-900 text-white">
+                <SelectTrigger className="w-40 " data-testid="select-country-filter"><SelectValue placeholder="All countries" /></SelectTrigger>
+                <SelectContent className="">
                   <SelectItem value="all">All countries</SelectItem>
                   {(partnerStats?.countries ?? []).map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
             )}
-            <Input type="date" value={filters.from} onChange={e => setFilters({ from: e.target.value })} className="w-[140px] border-slate-800 bg-slate-900 text-white [color-scheme:dark]" aria-label="From date" data-testid="input-from-date" />
+            <Input type="date" value={filters.from} onChange={e => setFilters({ from: e.target.value })} className="w-[140px]  dark:[color-scheme:dark]" aria-label="From date" data-testid="input-from-date" />
             <span className="text-xs text-slate-500">–</span>
-            <Input type="date" value={filters.to} onChange={e => setFilters({ to: e.target.value })} className="w-[140px] border-slate-800 bg-slate-900 text-white [color-scheme:dark]" aria-label="To date" data-testid="input-to-date" />
+            <Input type="date" value={filters.to} onChange={e => setFilters({ to: e.target.value })} className="w-[140px]  dark:[color-scheme:dark]" aria-label="To date" data-testid="input-to-date" />
             {hasFilters && (
               <Button type="button" variant="ghost" size="sm" onClick={() => { setSearchInput(""); navigate(`/website-requests?tab=${tab}`, { replace: true }); }} className="text-slate-400 hover:text-white" data-testid="button-clear-website-filters">
                 <X className="mr-1 h-4 w-4" />Clear
@@ -970,7 +977,6 @@ export default function WebsiteRequestsPage() {
             )}
           </div>
         </div>
-      </div>
 
       {/* Stat cards — per tab */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -1000,21 +1006,10 @@ export default function WebsiteRequestsPage() {
         )}
       </div>
 
-      <Tabs value={tab} onValueChange={v => switchTab(v as TabKey)} className="w-full">
-        <TabsList className="mb-6 w-full justify-start border border-slate-800 bg-slate-900/70 p-1 sm:w-fit">
-          {(["orders", "reviews", "partners"] as TabKey[]).map(t => (
-            <TabsTrigger key={t} value={t} className="px-5" data-testid={`tab-${t}`}>
-              {TAB_LABELS[t]}
-              {tabBadge[t] > 0 && <span className="ml-2 rounded-full bg-primary px-1.5 text-[10px] font-bold text-white" data-testid={`badge-tab-${t}`}>{tabBadge[t]}</span>}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
-
-      <div className="glass-panel overflow-hidden rounded-2xl border border-slate-800">
-        <div className="flex flex-col gap-1 border-b border-slate-800 p-6 md:flex-row md:items-center md:justify-between">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
+        <div className="flex flex-col gap-1 border-b border-border px-4 py-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <h3 className="text-lg font-bold text-white">{TABLE_TEXT[tab].title}</h3>
+            <h3 className="text-sm font-semibold text-slate-200">{TABLE_TEXT[tab].title}</h3>
             <p className="text-sm text-slate-500">
               {TABLE_TEXT[tab].subtitle} · {filterOptions.find(o => o.value === status)?.label}
               {list.data ? ` · ${total} ${total === 1 ? "request" : "requests"}` : ""}
@@ -1026,7 +1021,7 @@ export default function WebsiteRequestsPage() {
             </Button>
           )}
         </div>
-        <Table className="table-fixed" data-testid={`table-website-${tab}`}>
+        <div className="overflow-x-auto"><Table className="min-w-[860px] table-fixed" data-testid={`table-website-${tab}`}>
           <colgroup>{columns.map(c => <col key={c.label} style={{ width: c.width }} />)}</colgroup>
           <TableHeader className="bg-slate-900/50">
             <TableRow className="border-slate-800 hover:bg-transparent">
@@ -1100,7 +1095,7 @@ export default function WebsiteRequestsPage() {
               </TableRow>
             ))}
           </TableBody>
-        </Table>
+        </Table></div>
         {total > 0 && pageCount > 1 && (
           <div className="flex items-center justify-between border-t border-slate-800 px-6 py-3 text-sm text-slate-400" data-testid="pagination">
             <span>Page {filters.page} of {pageCount} · {total} total</span>
@@ -1158,7 +1153,7 @@ export default function WebsiteRequestsPage() {
             <Label className="text-slate-300">Reason *</Label>
             <Select value={rejectReason} onValueChange={setRejectReason}>
               <SelectTrigger className="border-slate-800 bg-slate-950 text-white" data-testid="select-reject-reason"><SelectValue placeholder="Select a reason" /></SelectTrigger>
-              <SelectContent className="border-slate-800 bg-slate-900 text-white">
+              <SelectContent className="">
                 {REJECT_REASONS.map(r => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
               </SelectContent>
             </Select>

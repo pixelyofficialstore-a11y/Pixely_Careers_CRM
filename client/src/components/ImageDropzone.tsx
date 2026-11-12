@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent, type ClipboardEvent } from "react";
-import { FileImage, Upload } from "lucide-react";
+import { FileImage, Upload, Camera } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
@@ -49,6 +49,8 @@ export function ImageDropzone({
   listenForPaste = false,
 }: ImageDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const imagesOnly = !accept || accept.split(",").every(t => t.trim().startsWith("image/"));
   const [dragging, setDragging] = useState(false);
   const { toast } = useToast();
 
@@ -104,8 +106,8 @@ export function ImageDropzone({
   return (
     <div
       className={cn(
-        "rounded-lg border border-dashed border-slate-700 bg-slate-950/60",
-        dragging && "border-blue-400 bg-blue-500/10",
+        "rounded-lg border border-dashed border-border bg-[hsl(var(--surface-2))]",
+        dragging && "border-primary bg-primary/10",
         disabled && "pointer-events-none opacity-60",
         className,
       )}
@@ -135,13 +137,39 @@ export function ImageDropzone({
           event.currentTarget.value = "";
         }}
       />
-      <div className={cn("flex items-center gap-3 p-3 text-sm text-slate-400", compact && "p-2")}>
-        {compact ? <Upload className="h-4 w-4 shrink-0 text-blue-400" /> : <FileImage className="h-5 w-5 shrink-0 text-blue-400" />}
+      {imagesOnly && (
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          disabled={disabled}
+          className="sr-only"
+          tabIndex={-1}
+          aria-hidden
+          onChange={event => {
+            selectFiles(Array.from(event.target.files || []));
+            event.currentTarget.value = "";
+          }}
+        />
+      )}
+      <div className={cn("flex min-h-touch items-center gap-3 p-3 text-sm text-slate-400", compact && "p-2")}>
+        {compact ? <Upload className="h-4 w-4 shrink-0 text-primary" /> : <FileImage className="h-5 w-5 shrink-0 text-primary" />}
         <span className="min-w-0">
            <span className="block truncate text-slate-300">{values.length ? `${values.length} image${values.length === 1 ? "" : "s"} selected` : value ? `Selected: ${value.name}` : label}</span>
           <span className="block text-xs text-slate-500">{description}</span>
         </span>
-        <span className="ml-auto shrink-0 text-xs text-blue-300">Choose</span>
+        {imagesOnly && (
+          <button
+            type="button"
+            className="ml-auto flex min-h-touch shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium text-primary hover:bg-[hsl(var(--accent))] sm:hidden"
+            onClick={event => { event.stopPropagation(); if (!disabled) cameraRef.current?.click(); }}
+            data-testid={testId ? `${testId}-camera` : undefined}
+          >
+            <Camera className="h-4 w-4" />Take photo
+          </button>
+        )}
+        <span className={cn("shrink-0 text-xs text-primary", imagesOnly ? "sm:ml-auto" : "ml-auto")}><span className={imagesOnly ? "sm:hidden" : "hidden"}>Gallery</span><span className={imagesOnly ? "hidden sm:inline" : ""}>Choose</span></span>
       </div>
     </div>
   );

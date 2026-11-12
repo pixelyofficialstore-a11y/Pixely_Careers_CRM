@@ -32,6 +32,7 @@ function refreshCounts() {
 }
 
 function applyScopes(scopes: string[]) {
+  if (scopes.length) queryClient.invalidateQueries(startsWith("/api/dashboard"));
   if (scopes.includes("complaints")) queryClient.invalidateQueries(startsWith("/api/complaints"));
   if (scopes.includes("payments")) queryClient.invalidateQueries(startsWith("/api/payment-verifications"));
   if (scopes.includes("orders")) {

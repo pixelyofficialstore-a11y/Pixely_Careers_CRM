@@ -1,7 +1,8 @@
 import { createRoot } from "react-dom/client";
-import "@fontsource-variable/dm-sans";
-import "@fontsource/space-mono/400.css";
-import "@fontsource/space-mono/700.css";
+import "@fontsource/poppins/400.css";
+import "@fontsource/poppins/500.css";
+import "@fontsource/poppins/600.css";
+import "@fontsource/poppins/700.css";
 import { installApiFetch } from "./lib/http";
 import App from "./App";
 import "./index.css";

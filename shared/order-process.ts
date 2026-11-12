@@ -245,3 +245,19 @@ export const refundStatuses = ["requested", "approved", "rejected", "paid"] as c
 export type RefundStatus = typeof refundStatuses[number];
 /** Refund records that reduce what was collected. */
 export const COUNTED_REFUND_STATUSES: RefundStatus[] = ["approved", "paid"];
+
+// ---- board / status menus --------------------------------------------------------
+/** Work statuses a role may move an order to (same rules as the Orders status menu;
+ *  the server enforces them too). Delivered only when fully paid. */
+export function allowedWorkTargets(role: string, current: DisplayWorkStatus, fullyPaid: boolean): DisplayWorkStatus[] {
+  if (current === "request" || current === "canceled") return [];
+  const delivered: DisplayWorkStatus[] = fullyPaid ? ["delivered"] : [];
+  if (role === "designer") {
+    if (current === "delivered" || current === "closed") return [];
+    if (current === "draft_sent" || current === "revisions") return ["draft_sent", "revisions", ...delivered];
+    return ["confirmed", "in_progress", "draft_sent", ...delivered];
+  }
+  const base: DisplayWorkStatus[] = ["confirmed", "in_progress", "draft_sent", "revisions",
+    ...(fullyPaid || current === "delivered" || current === "closed" ? ["delivered" as const] : [])];
+  return base;
+}

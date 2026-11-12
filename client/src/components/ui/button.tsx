@@ -11,7 +11,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
          default:
-           "bg-primary text-primary-foreground border border-primary/70 hover:bg-primary/90",
+           "bg-primary text-primary-foreground border border-primary hover:bg-[hsl(var(--primary-hover))] hover:border-[hsl(var(--primary-hover))]",
         destructive:
           "bg-destructive text-destructive-foreground border border-destructive-border",
         outline:
@@ -26,10 +26,10 @@ const buttonVariants = cva(
       // inside buttons. With a min-height they will look appropriate with small amounts of content,
       // but will expand to fit large amounts of content.
       size: {
-       default: "min-h-9 px-3.5 py-2",
+       default: "min-h-control px-4 py-2",
        sm: "min-h-8 rounded-[.35rem] px-2.5 text-xs",
          lg: "min-h-10 rounded-[.4rem] px-8",
-         icon: "h-9 w-9",
+         icon: "h-control w-[var(--control-h)]",
       },
     },
     defaultVariants: {

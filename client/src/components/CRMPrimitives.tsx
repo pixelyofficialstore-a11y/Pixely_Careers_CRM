@@ -15,9 +15,9 @@ export function PageHeader({ eyebrow, title, description, actions, className, te
 export function MetricCard({ label, value, note, icon: Icon = Activity, tone = "cyan", onClick, className, testId }: {
   label: string; value: string | number; note?: string; icon?: React.ElementType; tone?: "cyan" | "success" | "warning" | "danger"; onClick?: () => void; className?: string; testId?: string;
 }) {
-  const toneClass = { cyan: "text-cyan-300", success: "text-emerald-300", warning: "text-amber-300", danger: "text-rose-300" }[tone];
-  const content = <><div className="flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-[.13em] text-slate-500">{label}</span><Icon aria-hidden="true" className={cn("h-[15px] w-[15px] stroke-[1.7]", toneClass)} /></div><p className="mt-2 text-[1.4rem] font-semibold tracking-tight text-slate-100">{value}</p>{note && <p className="mt-0.5 text-[11px] text-slate-500">{note}</p>}</>;
-  const classes = cn("crm-metric-card glass-panel w-full rounded-[.65rem] p-4 text-left transition-colors hover:border-cyan-400/30", onClick && "cursor-pointer focus-visible:ring-2 focus-visible:ring-ring", className);
+  const toneClass = { cyan: "bg-[hsl(var(--accent))] text-primary", success: "bg-emerald-500/10 text-emerald-400", warning: "bg-amber-500/10 text-amber-400", danger: "bg-rose-500/10 text-rose-400" }[tone];
+  const content = <><div className="flex items-center justify-between gap-2"><span className="text-sm text-slate-400">{label}</span><span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", toneClass)}><Icon aria-hidden="true" className="h-4 w-4" /></span></div><p className="mt-2 font-display text-[1.6rem] font-semibold leading-tight tracking-tight text-slate-100">{value}</p>{note && <p className="mt-0.5 text-xs text-slate-500">{note}</p>}</>;
+  const classes = cn("crm-metric-card w-full rounded-xl border border-border bg-card p-4 text-left transition-colors duration-150", onClick && "cursor-pointer hover:border-[hsl(var(--border-hover))] focus-visible:ring-2 focus-visible:ring-ring", className);
   return onClick ? <button type="button" onClick={onClick} className={classes} data-testid={testId}>{content}</button> : <div className={classes} data-testid={testId}>{content}</div>;
 }
 

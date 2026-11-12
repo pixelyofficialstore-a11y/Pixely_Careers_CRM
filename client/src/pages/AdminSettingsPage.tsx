@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -39,10 +39,18 @@ import {
   FileWarning,
   Shield,
   Package,
+  Users,
+  BellRing,
+  Palette,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react";
 import SecuritySettings from "@/components/SecuritySettings";
 import type { ServiceCatalogItem, PackageConfig, PlatformCatalogItem, ComplaintCategoryConfig } from "@shared/schema";
 import { PageHeader } from "@/components/CRMPrimitives";
+import { useTheme, type ThemePref } from "@/lib/theme";
+import { cn } from "@/lib/utils";
 
 /** Phase 2: per-package delivery days (empty = built-in default). Saves on blur / Enter. */
 function DeliveryDaysInput({ value, fallback, disabled, onSave }: { value: number | null; fallback: number; disabled?: boolean; onSave: (days: number | null) => void }) {
@@ -68,62 +76,89 @@ function DeliveryDaysInput({ value, fallback, disabled, onSave }: { value: numbe
   );
 }
 
+const TeamPage = lazy(() => import("./TeamPage"));
+const NotificationSettingsPage = lazy(() => import("./NotificationSettingsPage"));
+const SETTINGS_TABS = ["catalog", "team", "notifications", "security", "appearance"] as const;
+type SettingsTab = (typeof SETTINGS_TABS)[number];
+
+function AppearanceSection() {
+  const { pref, setPref } = useTheme();
+  const options: { value: ThemePref; label: string; icon: typeof Sun; hint: string }[] = [
+    { value: "light", label: "Light", icon: Sun, hint: "Default" },
+    { value: "dark", label: "Dark", icon: Moon, hint: "Navy background" },
+    { value: "system", label: "System", icon: Monitor, hint: "Follows this device" },
+  ];
+  return (
+    <section className="max-w-2xl space-y-3 rounded-xl border border-border bg-card p-5">
+      <h2 className="text-base font-semibold text-slate-100">Theme</h2>
+      <div className="grid gap-3 sm:grid-cols-3" role="radiogroup" aria-label="Theme">
+        {options.map(o => (
+          <button
+            key={o.value}
+            role="radio"
+            aria-checked={pref === o.value}
+            onClick={() => setPref(o.value)}
+            className={cn("flex min-h-touch flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors duration-150",
+              pref === o.value ? "border-primary bg-[hsl(var(--accent))]" : "border-border hover:border-[hsl(var(--border-hover))]")}
+            data-testid={`appearance-${o.value}`}
+          >
+            <o.icon className={cn("h-5 w-5", pref === o.value ? "text-primary" : "text-slate-500")} />
+            <span className="text-sm font-medium text-slate-200">{o.label}</span>
+            <span className="text-xs text-slate-500">{o.hint}</span>
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-slate-500">Saved for your account on this device.</p>
+    </section>
+  );
+}
+
 export default function AdminSettingsPage() {
   const { user } = useAuth();
-  const { toast } = useToast();
   const [, navigate] = useLocation();
+  const initial = new URLSearchParams(window.location.search).get("tab") as SettingsTab | null;
+  const [tab, setTab] = useState<SettingsTab>(initial && SETTINGS_TABS.includes(initial) ? initial : "catalog");
 
   if (user?.role !== "admin") {
     navigate("/");
     return null;
   }
 
+  const trigger = "gap-2";
   return (
     <div className="crm-page admin-settings-page space-y-5">
-      <PageHeader eyebrow="System configuration" title="Admin Settings" description="Manage services, marketing platforms, complaint categories and security." />
+      <PageHeader title="Settings" />
 
-      <Tabs defaultValue="services" className="space-y-5">
+      <Tabs value={tab} onValueChange={v => setTab(v as SettingsTab)} className="space-y-5">
         <TabsList className="w-full justify-start overflow-x-auto sm:w-fit">
-          <TabsTrigger value="services" className="gap-2">
-            <Wrench className="w-4 h-4" />
-            Services
-          </TabsTrigger>
-          <TabsTrigger value="packages" className="gap-2">
-            <Package className="w-4 h-4" />
-            Packages
-          </TabsTrigger>
-          <TabsTrigger value="platforms" className="gap-2">
-            <Globe className="w-4 h-4" />
-            Platforms
-          </TabsTrigger>
-          <TabsTrigger value="complaints" className="gap-2">
-            <FileWarning className="w-4 h-4" />
-            Complaint Categories
-          </TabsTrigger>
-          <TabsTrigger value="security" className="gap-2">
-            <Shield className="w-4 h-4" />
-            Security
-          </TabsTrigger>
+          <TabsTrigger value="catalog" className={trigger} data-testid="settings-tab-catalog"><Package className="h-4 w-4" />Catalog</TabsTrigger>
+          <TabsTrigger value="team" className={trigger} data-testid="settings-tab-team"><Users className="h-4 w-4" />Team</TabsTrigger>
+          <TabsTrigger value="notifications" className={trigger} data-testid="settings-tab-notifications"><BellRing className="h-4 w-4" />Notifications</TabsTrigger>
+          <TabsTrigger value="security" className={trigger} data-testid="settings-tab-security"><Shield className="h-4 w-4" />Security log</TabsTrigger>
+          <TabsTrigger value="appearance" className={trigger} data-testid="settings-tab-appearance"><Palette className="h-4 w-4" />Appearance</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="services">
+        <TabsContent value="catalog" className="space-y-6">
           <ServicesSection />
-        </TabsContent>
-
-        <TabsContent value="packages">
           <PackagesSection />
-        </TabsContent>
-
-        <TabsContent value="platforms">
           <PlatformsSection />
+          <ComplaintCategoriesSection />
         </TabsContent>
 
-        <TabsContent value="complaints">
-          <ComplaintCategoriesSection />
+        <TabsContent value="team" className="settings-embed">
+          <Suspense fallback={<div className="skeleton h-64 rounded-xl" />}><TeamPage /></Suspense>
+        </TabsContent>
+
+        <TabsContent value="notifications" className="settings-embed">
+          <Suspense fallback={<div className="skeleton h-64 rounded-xl" />}><NotificationSettingsPage /></Suspense>
         </TabsContent>
 
         <TabsContent value="security">
           <SecuritySettings />
+        </TabsContent>
+
+        <TabsContent value="appearance">
+          <AppearanceSection />
         </TabsContent>
       </Tabs>
     </div>
@@ -715,7 +750,7 @@ function PackagesSection() {
             <AlertDialogCancel className="border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteItem && deleteMutation.mutate(deleteItem.id)}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-red-600 hover:bg-red-700 text-on-color"
             >
               Delete
             </AlertDialogAction>
@@ -931,7 +966,7 @@ function PlatformsSection() {
             <AlertDialogCancel className="border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteItem && deleteMutation.mutate(deleteItem.id)}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-red-600 hover:bg-red-700 text-on-color"
             >
               Delete
             </AlertDialogAction>

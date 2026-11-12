@@ -4,6 +4,7 @@ import { storage } from "../storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { type User } from "@shared/schema";
+import { adminHome, supportHome, designerHome } from "../homeDashboard";
 import { getDashboardMetrics, getMonthlySeries, businessMonthRange, getDesignerAnalytics, getDesignerOrders, getMarketingAnalytics, getSupportAnalytics } from "../metrics";
 import { requireAuth, requireRole } from "./shared";
 
@@ -38,6 +39,13 @@ export function registerAnalyticsRoutes(app: Express) {
   app.get("/api/analytics/support", requireRole(["admin"]), async (req, res) => {
     const q = analyticsMonth.extend({ day: z.coerce.number().int().min(1).max(31) }).strict().parse(req.query);
     res.json(await getSupportAnalytics(q.year, q.month, q.day));
+  });
+
+  // Phase 4: per-role home dashboard.
+  app.get("/api/dashboard/home", requireAuth, async (req, res) => {
+    const user = req.user as User;
+    const data = user.role === "admin" ? await adminHome(user) : user.role === "support" ? await supportHome(user) : await designerHome(user);
+    res.json(data);
   });
 
   app.get("/api/metrics/monthly", requireRole(["admin"]), async (req, res) => {

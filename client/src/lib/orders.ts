@@ -7,7 +7,7 @@ export type OrderListParams = {
   search?: string;
   status?: string;
   /** "requests" = orders waiting for payment verification / pay-later approval (admin, support). */
-  view?: "requests";
+  view?: "requests" | "board";
   designerId?: string;
   orderType?: string;
   period?: "today" | "month" | "all";

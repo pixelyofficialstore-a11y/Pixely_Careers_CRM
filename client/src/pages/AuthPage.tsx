@@ -6,7 +6,6 @@ import { z } from "zod";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import { useLocation } from "wouter";
 
-import logoUrl from "@assets/rr__1500_x_500_px_-removebg-preview_1769447899946.png";
 
 const loginSchema = z.object({
   username: z.string().min(1, "Username is required"),
@@ -53,7 +52,7 @@ export default function AuthPage() {
       <div className="absolute left-1/2 top-1/2 h-[30rem] w-[30rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-500/[0.035] blur-3xl" aria-hidden="true" />
       <main className="relative z-10 w-full max-w-[390px]">
         <div className="mb-8 text-center">
-          <img src={logoUrl} alt="Pixely" className="mx-auto mb-6 block h-20 w-20 object-contain" />
+          <img src="/brand/emblem.png" alt="Pixely Careers" className="mx-auto mb-6 block h-16 w-16 rounded-2xl" />
           <h1 className="text-[1.75rem] font-semibold tracking-tight text-foreground">Welcome Back</h1>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">Sign in to continue</p>
         </div>
@@ -124,7 +123,7 @@ export default function AuthPage() {
             <button
               type="submit"
               disabled={loginMutation.isPending}
-              className="mt-1 flex h-12 w-full items-center justify-center gap-2 rounded-[.42rem] bg-[#2d63e8] py-2.5 font-semibold text-white transition-colors hover:bg-[#3c70f4] disabled:cursor-not-allowed disabled:opacity-50"
+              className="mt-1 flex h-12 w-full items-center justify-center gap-2 rounded-[.42rem] bg-primary py-2.5 font-semibold text-on-color transition-colors hover:bg-[hsl(var(--primary-hover))] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loginMutation.isPending ? (
                 <>

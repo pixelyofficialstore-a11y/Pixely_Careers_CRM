@@ -65,7 +65,8 @@ import {
   Send,
   Globe,
   ExternalLink,
-  Link2
+  Link2,
+  Bookmark
 } from "lucide-react";
 import { ImageDropzone } from "@/components/ImageDropzone";
 // jsPDF is ~400 KB; load it only when a PDF is actually generated.
@@ -314,7 +315,9 @@ type OrderSuggestion = ClientSuggestion & {
   order?: { packageType?: string | null; services?: OrderWithServices["services"]; status?: string | null };
 };
 
-type OrderDrawerTab = "overview" | "activity" | "experience";
+type OrderDrawerTab = "overview" | "services" | "payments" | "activity";
+type OrderPeriod = "today" | "month" | "all";
+type SavedOrderFilter = { name: string; period: OrderPeriod; month: string; year: string; status: string; designer: string; service: string };
 type OrderDrawerFrame =
   | { kind: "order"; tab: OrderDrawerTab }
   | { kind: "complaint"; id: number }
@@ -342,7 +345,13 @@ export default function OrdersPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth().toString());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
-  const [activeOrdersTab, setActiveOrdersTab] = useState<"today" | "monthly" | "requests">("today");
+  const [orderPeriod, setOrderPeriod] = useState<OrderPeriod>("month");
+  const [orderView, setOrderView] = useState<"orders" | "requests">("orders");
+  const [assignOrder, setAssignOrder] = useState<OrderWithServices | null>(null);
+  // Kept for the PDF export file name.
+  const activeOrdersTab = orderView === "requests" ? "requests" : orderPeriod === "today" ? "today" : orderPeriod === "all" ? "all" : "monthly";
+  const isCurrentMonth = Number(selectedMonth) === new Date().getMonth() && Number(selectedYear) === new Date().getFullYear();
+  const yearOptions = Array.from({ length: new Date().getFullYear() - 2024 + 2 }, (_, i) => 2024 + i);
   const [selectedStatusFilter, setSelectedStatusFilter] = useState("all");
   const [selectedDesignerFilter, setSelectedDesignerFilter] = useState("all");
   const [selectedServiceTypeFilter, setSelectedServiceTypeFilter] = useState("all");
@@ -383,12 +392,12 @@ export default function OrdersPage() {
     ...(activeOrdersTab === "requests"
       ? { view: "requests" as const }
       : { status: selectedStatusFilter, designerId: selectedDesignerFilter, orderType: selectedServiceTypeFilter }),
-    period: trimmedSearch || activeOrdersTab === "requests" ? "all" : activeOrdersTab === "today" ? "today" : "month",
+    period: trimmedSearch || orderView === "requests" ? "all" : orderPeriod,
     year: Number(selectedYear),
     month: Number(selectedMonth) + 1,
   };
   // Any filter change starts again at page 1.
-  useEffect(() => { setPage(1); }, [trimmedSearch, selectedStatusFilter, selectedDesignerFilter, selectedServiceTypeFilter, activeOrdersTab, selectedMonth, selectedYear]);
+  useEffect(() => { setPage(1); }, [trimmedSearch, selectedStatusFilter, selectedDesignerFilter, selectedServiceTypeFilter, orderPeriod, orderView, selectedMonth, selectedYear]);
 
   // Server-side filtering, search and pagination (50 per page). Live updates
   // arrive over SSE, which invalidates ["/api/orders"]; no polling here.
@@ -429,6 +438,34 @@ export default function OrdersPage() {
     }).catch(() => { if (!cancelled) setDeepLinkMessage(`Order ${requestedOrderNumber} could not be loaded.`); });
     return () => { cancelled = true; };
   }, [requestedOrderNumber]);
+
+  // "+ New order" (top bar / Ctrl+K) links here with ?new=1.
+  const wantsNewOrder = new URLSearchParams(locationSearch).get("new") === "1";
+  useEffect(() => { if (wantsNewOrder && (user?.role === "admin" || user?.role === "support")) setCreateDialogOpen(true); }, [wantsNewOrder, user?.role]);
+
+  // Saved filters (per user, this device).
+  const savedFiltersKey = `px-order-filters:${user?.id ?? "anon"}`;
+  const [savedFilters, setSavedFilters] = useState<SavedOrderFilter[]>(() => {
+    try { return JSON.parse(localStorage.getItem(savedFiltersKey) || "[]"); } catch { return []; }
+  });
+  const persistSavedFilters = (next: SavedOrderFilter[]) => {
+    setSavedFilters(next);
+    try { localStorage.setItem(savedFiltersKey, JSON.stringify(next)); } catch { /* ignore */ }
+  };
+  const saveCurrentFilter = () => {
+    const name = window.prompt("Name this filter", "")?.trim();
+    if (!name) return;
+    const entry: SavedOrderFilter = { name, period: orderPeriod, month: selectedMonth, year: selectedYear, status: selectedStatusFilter, designer: selectedDesignerFilter, service: selectedServiceTypeFilter };
+    persistSavedFilters([...savedFilters.filter(f => f.name !== name), entry]);
+    toast({ title: "Filter saved", description: name });
+  };
+  const removeSavedFilter = (name: string) => persistSavedFilters(savedFilters.filter(f => f.name !== name));
+  const applySavedFilter = (f: SavedOrderFilter) => {
+    setOrderView("orders");
+    setOrderPeriod(f.period);
+    setSelectedMonth(f.month); setSelectedYear(f.year);
+    setSelectedStatusFilter(f.status); setSelectedDesignerFilter(f.designer); setSelectedServiceTypeFilter(f.service);
+  };
 
   const { data: teamMembers } = useQuery<User[]>({
     queryKey: ["/api/users"],
@@ -1216,6 +1253,8 @@ export default function OrdersPage() {
       ? `search-results-${format(new Date(), "yyyy-MM-dd")}`
       : activeOrdersTab === "today"
       ? `today-${format(new Date(), "yyyy-MM-dd")}`
+      : activeOrdersTab === "all"
+      ? `all-${format(new Date(), "yyyy-MM-dd")}`
       : format(new Date(parseInt(selectedYear), parseInt(selectedMonth), 1), "MMMM-yyyy");
 
     doc.save(`orders-${fileSuffix}.pdf`);
@@ -1241,7 +1280,6 @@ export default function OrdersPage() {
   const renderWorkStatusCell = (order: OrderRow) => {
     const p = processOf(order);
     const options = getStatusOptionsFor(order);
-    const due = dueLabel(p);
     return (
       <div className="flex flex-col items-start gap-1">
         {options.length === 0 ? <WorkStatusBadge status={p.workStatus} /> : (
@@ -1253,7 +1291,7 @@ export default function OrdersPage() {
               updateOrderMutation.mutate({ id: order.id, updates: { workStatus: val } });
             }}
           >
-            <SelectTrigger className="w-36 bg-transparent border-0 h-auto p-0 focus:ring-0 shadow-none hover:bg-white/5 rounded px-2 py-1" data-testid={`select-status-${order.id}`}>
+            <SelectTrigger className="h-auto w-auto gap-1 rounded-md border-0 bg-transparent p-0 px-1 py-1 shadow-none hover:bg-white/5 focus:ring-0" data-testid={`select-status-${order.id}`}>
               <SelectValue><WorkStatusBadge status={p.workStatus} /></SelectValue>
             </SelectTrigger>
             <SelectContent className="bg-slate-900 border-slate-800">
@@ -1261,573 +1299,393 @@ export default function OrdersPage() {
             </SelectContent>
           </Select>
         )}
-        {due && p.workStatus !== "canceled" && p.workStatus !== "request" && (
-          <span
-            className={cn("px-2 text-[11px]", p.overdue ? "font-semibold text-rose-400" : "text-slate-500")}
-            title={p.dueStored ? "Due date" : "Due date (estimated from the order date and package)"}
-            data-testid={`text-due-${order.id}`}
-          >
-            {p.overdue ? "Overdue · " : "Due "}{due}
-          </span>
-        )}
       </div>
     );
   };
 
-  const orderColSpan = 9 + (!isDesigner ? 2 : 0) + (canSeeAmounts ? 3 : 0) + (isAdmin ? 1 : 0);
+  // Columns: Order · Client · Package · Work status · Payment status · Designer · Due · Amount
+  const orderColSpan = 6 + (!isDesigner ? 2 : 0) + (canSeeAmounts ? 1 : 0);
+  const packageText = (order: OrderWithServices) =>
+    order.packageType && order.packageType !== "custom"
+      ? packageLabels[order.packageType] || titleCase(order.packageType)
+      : getServicesDisplay(order);
+  const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
 
   const orderTableHead = (
-    <TableHeader className="bg-slate-900/50">
-      <TableRow className="border-slate-800 hover:bg-transparent">
-        <TableHead className="text-slate-400">Order ID</TableHead>
-        {isAdmin && <TableHead className="text-slate-400">Created By</TableHead>}
-        <TableHead className="text-slate-400">Date Placed</TableHead>
-        <TableHead className="text-slate-400">Client</TableHead>
-        <TableHead className="text-slate-400">Client Type</TableHead>
-        <TableHead className="text-slate-400">Contact</TableHead>
-        <TableHead className="text-slate-400">Services</TableHead>
-        <TableHead className="text-slate-400">Revisions</TableHead>
-        <TableHead className="text-slate-400">Support Period</TableHead>
-        {!isDesigner && <TableHead className="text-slate-400">Designer</TableHead>}
-        <TableHead className="text-slate-400">Status</TableHead>
-        {!isDesigner && <TableHead className="text-slate-400">Adv. Payment</TableHead>}
-        <TableHead className="text-slate-400">Payment</TableHead>
-        {canSeeAmounts && <TableHead className="text-slate-400 text-right">Total Bill</TableHead>}
-        {canSeeAmounts && <TableHead className="text-slate-400 text-right">Advance</TableHead>}
-        {canSeeAmounts && <TableHead className="text-slate-400 text-right">Remaining</TableHead>}
-        <TableHead className="text-right text-slate-400">Actions</TableHead>
+    <TableHeader>
+      <TableRow className="hover:bg-transparent">
+        <TableHead>Order</TableHead>
+        <TableHead>Client</TableHead>
+        <TableHead>Package</TableHead>
+        <TableHead>Work status</TableHead>
+        {!isDesigner && <TableHead>Payment</TableHead>}
+        {!isDesigner && <TableHead>Designer</TableHead>}
+        <TableHead>Due</TableHead>
+        {canSeeAmounts && <TableHead className="text-right">Amount</TableHead>}
+        <TableHead className="w-12"><span className="sr-only">Actions</span></TableHead>
       </TableRow>
     </TableHeader>
   );
 
+  const renderDue = (order: OrderRow, className?: string) => {
+    const p = processOf(order);
+    const due = dueLabel(p);
+    if (!due || p.workStatus === "canceled" || p.workStatus === "request") return <span className={cn("text-slate-500", className)}>—</span>;
+    const closed = p.workStatus === "delivered" || p.workStatus === "closed";
+    return (
+      <span
+        className={cn("inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium",
+          p.overdue ? "bg-rose-500/10 text-rose-400" : closed ? "text-slate-500" : "bg-slate-900 text-slate-300", className)}
+        title={p.dueStored ? "Due date" : "Estimated from the order date and package"}
+        data-testid={`text-due-${order.id}`}
+      >
+        {p.overdue ? `Overdue · ${due}` : due}{!p.dueStored && !p.overdue ? "*" : ""}
+      </span>
+    );
+  };
+
+  const renderRowMenu = (order: OrderWithServices) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="h-9 w-9 text-slate-500" onClick={stop} aria-label="Order actions" data-testid={`button-menu-${order.id}`}>
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" onClick={stop}>
+        <DropdownMenuItem onClick={() => openOrderDetails(order)} data-testid={`menu-view-details-${order.id}`}><FileText className="mr-2 h-4 w-4" />View details</DropdownMenuItem>
+        {(isAdmin || isSupport) && <DropdownMenuItem onClick={() => setAssignOrder(order)} data-testid={`button-assign-${order.id}`}><UserPlus className="mr-2 h-4 w-4" />Assign designer</DropdownMenuItem>}
+        {(isAdmin || isSupport) && (
+          <DropdownMenuItem disabled={!order.assignedToId} onClick={() => { setSelectedOrder(order); setComplaintDialogOpen(true); }} data-testid={`button-complaint-${order.id}`}>
+            <FileWarning className="mr-2 h-4 w-4" />Raise complaint
+          </DropdownMenuItem>
+        )}
+        {isAdmin && <DropdownMenuItem onClick={() => { setOrderToEdit(order); setEditSheetOpen(true); }} data-testid={`menu-edit-${order.id}`}><Pencil className="mr-2 h-4 w-4" />Edit order</DropdownMenuItem>}
+        {isAdmin && order.status !== "canceled" && <>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => { setOrderToCancel(order); setCancellationReason(""); setAdvanceDisposition(""); }} className="text-red-500" data-testid={`menu-cancel-${order.id}`}><XCircle className="mr-2 h-4 w-4" />Cancel order</DropdownMenuItem>
+        </>}
+        {isAdmin && <>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => { setOrderToDelete(order); setDeleteConfirmText(""); }} className="text-red-500" data-testid={`menu-delete-${order.id}`}><Trash2 className="mr-2 h-4 w-4" />Delete order</DropdownMenuItem>
+        </>}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   const renderOrderRow = (order: OrderWithServices) => (
-    <TableRow key={order.id} className="border-slate-800 hover:bg-slate-900/50" data-testid={`row-order-${order.id}`}>
-       <TableCell className="whitespace-nowrap font-mono text-xs text-cyan-300">{order.orderNumber || "—"}</TableCell>
-      {isAdmin && (
-        <TableCell>
-          <div className="min-w-28">
-            <p className="text-white text-sm font-medium">{getCreatedByLabel(order).split(" (")[0]}</p>
-            <p className="text-xs text-slate-500">
-              {getCreatedByLabel(order).match(/\(([^)]+)\)/)?.[1] || ""}
-            </p>
-          </div>
-        </TableCell>
-      )}
-       <TableCell className="whitespace-nowrap text-xs text-slate-400">{order.createdAt ? format(new Date(order.createdAt), "MMM dd, yyyy") : "Not Specified"}</TableCell>
-       <TableCell className="min-w-36 whitespace-nowrap font-medium text-white">{order.clientName || "Not Specified"}</TableCell>
-      <TableCell>
-         <span className="whitespace-nowrap text-sm text-slate-300">
-          {getClientTypeLabel(order)}
-        </span>
+    <TableRow
+      key={order.id}
+      className="cursor-pointer"
+      onClick={() => openOrderDetails(order)}
+      onKeyDown={(e) => { if (e.key === "Enter") openOrderDetails(order); }}
+      tabIndex={0}
+      data-testid={`row-order-${order.id}`}
+    >
+      <TableCell className="whitespace-nowrap">
+        <p className="font-mono text-xs font-medium text-primary">{order.orderNumber || "—"}</p>
+        <p className="mt-0.5 text-xs text-slate-500">{order.createdAt ? format(new Date(order.createdAt), "MMM dd") : ""}</p>
       </TableCell>
-      <TableCell>
-        {order.clientPhone ? (
-          <div className="flex items-center gap-1">
-            <span className="text-slate-300 text-sm">{order.clientPhone}</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 text-slate-400 hover:text-white"
-              onClick={() => copyPhone(order.id, order.clientPhone!)}
-              data-testid={`button-copy-phone-${order.id}`}
-            >
-              {copiedPhone === order.id ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-            </Button>
-          </div>
-        ) : (
-          <span className="text-slate-500 text-sm">-</span>
-        )}
+      <TableCell className="min-w-40">
+        <p className="font-medium text-slate-100">{order.clientName || "—"}</p>
+        <p className="text-xs text-slate-500">{order.clientPhone || ""}</p>
       </TableCell>
-       <TableCell className="min-w-40 text-sm text-slate-300">{getServicesDisplay(order)}</TableCell>
-       <TableCell className="whitespace-nowrap">
-        {order.orderType === "resume_distribution" ? (
-          <span className="text-sm text-slate-500">—</span>
-        ) : (
-          <Select
-            value={order.remainingRevisions != null ? String(order.remainingRevisions) : undefined}
-            onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { remainingRevisions: parseInt(val) } })}
-          >
-            <SelectTrigger className="w-28 bg-transparent border-0 h-auto p-0 focus:ring-0 shadow-none hover:bg-white/5 rounded px-2 py-1" data-testid={`select-revisions-${order.id}`}>
-              <SelectValue placeholder="—">
-                <span className={getSupportStatusInfo(order)?.status === "expired" ? "text-slate-500 line-through" : "text-slate-300"}>
-                  {order.remainingRevisions != null ? `${order.remainingRevisions} Revision${order.remainingRevisions === 1 ? "" : "s"}` : "—"}
-                </span>
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent className="bg-slate-900 border-slate-800">
-              {getRemainingRevisionOptions(order.numberOfRevisions).map(n => (
-                <SelectItem key={n} value={n}>{n} Revision{n === "1" ? "" : "s"}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-      </TableCell>
-       <TableCell className="whitespace-nowrap"><SupportPeriodCell order={order} /></TableCell>
+      <TableCell className="max-w-56 text-sm text-slate-300"><span className="line-clamp-2">{packageText(order)}</span></TableCell>
+      <TableCell className="whitespace-nowrap" onClick={stop}>{renderWorkStatusCell(order)}</TableCell>
+      {!isDesigner && <TableCell className="whitespace-nowrap"><PaymentStateBadge state={processOf(order).paymentState} /></TableCell>}
       {!isDesigner && (
-       <TableCell className="whitespace-nowrap">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-[10px] text-slate-400">
-              {order.assignee?.name?.charAt(0) || "?"}
-            </div>
-            <span className="text-sm text-slate-300">{order.assignee?.name || "Unassigned"}</span>
-          </div>
+        <TableCell className="whitespace-nowrap">
+          <span className={cn("text-sm", order.assignee ? "text-slate-300" : "text-slate-500")}>{order.assignee?.name || "Unassigned"}</span>
         </TableCell>
       )}
-       <TableCell className="whitespace-nowrap">{renderWorkStatusCell(order)}</TableCell>
-      {!isDesigner && (
-       <TableCell className="whitespace-nowrap">
-         {isAdmin ? (
-            <Select
-              defaultValue={order.advancePaymentStatus || "pending"}
-              onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { advancePaymentStatus: val } })}
-            >
-              <SelectTrigger className="w-32 bg-transparent border-0 h-auto p-0 focus:ring-0 shadow-none hover:bg-white/5 rounded px-2 py-1" data-testid={`select-adv-payment-${order.id}`}>
-                <SelectValue>{getAdvancePaymentStatusBadge(order.advancePaymentStatus)}</SelectValue>
-              </SelectTrigger>
-              <SelectContent className="bg-slate-900 border-slate-800">
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="approved">Approved</SelectItem>
-                <SelectItem value="disapproved">Disapproved</SelectItem>
-              </SelectContent>
-            </Select>
-          ) : (
-            getAdvancePaymentStatusBadge(order.advancePaymentStatus)
-          )}
+      <TableCell className="whitespace-nowrap">{renderDue(order)}</TableCell>
+      {canSeeAmounts && (
+        <TableCell className="whitespace-nowrap text-right">
+          <p className={cn("font-medium", order.status === "canceled" ? "text-slate-500 line-through" : "text-slate-100")}>{formatRs(order.totalPrice)}</p>
+          {order.status !== "canceled" && getOrderAccounting(order).remainingReceivable > 0 && <p className="text-xs text-rose-400">{formatRs(getOrderAccounting(order).remainingReceivable)} due</p>}
         </TableCell>
       )}
-      <TableCell>
-        {isAdmin ? (
-          <Select
-            defaultValue={order.paymentStatus || "pending"}
-            onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { paymentStatus: val } })}
-          >
-           <SelectTrigger className="h-auto w-28 rounded border-0 bg-transparent p-0 px-2 py-1 shadow-none hover:bg-white/5 focus:ring-0" data-testid={`select-payment-${order.id}`}>
-             <SelectValue>
-               <PaymentStateBadge state={processOf(order).paymentState} />
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent className="bg-slate-900 border-slate-800">
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="paid">Paid</SelectItem>
-            </SelectContent>
-          </Select>
-        ) : (
-           <PaymentStateBadge state={processOf(order).paymentState} />
-        )}
-      </TableCell>
-       {canSeeAmounts && (
-         <TableCell className="whitespace-nowrap text-right font-medium text-white">{formatRs(order.totalPrice)}</TableCell>
-      )}
-      {canSeeAmounts && (
-         <TableCell className="whitespace-nowrap text-right font-medium">
-           <span className={order.status === "canceled" && order.advanceRefunded ? "text-slate-500 line-through" : Number(order.advanceAmount || 0) > 0 ? "text-emerald-300" : "text-slate-500"}>{formatRs(order.advanceAmount)}</span>
-           {order.status === "canceled" && <span className={cn("ml-1 text-[10px]", order.advanceRefunded ? "text-rose-300" : "text-slate-400")}>{order.advanceRefunded ? "Refunded" : "Retained"}</span>}
-         </TableCell>
-      )}
-      {canSeeAmounts && (
-         <TableCell className="whitespace-nowrap text-right font-medium">
-           <span className={order.status === "canceled" ? "text-slate-500 line-through" : getOrderAccounting(order).remainingReceivable > 0 ? "text-rose-300" : "text-emerald-300"}>{formatRs(order.status === "canceled" ? order.remainingAmount : getOrderAccounting(order).remainingReceivable)}</span>
-           {order.status === "canceled" && <span className="ml-1 text-[10px] text-rose-300">Canceled</span>}
-         </TableCell>
-      )}
-      <TableCell className="text-right">
-        <div className="flex justify-end gap-1">
-           {(isAdmin || isSupport) && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-950/30"
-              onClick={() => {
-                setSelectedOrder(order);
-                setComplaintDialogOpen(true);
-              }}
-              disabled={!order.assignedToId}
-              title={order.assignedToId ? "Raise complaint" : "Assign a designer before raising a complaint"}
-              data-testid={`button-complaint-${order.id}`}
-            >
-              <FileWarning className="w-4 h-4" />
-            </Button>
-          )}
-          {(isAdmin || isSupport) && (
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-white" data-testid={`button-assign-${order.id}`}><UserPlus className="w-4 h-4" /></Button>
-              </DialogTrigger>
-              <DialogContent className="bg-slate-900 border-slate-800">
-                <DialogHeader><DialogTitle className="text-white font-display">Assign Designer</DialogTitle></DialogHeader>
-                <div className="space-y-4 py-4">
-                  <Select
-                    defaultValue={order.assignedToId?.toString()}
-                    onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { assignedToId: parseInt(val) } })}
-                  >
-                    <SelectTrigger className="bg-slate-950 border-slate-800 text-white">
-                      <SelectValue placeholder="Select designer" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                      {availableDesigners.map(designer => (
-                        <SelectItem key={designer.id} value={designer.id.toString()}>{designer.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </DialogContent>
-            </Dialog>
-          )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-white" data-testid={`button-menu-${order.id}`}>
-                <MoreVertical className="w-4 h-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="bg-slate-900 border-slate-800">
-              <DropdownMenuItem onClick={() => openOrderDetails(order)} className="text-slate-300 hover:text-white" data-testid={`menu-view-details-${order.id}`}>
-                <FileText className="w-4 h-4 mr-2" />
-                View Details
-              </DropdownMenuItem>
-              {isAdmin && (
-                <DropdownMenuItem onClick={() => { setOrderToEdit(order); setEditSheetOpen(true); }} className="text-slate-300 hover:text-white" data-testid={`menu-edit-${order.id}`}>
-                  <Pencil className="w-4 h-4 mr-2" />
-                  Edit Order
-                </DropdownMenuItem>
-              )}
-              {isAdmin && order.status !== 'canceled' && (
-                <>
-                  <DropdownMenuSeparator className="bg-slate-800" />
-                  <DropdownMenuItem
-                    onClick={() => { setOrderToCancel(order); setCancellationReason(""); setAdvanceDisposition(""); }}
-                    className="text-red-400 hover:text-red-300"
-                    data-testid={`menu-cancel-${order.id}`}
-                  >
-                    <XCircle className="w-4 h-4 mr-2" />
-                    Cancel Order
-                  </DropdownMenuItem>
-                </>
-              )}
-              {isAdmin && (
-                <>
-                  <DropdownMenuSeparator className="bg-slate-800" />
-                  <DropdownMenuItem
-                    onClick={() => { setOrderToDelete(order); setDeleteConfirmText(""); }}
-                    className="text-red-400 hover:text-red-300"
-                    data-testid={`menu-delete-${order.id}`}
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Delete Order
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </TableCell>
+      <TableCell className="text-right" onClick={stop}>{renderRowMenu(order)}</TableCell>
     </TableRow>
   );
+
+  // Phone layout: one card per order, whole card opens the drawer.
+  const renderOrderCard = (order: OrderWithServices) => {
+    const p = processOf(order as OrderRow);
+    return (
+      <div
+        key={order.id}
+        role="button"
+        tabIndex={0}
+        onClick={() => openOrderDetails(order)}
+        onKeyDown={(e) => { if (e.key === "Enter") openOrderDetails(order); }}
+        className="rounded-xl border border-border bg-card p-4 active:bg-[hsl(var(--surface-2))]"
+        data-testid={`card-order-${order.id}`}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-mono text-xs font-medium text-primary">{order.orderNumber || "—"}</p>
+            <p className="mt-1 truncate text-[15px] font-medium text-slate-100">{order.clientName || "—"}</p>
+            <p className="truncate text-xs text-slate-500">{packageText(order)}</p>
+          </div>
+          <div className="flex shrink-0 items-start gap-1" onClick={stop}>
+            {canSeeAmounts && <p className="pt-2 text-sm font-semibold text-slate-100">{formatRs(order.totalPrice)}</p>}
+            {renderRowMenu(order)}
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <WorkStatusBadge status={p.workStatus} />
+          {!isDesigner && <PaymentStateBadge state={p.paymentState} />}
+          {renderDue(order as OrderRow)}
+          {!isDesigner && order.assignee?.name && <span className="ml-auto text-xs text-slate-500">{order.assignee.name}</span>}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="crm-page space-y-5">
       {deepLinkMessage && <div className="flex items-center justify-between gap-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100"><span>{deepLinkMessage}</span><Button variant="ghost" size="sm" onClick={() => { setDeepLinkMessage(null); setLocation("/orders"); }}>Clear link</Button></div>}
-      <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-        <div className="max-w-md">
-          <PageHeader eyebrow="Client operations" title="Orders Management" description="Manage ATS CV, LinkedIn, and Cover Letter requests." />
-        </div>
 
-        <div className="flex w-full flex-col gap-3 xl:w-auto xl:min-w-[680px]">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative min-w-0 flex-1 sm:min-w-[280px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-              <Input
-                placeholder="Search Order ID or Client..."
-                className="h-10 pl-10 bg-slate-900 border-slate-800 text-white"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                data-testid="input-search-orders"
+      <PageHeader
+        title="Orders"
+        actions={<>
+          {isAdmin && (
+            <Button variant="outline" onClick={exportOrdersPDF} className="hidden sm:inline-flex" data-testid="button-export-orders">
+              <Download className="h-4 w-4" />Export
+            </Button>
+          )}
+        </>}
+      />
+
+      {canCreateOrder && (
+        <Dialog
+          open={createDialogOpen}
+          onOpenChange={(open) => {
+            setCreateDialogOpen(open);
+            if (!open) {
+              setCreateOrderType(null);
+              if (new URLSearchParams(locationSearch).get("new")) setLocation("/orders");
+            }
+          }}
+        >
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-xl">
+                {createOrderType ? ORDER_SERVICE_TYPE_TITLES[createOrderType] : "Choose service"}
+              </DialogTitle>
+            </DialogHeader>
+            {createOrderType ? (
+              <CreateOrderForm
+                designers={availableDesigners}
+                orderType={createOrderType}
+                onBack={() => setCreateOrderType(null)}
+                onSuccess={() => setCreateDialogOpen(false)}
               />
-              {isSearchSettling && (
-                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 animate-spin" data-testid="icon-search-loading" />
-              )}
-            </div>
-
-            <div className="flex shrink-0 flex-wrap gap-2">
-              {isAdmin && (
-                <Button variant="outline" onClick={exportOrdersPDF} data-testid="button-export-orders">
-                  <Download className="w-4 h-4 mr-2" />
-                  Export PDF
-                </Button>
-              )}
-
-              {canCreateOrder && (
-                <Dialog
-                  open={createDialogOpen}
-                  onOpenChange={(open) => {
-                    setCreateDialogOpen(open);
-                    if (!open) setCreateOrderType(null);
-                  }}
-                >
-                  <DialogTrigger asChild>
-                    <Button className="bg-primary" data-testid="button-create-order">
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create Order
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="bg-slate-900 border-slate-800 max-w-2xl max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
-                      <DialogTitle className="text-white font-display text-xl">
-                        {createOrderType ? ORDER_SERVICE_TYPE_TITLES[createOrderType] : "Choose Service"}
-                      </DialogTitle>
-                    </DialogHeader>
-                    {createOrderType ? (
-                      <CreateOrderForm
-                        designers={availableDesigners}
-                        orderType={createOrderType}
-                        onBack={() => setCreateOrderType(null)}
-                        onSuccess={() => setCreateDialogOpen(false)}
-                      />
-                    ) : (
-                      <ServiceTypeSelector onSelect={setCreateOrderType} />
-                    )}
-                  </DialogContent>
-                </Dialog>
-              )}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2" data-testid="order-filters">
-            <Filter className="mr-1 hidden h-4 w-4 text-slate-500 md:block" aria-hidden="true" />
-            <Select value={selectedStatusFilter} onValueChange={setSelectedStatusFilter}>
-              <SelectTrigger className="w-36 bg-slate-900 border-slate-800 text-white" data-testid="select-order-status-filter">
-                <SelectValue placeholder="All statuses" />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                <SelectItem value="all">All statuses</SelectItem>
-                {ORDER_STATUS_FILTERS.map(filter => (
-                  <SelectItem key={filter.value} value={filter.value}>{filter.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {(isAdmin || isSupport) && (
-              <Select value={selectedDesignerFilter} onValueChange={setSelectedDesignerFilter}>
-                <SelectTrigger className="w-40 bg-slate-900 border-slate-800 text-white" data-testid="select-order-designer-filter">
-                  <SelectValue placeholder="All designers" />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                  <SelectItem value="all">All designers</SelectItem>
-                  {designerFilterOptions.map(designer => (
-                    <SelectItem key={designer.id} value={designer.id.toString()}>{designer.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            ) : (
+              <ServiceTypeSelector onSelect={setCreateOrderType} />
             )}
+          </DialogContent>
+        </Dialog>
+      )}
 
-            <Select value={selectedServiceTypeFilter} onValueChange={setSelectedServiceTypeFilter}>
-              <SelectTrigger className="w-44 bg-slate-900 border-slate-800 text-white" data-testid="select-order-service-type-filter">
-                <SelectValue placeholder="All Services" />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                <SelectItem value="all">All Services</SelectItem>
-                {ORDER_SERVICE_TYPE_OPTIONS.map(option => (
-                  <SelectItem key={option.value} value={option.value}>{ORDER_SERVICE_TYPE_FILTER_LABELS[option.value]}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {hasActiveOrderFilters && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setSelectedStatusFilter("all");
-                  setSelectedDesignerFilter("all");
-                  setSelectedServiceTypeFilter("all");
-                }}
-                className="text-slate-400 hover:text-white"
-                data-testid="button-clear-order-filters"
-              >
-                <X className="w-4 h-4 mr-1" />
-                Clear
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {isAdmin && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
-          <CRMMetricCard label="Total monthly" value={orderSummary?.monthCount ?? 0} icon={Package} />
-          <CRMMetricCard label="Average order value" value={formatRs(orderSummary && orderSummary.monthCount > 0 ? orderSummary.monthSales / orderSummary.monthCount : 0)} icon={TrendingUp} />
-          <CRMMetricCard label="Monthly revenue" value={formatRs(orderSummary?.monthSales)} icon={TrendingUp} testId="text-monthly-revenue" />
-          <CRMMetricCard label="Collected" value={formatRs(orderSummary?.monthCollected)} icon={TrendingUp} tone="success" />
-          <CRMMetricCard label="Remaining" value={formatRs(orderSummary?.monthRemaining)} icon={AlertCircle} tone="warning" />
-          <CRMMetricCard label="Today's revenue" value={formatRs(orderSummary?.todaySales)} icon={CalendarIcon} />
+      {/* View switch: placed orders vs. requests waiting for payment */}
+      {(isAdmin || isSupport) && (
+        <div className="inline-flex rounded-lg border border-border bg-[hsl(var(--surface-2))] p-1" role="tablist" aria-label="Order view">
+          {(["orders", "requests"] as const).map(v => (
+            <button
+              key={v}
+              role="tab"
+              aria-selected={orderView === v}
+              onClick={() => setOrderView(v)}
+              className={cn("min-h-9 rounded-md px-4 text-sm font-medium", orderView === v ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+              data-testid={v === "orders" ? "tab-orders" : "tab-order-requests"}
+            >
+              {v === "orders" ? "Orders" : "Requests"}
+            </button>
+          ))}
         </div>
       )}
 
-      {isSearchActive && activeOrdersTab !== "requests" ? (
-        <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden" data-testid="panel-search-results">
-          <div className="p-6 border-b border-slate-800">
-            <h3 className="text-lg font-bold text-white">Search Results</h3>
-            <p className="text-sm text-slate-500" data-testid="text-search-result-count">
-              {`${totalRows} matching order${totalRows === 1 ? "" : "s"} — active filters apply while month/year filters are ignored during search`}
-            </p>
-          </div>
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-2" data-testid="order-filters">
+        <div className="relative min-w-0 flex-1 basis-full sm:basis-auto sm:min-w-[260px] sm:max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <Input
+            placeholder="Search order ID, client or phone"
+            className="pl-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            data-testid="input-search-orders"
+          />
+          {isSearchSettling && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-500" data-testid="icon-search-loading" />}
+        </div>
+
+        {orderView === "orders" && <>
+          <Select value={orderPeriod} onValueChange={(v) => setOrderPeriod(v as OrderPeriod)}>
+            <SelectTrigger className="w-[170px]" data-testid="select-order-period" aria-label="Date">
+              <CalendarIcon className="h-4 w-4 shrink-0 text-slate-500" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="today">Today</SelectItem>
+              <SelectItem value="month">{orderPeriod === "month" && !isCurrentMonth ? "Month" : "This month"}</SelectItem>
+              <SelectItem value="all">All time</SelectItem>
+            </SelectContent>
+          </Select>
+          {orderPeriod === "month" && <>
+            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+              <SelectTrigger className="w-[130px]" data-testid="select-month" aria-label="Month"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Array.from({ length: 12 }).map((_, i) => <SelectItem key={i} value={i.toString()}>{format(new Date(2026, i, 1), "MMMM")}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={selectedYear} onValueChange={setSelectedYear}>
+              <SelectTrigger className="w-[92px]" data-testid="select-year" aria-label="Year"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {yearOptions.map(year => <SelectItem key={year} value={year.toString()}>{year}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </>}
+
+          <Select value={selectedStatusFilter} onValueChange={setSelectedStatusFilter}>
+            <SelectTrigger className="w-[150px]" data-testid="select-order-status-filter" aria-label="Status"><SelectValue placeholder="All statuses" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              {ORDER_STATUS_FILTERS.map(filter => <SelectItem key={filter.value} value={filter.value}>{filter.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+
+          {(isAdmin || isSupport) && (
+            <Select value={selectedDesignerFilter} onValueChange={setSelectedDesignerFilter}>
+              <SelectTrigger className="w-[150px]" data-testid="select-order-designer-filter" aria-label="Designer"><SelectValue placeholder="All designers" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All designers</SelectItem>
+                {designerFilterOptions.map(designer => <SelectItem key={designer.id} value={designer.id.toString()}>{designer.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
+
+          <Select value={selectedServiceTypeFilter} onValueChange={setSelectedServiceTypeFilter}>
+            <SelectTrigger className="w-[160px]" data-testid="select-order-service-type-filter" aria-label="Service"><SelectValue placeholder="All services" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All services</SelectItem>
+              {ORDER_SERVICE_TYPE_OPTIONS.map(option => <SelectItem key={option.value} value={option.value}>{ORDER_SERVICE_TYPE_FILTER_LABELS[option.value]}</SelectItem>)}
+            </SelectContent>
+          </Select>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" data-testid="button-saved-filters"><Bookmark className="h-4 w-4" />Saved</Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-60">
+              {savedFilters.length === 0 && <p className="px-2 py-1.5 text-xs text-muted-foreground">No saved filters yet.</p>}
+              {savedFilters.map(f => (
+                <DropdownMenuItem key={f.name} onClick={() => applySavedFilter(f)} className="justify-between gap-2">
+                  <span className="truncate">{f.name}</span>
+                  <button
+                    type="button"
+                    className="rounded p-1 text-muted-foreground hover:text-foreground"
+                    aria-label={`Remove ${f.name}`}
+                    onClick={(e) => { e.stopPropagation(); removeSavedFilter(f.name); }}
+                  ><X className="h-3.5 w-3.5" /></button>
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={saveCurrentFilter}><Plus className="mr-2 h-4 w-4" />Save current filters…</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {hasActiveOrderFilters && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => { setSelectedStatusFilter("all"); setSelectedDesignerFilter("all"); setSelectedServiceTypeFilter("all"); }}
+              className="text-slate-500"
+              data-testid="button-clear-order-filters"
+            >
+              <X className="h-4 w-4" />Clear
+            </Button>
+          )}
+        </>}
+      </div>
+
+      {isAdmin && orderView === "orders" && orderPeriod === "month" && !isSearchActive && orderSummary && (
+        <p className="text-sm text-slate-500" data-testid="text-monthly-revenue">
+          {orderSummary.monthCount} orders · {formatRs(orderSummary.monthSales)} sales · {formatRs(orderSummary.monthCollected)} collected · {formatRs(orderSummary.monthRemaining)} remaining
+        </p>
+      )}
+
+      {orderView === "requests" && (isAdmin || isSupport) ? (
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
           <div className="table-scroll-wrapper">
             <Table>
-              {orderTableHead}
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Requested</TableHead>
+                  <TableHead>Client</TableHead>
+                  <TableHead>Created by</TableHead>
+                  <TableHead>Payment</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead className="text-right"><span className="sr-only">Actions</span></TableHead>
+                </TableRow>
+              </TableHeader>
               <TableBody>
-                {universalSearchResults.map((order) => renderOrderRow(order))}
-                {universalSearchResults.length === 0 && (
-                  <TableRow className="border-slate-800">
-                    <TableCell colSpan={orderColSpan} className="text-center text-slate-500 py-8" data-testid="text-no-search-results">
-                      {hasActiveOrderFilters ? "No orders match the selected filters." : "No matching orders found."}
+                {pageRows.map((order: OrderRow) => (
+                  <TableRow key={order.id} data-testid={`row-request-${order.id}`}>
+                    <TableCell className="whitespace-nowrap text-sm text-slate-400">{order.createdAt ? format(new Date(order.createdAt), "MMM dd · h:mm a") : "—"}</TableCell>
+                    <TableCell><p className="text-sm font-medium text-slate-100">{order.clientName}</p><p className="text-xs text-slate-500">{order.clientPhone || ""}</p></TableCell>
+                    <TableCell className="whitespace-nowrap text-sm text-slate-400">{getCreatedByLabel(order).split(" (")[0]}</TableCell>
+                    <TableCell><AdvancePaymentStatusBadge status={order.advancePaymentStatus} /></TableCell>
+                    <TableCell className="whitespace-nowrap text-right font-medium text-slate-100">{formatRs(order.totalPrice)}</TableCell>
+                    <TableCell className="text-right">
+                      {isAdmin ? (
+                        <Button size="sm" variant="outline" disabled={approvePayLaterMutation.isPending} onClick={() => approvePayLaterMutation.mutate(order.id)} data-testid={`button-approve-pay-later-${order.id}`}>
+                          Approve pay later
+                        </Button>
+                      ) : <span className="text-xs text-slate-500">Waiting for admin</span>}
                     </TableCell>
                   </TableRow>
+                ))}
+                {pageRows.length === 0 && (
+                  <TableRow><TableCell colSpan={6} className="py-10 text-center text-slate-500" data-testid="text-no-requests">No open requests.</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
           </div>
         </div>
       ) : (
-      <Tabs value={activeOrdersTab} onValueChange={(val) => setActiveOrdersTab(val as "today" | "monthly" | "requests")} className="w-full">
-        <TabsList className="mb-6 w-full justify-start border border-slate-800 bg-slate-900/70 p-1 sm:w-fit">
-          <TabsTrigger value="today" className="px-5" data-testid="tab-today-orders">Today's Orders</TabsTrigger>
-          <TabsTrigger value="monthly" className="px-5" data-testid="tab-monthly-orders">Monthly Orders</TabsTrigger>
-          {(isAdmin || isSupport) && <TabsTrigger value="requests" className="px-5" data-testid="tab-order-requests">Requests</TabsTrigger>}
-        </TabsList>
-
-        {(isAdmin || isSupport) && (
-          <TabsContent value="requests">
-            <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
-              <div className="p-6 border-b border-slate-800">
-                <h3 className="text-lg font-bold text-white">Requests</h3>
-                <p className="text-sm text-slate-500">Orders waiting for a verified payment{isAdmin ? " — or approve them to pay later" : ""}. A request becomes Confirmed once approved.</p>
-              </div>
-              <div className="table-scroll-wrapper">
-                <Table>
-                  <TableHeader className="bg-slate-900/50">
-                    <TableRow className="border-slate-800 hover:bg-transparent">
-                      <TableHead className="text-slate-400">Requested</TableHead>
-                      <TableHead className="text-slate-400">Client</TableHead>
-                      <TableHead className="text-slate-400">Contact</TableHead>
-                      <TableHead className="text-slate-400">Created By</TableHead>
-                      <TableHead className="text-slate-400">Payment</TableHead>
-                      <TableHead className="text-slate-400 text-right">Total Bill</TableHead>
-                      <TableHead className="text-slate-400 text-right">Actions</TableHead>
+        <>
+          {/* Desktop table */}
+          <div className={cn("hidden overflow-hidden rounded-xl border border-border bg-card md:block", listFetching && "opacity-80")} data-testid={isSearchActive ? "panel-search-results" : "panel-orders"}>
+            <div className="table-scroll-wrapper">
+              <Table className="crm-table">
+                {orderTableHead}
+                <TableBody>
+                  {pageRows.map((order) => renderOrderRow(order))}
+                  {pageRows.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={orderColSpan} className="py-12 text-center text-slate-500" data-testid={isSearchActive ? "text-no-search-results" : "text-no-orders"}>
+                        {hasActiveOrderFilters ? "No orders match these filters." : isSearchActive ? "No matching orders." : "No orders for this period."}
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pageRows.map((order: OrderRow) => (
-                      <TableRow key={order.id} className="border-slate-800" data-testid={`row-request-${order.id}`}>
-                        <TableCell className="whitespace-nowrap text-sm text-slate-300">{order.createdAt ? format(new Date(order.createdAt), "MMM dd, yyyy · h:mm a") : "—"}</TableCell>
-                        <TableCell className="text-sm text-white">{order.clientName}</TableCell>
-                        <TableCell className="whitespace-nowrap text-sm text-slate-400">{order.clientPhone || "—"}</TableCell>
-                        <TableCell className="whitespace-nowrap text-sm text-slate-400">{getCreatedByLabel(order).split(" (")[0]}</TableCell>
-                        <TableCell><AdvancePaymentStatusBadge status={order.advancePaymentStatus} /></TableCell>
-                        <TableCell className="whitespace-nowrap text-right font-medium text-white">{formatRs(order.totalPrice)}</TableCell>
-                        <TableCell className="text-right">
-                          {isAdmin ? (
-                            <Button size="sm" variant="outline" disabled={approvePayLaterMutation.isPending} onClick={() => approvePayLaterMutation.mutate(order.id)} data-testid={`button-approve-pay-later-${order.id}`}>
-                              Approve pay later
-                            </Button>
-                          ) : <span className="text-xs text-slate-500">Waiting for admin</span>}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {pageRows.length === 0 && (
-                      <TableRow className="border-slate-800">
-                        <TableCell colSpan={7} className="text-center text-slate-500 py-8" data-testid="text-no-requests">No open requests.</TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          </TabsContent>
-        )}
-
-        <TabsContent value="today">
-          <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
-            <div className="p-6 border-b border-slate-800">
-              <h3 className="text-lg font-bold text-white">Today's Orders</h3>
-              <p className="text-sm text-slate-500">Orders created today</p>
-            </div>
-            {/* Table view – Today */}
-            <div className="table-scroll-wrapper">
-            <Table>
-              {orderTableHead}
-              <TableBody>
-                {todayOrders?.map((order) => renderOrderRow(order))}
-                {(!todayOrders || todayOrders.length === 0) && (
-                  <TableRow className="border-slate-800">
-                    <TableCell colSpan={orderColSpan} className="text-center text-slate-500 py-8">
-                      {hasActiveOrderFilters ? "No orders match the selected filters today." : "No orders for today"}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                  )}
+                </TableBody>
+              </Table>
             </div>
           </div>
-        </TabsContent>
 
-        <TabsContent value="monthly">
-          <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
-            <div className="p-6 border-b border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div>
-                <h3 className="text-lg font-bold text-white">Monthly Orders</h3>
-                <p className="text-sm text-slate-500">All orders for the selected month</p>
-              </div>
-              
-              <div className="flex gap-2">
-                <Select value={selectedYear} onValueChange={setSelectedYear}>
-                  <SelectTrigger className="w-24 bg-slate-900 border-slate-800 text-white" data-testid="select-year">
-                    <SelectValue placeholder="Year" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                    {[2024, 2025, 2026, 2027].map((year) => (
-                      <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                  <SelectTrigger className="w-36 bg-slate-900 border-slate-800 text-white" data-testid="select-month">
-                    <CalendarIcon className="w-4 h-4 mr-2" />
-                    <SelectValue placeholder="Month" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                    {Array.from({ length: 12 }).map((_, i) => (
-                      <SelectItem key={i} value={i.toString()}>{format(new Date(2026, i, 1), "MMMM")}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            
-            {/* Table view – Monthly */}
-            <div className="table-scroll-wrapper">
-            <Table>
-              {orderTableHead}
-              <TableBody>
-                {monthlyOrders?.map((order) => renderOrderRow(order))}
-                {(!monthlyOrders || monthlyOrders.length === 0) && (
-                  <TableRow className="border-slate-800">
-                    <TableCell colSpan={orderColSpan} className="text-center text-slate-500 py-8">
-                      {hasActiveOrderFilters ? "No orders match the selected filters this month." : "No orders for this month"}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-            </div>
+          {/* Mobile cards */}
+          <div className="space-y-2 md:hidden" data-testid="orders-cards">
+            {pageRows.map(order => renderOrderCard(order))}
+            {pageRows.length === 0 && <p className="rounded-xl border border-border bg-card py-10 text-center text-sm text-slate-500">{isSearchActive ? "No matching orders." : "No orders for this period."}</p>}
           </div>
-        </TabsContent>
-      </Tabs>
+        </>
       )}
 
       {totalRows > 0 && (
-        <div className="flex flex-col items-center justify-between gap-3 text-sm text-slate-400 sm:flex-row" data-testid="orders-pagination">
-          <span>
-            Showing {(page - 1) * ORDERS_PAGE_SIZE + 1}–{Math.min(page * ORDERS_PAGE_SIZE, totalRows)} of {totalRows}
+        <div className="flex flex-col items-center justify-between gap-3 text-sm text-slate-500 sm:flex-row" data-testid="orders-pagination">
+          <span data-testid="text-search-result-count">
+            {(page - 1) * ORDERS_PAGE_SIZE + 1}–{Math.min(page * ORDERS_PAGE_SIZE, totalRows)} of {totalRows}
           </span>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" disabled={page <= 1 || listFetching} onClick={() => setPage(p => Math.max(1, p - 1))} data-testid="button-orders-prev">Previous</Button>
@@ -1836,6 +1694,35 @@ export default function OrdersPage() {
           </div>
         </div>
       )}
+
+      {/* Mobile sticky primary action */}
+      {canCreateOrder && (
+        <Button
+          onClick={() => setCreateDialogOpen(true)}
+          className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-4 z-30 h-12 rounded-full px-5 shadow-lg shadow-[hsl(var(--shadow)/.25)] lg:hidden"
+          data-testid="button-create-order-mobile"
+        >
+          <Plus className="h-5 w-5" />New order
+        </Button>
+      )}
+
+      {/* One assign dialog for all rows */}
+      <Dialog open={Boolean(assignOrder)} onOpenChange={(open) => { if (!open) setAssignOrder(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Assign designer</DialogTitle>{assignOrder && <DialogDescription>{assignOrder.orderNumber} · {assignOrder.clientName}</DialogDescription>}</DialogHeader>
+          {assignOrder && (
+            <Select
+              defaultValue={assignOrder.assignedToId?.toString()}
+              onValueChange={(val) => { updateOrderMutation.mutate({ id: assignOrder.id, updates: { assignedToId: parseInt(val) } }); setAssignOrder(null); }}
+            >
+              <SelectTrigger data-testid="select-assign-designer"><SelectValue placeholder="Select designer" /></SelectTrigger>
+              <SelectContent>
+                {availableDesigners.map(designer => <SelectItem key={designer.id} value={designer.id.toString()}>{designer.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Sheet open={detailsSheetOpen} onOpenChange={open => { if (!open) closeDrawer(); }}>
         <SheetContent className="detail-drawer bg-slate-950 border-slate-800 w-full sm:max-w-xl overflow-y-auto">
@@ -1885,10 +1772,11 @@ export default function OrdersPage() {
               </div>
 
               <Tabs value={detailsTab} onValueChange={value => setOrderDrawerTab(value as OrderDrawerTab)}>
-                <TabsList className="grid h-auto w-full grid-cols-3 border border-slate-800 bg-slate-900/70 p-1">
-                  <TabsTrigger value="overview">Overview</TabsTrigger>
-                  <TabsTrigger value="activity">Activity</TabsTrigger>
-                  <TabsTrigger value="experience">Client Experience</TabsTrigger>
+                <TabsList className="grid h-auto w-full grid-cols-4 p-1">
+                  <TabsTrigger value="overview" className="min-h-9 text-xs sm:text-sm">Overview</TabsTrigger>
+                  <TabsTrigger value="services" className="min-h-9 text-xs sm:text-sm">Services & files</TabsTrigger>
+                  <TabsTrigger value="payments" className="min-h-9 text-xs sm:text-sm">Payments</TabsTrigger>
+                  <TabsTrigger value="activity" className="min-h-9 text-xs sm:text-sm">Activity</TabsTrigger>
                 </TabsList>
               </Tabs>
 
@@ -1937,6 +1825,9 @@ export default function OrdersPage() {
                 </div>
               </div>
 
+              </>}
+
+              {detailsTab === "services" && <>
               <div className="space-y-3 p-4 bg-slate-950 rounded-lg border border-slate-800">
                 <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Services</h4>
                 {selectedOrder.packageType && selectedOrder.packageType !== "custom" && (
@@ -1963,6 +1854,9 @@ export default function OrdersPage() {
                 )}
               </div>
 
+              </>}
+
+              {detailsTab === "overview" && <>
               <div className="space-y-3 p-4 bg-slate-950 rounded-lg border border-slate-800">
                 <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Assignment</h4>
                 <div className="flex items-center gap-3">
@@ -1995,6 +1889,20 @@ export default function OrdersPage() {
                         )}
                       </div>
                     )}
+                    {isAdmin && selectedOrder.orderType !== "resume_distribution" && (
+                      <div>
+                        <p className="text-xs text-slate-500">Set remaining revisions</p>
+                        <Select
+                          value={selectedOrder.remainingRevisions != null ? String(selectedOrder.remainingRevisions) : undefined}
+                          onValueChange={(val) => updateOrderMutation.mutate({ id: selectedOrder.id, updates: { remainingRevisions: parseInt(val) } })}
+                        >
+                          <SelectTrigger className="mt-1" data-testid={`select-revisions-${selectedOrder.id}`}><SelectValue placeholder="—" /></SelectTrigger>
+                          <SelectContent>
+                            {getRemainingRevisionOptions(selectedOrder.numberOfRevisions).map(n => <SelectItem key={n} value={n}>{n} Revision{n === "1" ? "" : "s"}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                     <div>
                       <p className="text-xs text-slate-500">Support Period</p>
                       {selectedOrder.supportPeriod ? <SupportPeriodCell order={selectedOrder} /> : <p className="text-white">Not Specified</p>}
@@ -2003,6 +1911,10 @@ export default function OrdersPage() {
                 </div>
               )}
 
+              </>}
+
+              {detailsTab === "payments" && !canSeeAmounts && <p className="py-8 text-center text-sm text-slate-500">Payment details are not shown for your role.</p>}
+              {detailsTab === "payments" && <>
               {canSeeAmounts && (
                 <div className="space-y-3 p-4 bg-slate-950 rounded-lg border border-slate-800">
                   <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Payment</h4>
@@ -2037,6 +1949,19 @@ export default function OrdersPage() {
                       </span>
                     )}
                   </div>
+                  {isAdmin && (
+                    <div className="flex items-center justify-between gap-3 border-t border-slate-800 pt-3">
+                      <p className="text-xs text-slate-500">Advance payment</p>
+                      <Select value={selectedOrder.advancePaymentStatus || "pending"} onValueChange={(val) => updateOrderMutation.mutate({ id: selectedOrder.id, updates: { advancePaymentStatus: val } })}>
+                        <SelectTrigger className="w-40" data-testid={`select-adv-payment-${selectedOrder.id}`}><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="approved">Approved</SelectItem>
+                          <SelectItem value="disapproved">Disapproved</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   {(isAdmin || isSupport) && selectedOrder.advancePaymentStatus === "approved" && (
                     <div className="border-t border-slate-800 pt-3">
                       <OrderRefunds orderId={selectedOrder.id} isAdmin={isAdmin} canRequest={isAdmin || isSupport} />
@@ -2046,6 +1971,9 @@ export default function OrdersPage() {
                 </div>
               )}
 
+              </>}
+
+              {detailsTab === "overview" && <>
               {!isDesigner && (selectedOrder.campaign || selectedOrder.adSet || selectedOrder.creative) && (
                 <div className="space-y-3 p-4 bg-slate-950 rounded-lg border border-slate-800">
                   <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Marketing Data</h4>
@@ -2121,7 +2049,7 @@ export default function OrdersPage() {
                 </div>
               )}
 
-              {detailsTab === "experience" && (
+              {detailsTab === "overview" && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-3 gap-3">
                     <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-center"><p className="text-2xl font-bold text-white">{selectedOrderComplaints.length}</p><p className="mt-1 text-xs text-slate-500">Complaints</p></div>
@@ -2300,7 +2228,7 @@ export default function OrdersPage() {
                   Cancel
                 </Button>
                 <Button
-                  className="bg-red-600 hover:bg-red-700 text-white"
+                  className="bg-red-600 hover:bg-red-700 text-on-color"
                   disabled={
                     deleteOrderMutation.isPending ||
                     !orderToDelete ||
