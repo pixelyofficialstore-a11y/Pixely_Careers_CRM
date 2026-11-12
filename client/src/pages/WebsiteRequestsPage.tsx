@@ -1364,6 +1364,7 @@ function OrderDrawerBody({ d, isAdmin, busy, onRetry, onSaveNotes, onCopy }: {
             </div>
           )}
           {d.meta && <p className="text-xs text-slate-500">Match data: {[d.meta.hasFbp && "fbp", d.meta.hasFbc && "fbc", d.meta.hasIp && "IP", d.whatsapp && "phone", d.email && "email"].filter(Boolean).join(", ") || "none"}</p>}
+          <MetaTestPurchase id={d.id} />
         </DrawerSection>
       )}
 
@@ -1458,6 +1459,35 @@ function PartnerDrawerBody({ d, busy, onSaveNotes }: { d: PartnerDetail; busy: b
       </DrawerSection>
       <DrawerSection title="Internal notes"><NotesEditor value={d.internal_notes} busy={busy} onSave={onSaveNotes} testId="partner-notes" /></DrawerSection>
       <DrawerSection title="Activity"><ActivityList items={d.activity} /></DrawerSection>
+    </div>
+  );
+}
+
+/** Admin dry-run: sends the exact Purchase payload with META_TEST_EVENT_CODE. Creates nothing. */
+function MetaTestPurchase({ id }: { id: string }) {
+  const [out, setOut] = useState<any>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const run = async () => {
+    setBusy(true); setErr(null); setOut(null);
+    try { setOut(await (await apiRequest("POST", `${BASE}/orders/${id}/meta-test`)).json()); }
+    catch (e) { setErr(getErrorMessage(e)); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="space-y-2 border-t border-slate-800 pt-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-slate-500">Dry run: test event only. No order, payment or status change.</p>
+        <Button size="sm" variant="outline" disabled={busy} onClick={run} data-testid="button-meta-test">{busy ? "Sending…" : "Send test Purchase"}</Button>
+      </div>
+      {err && <p className="text-xs text-rose-300">{err}</p>}
+      {out && (
+        <div className="space-y-2 text-xs">
+          <p>events_received: <b>{String(out.response?.events_received ?? "—")}</b> · fbtrace_id: <span className="font-mono">{out.response?.fbtrace_id ?? "—"}</span>{out.response?.error && <span className="text-rose-300"> · {out.response.error}</span>}</p>
+          {out.missing?.length > 0 && <p className="text-amber-300">Empty (website didn't save): {out.missing.join(", ")}</p>}
+          <pre className="max-h-64 overflow-auto rounded bg-slate-950/60 p-2 font-mono text-[11px]">{JSON.stringify(out.payload, null, 2)}</pre>
+        </div>
+      )}
     </div>
   );
 }

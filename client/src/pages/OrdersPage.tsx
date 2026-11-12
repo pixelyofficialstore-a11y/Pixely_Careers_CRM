@@ -3493,7 +3493,8 @@ export function CreateOrderForm({ designers, onSuccess, orderType, onBack, websi
         </details>
       </FormSection>
 
-      <div className="sticky bottom-0 -mx-1 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 bg-card/95 px-1 py-3 backdrop-blur">
+      {/* Stick to the dialog's outer edge (cancel its p-4/sm:p-5) so fields never show below the bar. */}
+      <div className="sticky -bottom-4 -mx-1 -mb-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 bg-card px-1 pb-4 pt-3 sm:-bottom-5 sm:-mb-5 sm:pb-5">
         <p className="text-sm text-slate-400" data-testid="text-order-summary">
           Total <span className="font-semibold text-slate-200">₨{totalRupees.toLocaleString()}</span> · received <span className="font-semibold text-slate-200">₨{advanceRupees.toLocaleString()}</span>
           {showErrors && errorCount > 0 && <span className="ml-2 text-rose-400">{errorCount} to fix</span>}

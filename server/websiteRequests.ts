@@ -20,7 +20,8 @@ import { sql } from "drizzle-orm";
 import { db, pool } from "./db";
 import { storage } from "./storage";
 import { placeApprovedOrderTx } from "./orderCreation";
-import { claimWebsitePurchaseTx, queuePurchase, retryPurchase, txQueryOf } from "./lib/metaCapi";
+import { claimWebsitePurchaseTx, queuePurchase, retryPurchase, sendTestWebsitePurchase, txQueryOf } from "./lib/metaCapi";
+import { logAudit } from "./security/audit";
 import { paymentVerifications, activityLogs, type Order, type User } from "@shared/schema";
 import { getStartOfBusinessDay, getStartOfBusinessMonth } from "@shared/business-time";
 
@@ -624,6 +625,20 @@ export function registerWebsiteRequestRoutes(app: Express, deps: Deps) {
       await logActivity(id, user.id, "meta_retry");
       res.json(await getOrderRequest(id));
     } catch (err) { fail(res, req, err, "Meta retry"); }
+  });
+
+  /** Admin dry-run: sends the exact Purchase payload with the test code. Writes only an audit row. */
+  app.post(`${base}/orders/:id/meta-test`, guard, async (req, res) => {
+    const user = req.user as User;
+    if (user.role !== "admin") return res.status(403).json({ message: "Only an admin can send a test Purchase." });
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ message: "Invalid request id" });
+    try {
+      const out: any = await sendTestWebsitePurchase(id);
+      void logAudit({ action: "meta_test_purchase", actor: user, targetType: "website_order", targetId: id, success: !!out.ok, details: { events_received: out.response?.events_received ?? null, fbtrace_id: out.response?.fbtrace_id ?? null, error: out.error ?? out.response?.error ?? null, missing: out.missing ?? null }, req });
+      if (out.error) return res.status(400).json({ message: out.error });
+      res.json(out);
+    } catch (err) { fail(res, req, err, "Meta test"); }
   });
 
   // ── Free CV reviews ────────────────────────────────────────────────────────

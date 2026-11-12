@@ -28,6 +28,7 @@ export const AUDIT_ACTIONS = [
   "refund_approved",
   "refund_rejected",
   "refund_paid",
+  "meta_test_purchase",
 ] as const;
 export type AuditAction = typeof AUDIT_ACTIONS[number];
 

@@ -380,3 +380,33 @@ export async function retryPurchase(target: { kind: "website"; id: string } | { 
   queuePurchase(target.kind === "website" ? { websiteOrderId: target.id, crmOrderId } : { crmOrderId }, payload);
   return true;
 }
+
+// ── Dry-run (admin "Send test Purchase") ─────────────────────────────────────
+
+/**
+ * Builds the SAME payload "Verify & place order" would send for a website
+ * request and posts it with META_TEST_EVENT_CODE only. Read-only: no claim,
+ * no CRM order, no meta_* columns written. Refuses when no test code is set,
+ * so it can never count as a real Purchase.
+ */
+export async function sendTestWebsitePurchase(websiteOrderId: string) {
+  const { testCode, pixelId, token } = metaConfig();
+  if (!testCode) return { error: "META_TEST_EVENT_CODE is not set — test send refused so it can't count as a real Purchase." };
+  if (!pixelId || !token) return { error: "META_PIXEL_ID / META_CAPI_ACCESS_TOKEN not set" };
+  const { rows } = await pool.query(`SELECT ${WEBSITE_META_COLUMNS}, total, paid_amount FROM website.orders WHERE id = $1`, [websiteOrderId]);
+  const row = rows[0];
+  if (!row) return { error: "Request not found" };
+  // Same value rule as placement: the amount received (paid_amount) or, before verification, the order total.
+  const value = Number(row.paid_amount ?? row.total ?? 0);
+  const payload = { ...buildWebsitePurchase(row, value, new Date()), test_event_code: testCode };
+  const result = await postToMeta(payload);
+  const missing = (["fbp", "fbc", "client_ip", "user_agent", "event_source_url", "email"] as const).filter(k => !row[k]);
+  return {
+    pixelId,
+    payload,
+    response: result.response,
+    ok: result.ok,
+    missing,
+    valueSource: row.paid_amount != null ? "paid_amount" : "total (not verified yet)",
+  };
+}

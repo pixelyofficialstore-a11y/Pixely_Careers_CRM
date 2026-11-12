@@ -98,9 +98,10 @@ export async function registerRoutes(
   app.use("/api", apiLimiter);
   app.use(uploadLimiterMiddleware);
 
-  // Reject non-numeric :id params early (zod-equivalent check for every route).
+  // Reject malformed :id params early: numeric ids (CRM tables) or UUIDs (website.* rows).
   app.param("id", (req, res, next, value) => {
-    if (!/^\d{1,10}$/.test(String(value))) return res.status(400).json({ message: "Invalid id." });
+    const v = String(value);
+    if (!/^\d{1,10}$/.test(v) && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return res.status(400).json({ message: "Invalid id." });
     next();
   });
 
