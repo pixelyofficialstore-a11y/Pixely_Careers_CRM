@@ -50,11 +50,10 @@ export function registerUserRoutes(app: Express) {
     const actor = req.user as User;
     const input = parsed.data;
     if (await storage.getUserByUsername(input.username)) return res.status(409).json({ message: "That username is already taken." });
+    // Owner rule: a forced password change happens only after an admin resets a password.
     const user = await storage.createUser({ ...input, title: input.title ?? null, password: await hashPassword(input.password) });
-    // New accounts choose their own password on first login.
-    const withFlag = await storage.updateUser(user.id, { mustChangePassword: true } as any);
     void logAudit({ action: "user_created", actor, targetType: "user", targetId: user.id, details: { username: user.username, role: user.role }, req });
-    res.status(201).json(safeUser(withFlag));
+    res.status(201).json(safeUser(user));
   });
 
   app.patch(api.users.update.path, requireRole(["admin"]), async (req, res) => {

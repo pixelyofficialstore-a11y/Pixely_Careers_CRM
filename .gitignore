@@ -50,3 +50,6 @@ Fake
 backups/
 *.dump
 *.sql.gz
+
+# local tool binaries (pg_dump)
+tools/

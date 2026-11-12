@@ -369,7 +369,7 @@ function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
     }
 
     if (password.length < 10 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
-      toast({ title: "Error", description: "Use at least 10 characters with letters and a number. The user will choose their own password at first sign-in.", variant: "destructive" });
+      toast({ title: "Error", description: "Use at least 10 characters with letters and a number.", variant: "destructive" });
       return;
     }
 
