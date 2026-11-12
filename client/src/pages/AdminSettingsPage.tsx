@@ -45,8 +45,10 @@ import {
   Sun,
   Moon,
   Monitor,
+  MessageCircle,
 } from "lucide-react";
 import SecuritySettings from "@/components/SecuritySettings";
+import { CatalogItemsSection, WhatsAppTemplatesSection } from "@/components/GrowthSettings";
 import type { ServiceCatalogItem, PackageConfig, PlatformCatalogItem, ComplaintCategoryConfig } from "@shared/schema";
 import { PageHeader } from "@/components/CRMPrimitives";
 import { useTheme, type ThemePref } from "@/lib/theme";
@@ -78,7 +80,7 @@ function DeliveryDaysInput({ value, fallback, disabled, onSave }: { value: numbe
 
 const TeamPage = lazy(() => import("./TeamPage"));
 const NotificationSettingsPage = lazy(() => import("./NotificationSettingsPage"));
-const SETTINGS_TABS = ["catalog", "team", "notifications", "security", "appearance"] as const;
+const SETTINGS_TABS = ["catalog", "whatsapp", "team", "notifications", "security", "appearance"] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 function AppearanceSection() {
@@ -132,6 +134,7 @@ export default function AdminSettingsPage() {
       <Tabs value={tab} onValueChange={v => setTab(v as SettingsTab)} className="space-y-5">
         <TabsList className="w-full justify-start overflow-x-auto sm:w-fit">
           <TabsTrigger value="catalog" className={trigger} data-testid="settings-tab-catalog"><Package className="h-4 w-4" />Catalog</TabsTrigger>
+          <TabsTrigger value="whatsapp" className={trigger} data-testid="settings-tab-whatsapp"><MessageCircle className="h-4 w-4" />WhatsApp</TabsTrigger>
           <TabsTrigger value="team" className={trigger} data-testid="settings-tab-team"><Users className="h-4 w-4" />Team</TabsTrigger>
           <TabsTrigger value="notifications" className={trigger} data-testid="settings-tab-notifications"><BellRing className="h-4 w-4" />Notifications</TabsTrigger>
           <TabsTrigger value="security" className={trigger} data-testid="settings-tab-security"><Shield className="h-4 w-4" />Security log</TabsTrigger>
@@ -139,10 +142,15 @@ export default function AdminSettingsPage() {
         </TabsList>
 
         <TabsContent value="catalog" className="space-y-6">
+          <CatalogItemsSection />
           <ServicesSection />
           <PackagesSection />
           <PlatformsSection />
           <ComplaintCategoriesSection />
+        </TabsContent>
+
+        <TabsContent value="whatsapp">
+          <WhatsAppTemplatesSection />
         </TabsContent>
 
         <TabsContent value="team" className="settings-embed">

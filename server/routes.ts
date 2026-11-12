@@ -29,6 +29,8 @@ import { registerFeedbackRoutes } from "./routes/feedback";
 import { registerComplaintRoutes } from "./routes/complaints";
 import { registerPaymentRoutes } from "./routes/payments";
 import { registerRefundRoutes } from "./routes/refunds";
+import { registerClientRoutes } from "./routes/clients";
+import { registerGrowthRoutes } from "./routes/growth";
 import { startOverdueNotifier } from "./overdueJob";
 import { registerWebsiteRequestNotifications } from "./routes/website-requests";
 
@@ -195,6 +197,8 @@ export async function registerRoutes(
   registerSettingsRoutes(app);
   registerOrderRoutes(app);
   registerAnalyticsRoutes(app);
+  registerClientRoutes(app);
+  registerGrowthRoutes(app);
   registerFeedbackRoutes(app);
   registerComplaintRoutes(app);
   registerPaymentRoutes(app);

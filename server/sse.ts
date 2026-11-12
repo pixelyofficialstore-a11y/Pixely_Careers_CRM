@@ -64,5 +64,7 @@ export function scopesForPath(path: string): string[] {
   if (path.startsWith("/api/complaints")) return ["complaints", "stats"];
   if (path.startsWith("/api/website-requests")) return ["website_requests", "orders", "stats"];
   if (path.startsWith("/api/feedback")) return ["feedback", "stats"];
+  if (path.startsWith("/api/catalog") || path.startsWith("/api/whatsapp-templates")) return ["settings"];
+  if (path.startsWith("/api/ad-spend")) return ["stats"];
   return [];
 }

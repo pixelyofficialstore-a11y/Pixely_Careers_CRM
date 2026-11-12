@@ -1,4 +1,5 @@
 import { NOTIFICATION_LIST_DAYS } from "@shared/notification-events";
+import { pkPhoneKey } from "@shared/phone";
 import { 
   users, orders, notifications, orderServices, paymentVerifications, supportDesignerAssignments,
   servicesCatalog, packageConfigs, platformsCatalog, complaintCategoryConfigs, pushSubscriptions, activityLogs, complaints, complaintEvidence, complaintDesignerEvidence, complaintNotes, clientReviews, clientSuggestions, suggestionNotes,
@@ -218,7 +219,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createOrder(order: InsertOrder, services?: Omit<InsertOrderService, 'orderId'>[]): Promise<Order> {
-    const [newOrder] = await db.insert(orders).values(order).returning();
+    // Phase 5: new orders carry their client key (old rows are never back-filled).
+    const [newOrder] = await db.insert(orders).values({ ...order, clientKey: pkPhoneKey(order.clientPhone) }).returning();
     if (services && services.length > 0) {
       for (const svc of services) {
         await this.createOrderService({ ...svc, orderId: newOrder.id });
@@ -228,7 +230,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateOrder(id: number, updates: Partial<InsertOrder>): Promise<Order> {
-    const [updatedOrder] = await db.update(orders).set(updates).where(eq(orders.id, id)).returning();
+    // A phone edit keeps a NEW order's client key in step; old orders (key NULL) stay NULL.
+    const set: Record<string, unknown> = { ...updates };
+    if (updates.clientPhone !== undefined) set.clientKey = sql`case when ${orders.clientKey} is null then null else ${pkPhoneKey(updates.clientPhone)} end`;
+    const [updatedOrder] = await db.update(orders).set(set as Partial<InsertOrder>).where(eq(orders.id, id)).returning();
     return updatedOrder;
   }
 

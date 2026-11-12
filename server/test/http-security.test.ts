@@ -81,7 +81,8 @@ function apiRoutes(): Array<{ method: string; path: string }> {
 }
 
 // Routes that are intentionally reachable without a session.
-const PUBLIC = new Set(["POST /api/login", "POST /api/logout", "GET /api/push/vapid-public-key"]);
+// GET /api/public/catalog: read-only price list for pixelycareers.com (Phase 5, docs/catalog-api.md).
+const PUBLIC = new Set(["POST /api/login", "POST /api/logout", "GET /api/push/vapid-public-key", "GET /api/public/catalog"]);
 
 describe("no-SEO headers", () => {
   test("X-Robots-Tag, robots.txt, frame/nosniff/referrer", async () => {
@@ -128,6 +129,13 @@ describe("403 for the wrong role", () => {
     ["PATCH", "/api/payment-verifications/1/approve"],
     ["PATCH", "/api/payment-verifications/1/disapprove"],
     ["GET", "/api/payment-verifications/pending-count"],
+    ["GET", "/api/ad-spend?from=2026-01-01&to=2026-01-31"],
+    ["POST", "/api/ad-spend"],
+    ["GET", "/api/analytics/roi?from=2026-01-01&to=2026-01-31"],
+    ["GET", "/api/analytics/sla"],
+    ["POST", "/api/catalog"],
+    ["PATCH", "/api/whatsapp-templates/1"],
+    ["GET", "/api/clients"],
     ["GET", "/api/designer-assignments/1"],
     ["PUT", "/api/designer-assignments/1"],
     ["POST", "/api/services-catalog"],

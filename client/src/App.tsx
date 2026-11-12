@@ -21,6 +21,7 @@ const AdminSettingsPage = lazy(() => import("@/pages/AdminSettingsPage"));
 const ComplaintsPage = lazy(() => import("@/pages/ComplaintsPage"));
 const FeedbackPage = lazy(() => import("@/pages/FeedbackPage"));
 const WebsiteRequestsPage = lazy(() => import("@/pages/WebsiteRequestsPage"));
+const ClientsPage = lazy(() => import("@/pages/ClientsPage"));
 const BoardPage = lazy(() => import("@/pages/BoardPage"));
 const NotificationSettingsPage = lazy(() => import("@/pages/NotificationSettingsPage"));
 
@@ -85,6 +86,13 @@ function Router() {
         <ProtectedRoute>
           <Layout>
             <PageSuspense><BoardPage /></PageSuspense>
+          </Layout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/clients/:key?">
+        <ProtectedRoute>
+          <Layout>
+            <PageSuspense><ClientsPage /></PageSuspense>
           </Layout>
         </ProtectedRoute>
       </Route>

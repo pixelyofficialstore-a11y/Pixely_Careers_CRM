@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb, uniqueIndex, smallint } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, uniqueIndex, smallint, bigint, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -165,6 +165,8 @@ export const orders = pgTable("orders", {
   dueAt: timestamp("due_at"),
   payLaterApprovedById: integer("pay_later_approved_by_id").references(() => users.id),
   payLaterApprovedAt: timestamp("pay_later_approved_at"),
+  // Phase 5: client key (shared/phone.ts) — set on NEW orders only; old orders match by phone.
+  clientKey: text("client_key"),
 });
 
 /** Phase 2 refunds: support requests → admin approves with an amount. Money in paisa. */
@@ -490,6 +492,55 @@ export const notificationPreferences = pgTable("notification_preferences", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Phase 5 (migration 0004). Money in paisa. The app never deletes these rows.
+export const adSpend = pgTable("ad_spend", {
+  id: serial("id").primaryKey(),
+  spendDate: date("spend_date").notNull(),
+  platform: text("platform").notNull().default("meta"),
+  campaign: text("campaign").notNull().default(""),
+  amount: bigint("amount", { mode: "number" }).notNull(),
+  notes: text("notes"),
+  createdById: integer("created_by_id").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const whatsappTemplateKinds = ["payment_received", "draft_ready", "revision_done", "delivered", "review_request", "custom"] as const;
+export const whatsappTemplates = pgTable("whatsapp_templates", {
+  id: serial("id").primaryKey(),
+  kind: text("kind").notNull().default("custom"),
+  label: text("label").notNull(),
+  body: text("body").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  updatedById: integer("updated_by_id").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const catalogItems = pgTable("catalog_items", {
+  id: serial("id").primaryKey(),
+  kind: text("kind", { enum: ["package", "addon"] }).notNull(),
+  key: text("key").notNull().unique(),
+  label: text("label").notNull(),
+  description: text("description"),
+  price: bigint("price", { mode: "number" }).notNull().default(0),
+  currency: text("currency").notNull().default("PKR"),
+  market: text("market").notNull().default("pk"),
+  services: text("services").array().notNull().default([]),
+  websiteKey: text("website_key"),
+  crmPackageKey: text("crm_package_key"),
+  deliveryDays: integer("delivery_days"),
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  updatedById: integer("updated_by_id").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+export type AdSpend = typeof adSpend.$inferSelect;
+export type WhatsappTemplate = typeof whatsappTemplates.$inferSelect;
+export type CatalogItem = typeof catalogItems.$inferSelect;
+
 // Security audit trail (Phase 0). Append-only from the app.
 export const auditEvents = pgTable("audit_events", {
   id: serial("id").primaryKey(),
@@ -524,7 +575,7 @@ export type AuditEvent = typeof auditEvents.$inferSelect;
 export type FileRecord = typeof files.$inferSelect;
 
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, mustChangePassword: true, passwordChangedAt: true, sessionsValidAfter: true, totpSecret: true, totpEnabled: true });
-export const insertOrderSchema = createInsertSchema(orders).omit({ id: true, createdAt: true });
+export const insertOrderSchema = createInsertSchema(orders).omit({ id: true, createdAt: true, clientKey: true });
 export const insertOrderServiceSchema = createInsertSchema(orderServices).omit({ id: true });
 export const insertActivityLogSchema = createInsertSchema(activityLogs).omit({ id: true, createdAt: true });
 export const insertPaymentVerificationSchema = createInsertSchema(paymentVerifications).omit({ id: true, createdAt: true });

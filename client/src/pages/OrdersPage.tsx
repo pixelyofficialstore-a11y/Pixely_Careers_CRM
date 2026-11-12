@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { recordExport } from "@/lib/http";
 import { useQuery, useMutation, keepPreviousData } from "@tanstack/react-query";
 import { fetchOrderPage, fetchOrderByRef, fetchOrderById, orderListKey, patchOrderInCaches, snapshotOrderCaches, restoreOrderCaches, toQueryString, type OrderListParams } from "@/lib/orders";
-import { useLocation, useSearch } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { OrdersSkeleton } from "@/components/PageSkeleton";
 import { useAuth } from "@/hooks/use-auth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -69,6 +69,10 @@ import {
   Bookmark
 } from "lucide-react";
 import { ImageDropzone } from "@/components/ImageDropzone";
+import { WhatsAppQuickReply } from "@/components/WhatsAppQuickReply";
+import { rupees } from "@/lib/chart-colors";
+import { pkPhoneKey } from "@shared/phone";
+import { deliveryDaysFor } from "@shared/order-process";
 // jsPDF is ~400 KB; load it only when a PDF is actually generated.
 const loadPdf = async () => {
   const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
@@ -95,7 +99,7 @@ import {
 } from "@/components/ui/tooltip";
 import { apiRequest, queryClient, getErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { OrderWithServices, User, SupportDesignerAssignment, ServiceCatalogItem, PackageConfig, PlatformCatalogItem, PaymentVerification, ComplaintResponse, ComplaintHistoryEntry, ActivityLogWithActor, ClientReview, ClientSuggestion } from "@shared/schema";
+import type { OrderWithServices, User, SupportDesignerAssignment, ServiceCatalogItem, PackageConfig, PlatformCatalogItem, PaymentVerification, ComplaintResponse, ComplaintHistoryEntry, ActivityLogWithActor, ClientReview, ClientSuggestion, CatalogItem } from "@shared/schema";
 import { ComplaintDialog } from "@/components/ComplaintDialog";
 import { AdvancePaymentStatusBadge, ComplaintStatusBadge, OrderStatusBadge, PaymentLineStatusBadge, SuggestionStatusBadge, WorkStatusBadge, PaymentStateBadge } from "@/components/StatusBadge";
 import { OrderRefunds } from "@/components/OrderRefunds";
@@ -1782,11 +1786,27 @@ export default function OrdersPage() {
 
               {detailsTab === "overview" && <>
               <div className="space-y-3 p-4 bg-slate-950 rounded-lg border border-slate-800">
-                <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Client Information</h4>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Client Information</h4>
+                  <WhatsAppQuickReply
+                    phone={selectedOrder.clientPhone}
+                    testId="button-order-whatsapp"
+                    vars={{
+                      name: (selectedOrder.clientName || "").split(" ")[0],
+                      order: selectedOrder.orderNumber || "",
+                      amount: selectedOrder.advanceAmount ? rupees(selectedOrder.advanceAmount) : "",
+                      balance: selectedOrder.remainingAmount ? rupees(selectedOrder.remainingAmount) : "",
+                    }}
+                  />
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-xs text-slate-500">Name</p>
-                    <p className="text-white font-medium">{selectedOrder.clientName}</p>
+                    {(user?.role === "admin" || user?.role === "support") && pkPhoneKey(selectedOrder.clientPhone) ? (
+                      <Link href={`/clients/${pkPhoneKey(selectedOrder.clientPhone)}`} className="font-medium text-white hover:text-primary hover:underline" data-testid="link-order-client-profile">{selectedOrder.clientName}</Link>
+                    ) : (
+                      <p className="text-white font-medium">{selectedOrder.clientName}</p>
+                    )}
                   </div>
                   <div>
                     <p className="text-xs text-slate-500">Client Type</p>
@@ -2785,23 +2805,72 @@ export type { OrderServiceType };
 /** Contact details to prefill a normal (non-website) order, e.g. from a free CV review. */
 export type ContactPrefill = { clientName: string; clientPhone: string; clientType?: "national" | "international"; notes?: string };
 
+type ClientLookup = {
+  found: boolean;
+  key?: string;
+  profile?: { key: string; name: string; email: string | null; orderCount: number; placedCount: number; totalSpent: number; lastOrderAt: string | null };
+  clientType?: "national" | "international" | null;
+  recentOrders?: Array<{ id: number; orderNumber: string | null; status: string | null; packageType: string | null; createdAt: string | null }>;
+};
+type DesignerWorkload = { id: number; name: string; active: number };
+type PayMode = "half" | "full" | "custom";
+
+const ORDER_DRAFT_PREFIX = "crm:create-order-draft:v1:";
+type OrderDraft = {
+  clientName: string; clientPhone: string; clientType: "national" | "international"; clientEmail: string;
+  packageKey: string; addonKeys: string[]; totalBill: string; priceTouched: boolean;
+  payMode: PayMode; advanceAmount: string; transactionId: string;
+  assignedToId: string; numberOfRevisions: string; supportPeriod: string;
+  platform: string; campaign: string; adSet: string; creative: string; notes: string;
+  services: OrderFormService[]; savedAt: number;
+};
+function readOrderDraft(key: string): OrderDraft | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const d = JSON.parse(raw) as OrderDraft;
+    // Drafts expire after 3 days.
+    return d && typeof d === "object" && Date.now() - (d.savedAt || 0) < 3 * 24 * 3600 * 1000 ? d : null;
+  } catch { return null; }
+}
+
+/** Numbered section card used by the one-screen Create Order form. */
+function FormSection({ n, title, hint, children, testId }: { n: number; title: string; hint?: string; children: React.ReactNode; testId?: string }) {
+  return (
+    <section className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4" data-testid={testId}>
+      <header className="flex items-start gap-3">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--accent))] text-sm font-semibold text-primary">{n}</span>
+        <div className="min-w-0">
+          <h4 className="text-base font-semibold text-slate-200">{title}</h4>
+          {hint && <p className="text-xs text-slate-500">{hint}</p>}
+        </div>
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function FieldError({ show, children, testId }: { show: boolean; children: React.ReactNode; testId?: string }) {
+  if (!show) return null;
+  return <p className="text-xs text-rose-400" role="alert" data-testid={testId}>{children}</p>;
+}
+
 export function CreateOrderForm({ designers, onSuccess, orderType, onBack, websitePrefill, onConverted, contactPrefill, onCreated }: { designers: User[]; onSuccess: () => void; orderType: OrderServiceType; onBack: () => void; websitePrefill?: WebsiteOrderPrefill; onConverted?: (result: { order: { id: number; orderNumber: string | null } }) => void; contactPrefill?: ContactPrefill; onCreated?: (order: { id: number; orderNumber: string | null }) => void | Promise<void> }) {
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
   const isWebsite = !!websitePrefill;
-  const [clientEmail, setClientEmail] = useState(websitePrefill?.clientEmail ?? "");
-  const [transactionId, setTransactionId] = useState(websitePrefill?.transactionId ?? "");
-  const [screenshotUrl, setScreenshotUrl] = useState(websitePrefill?.screenshotUrl ?? "");
+  const isAdmin = currentUser?.role === "admin";
+  const isSupport = !isAdmin;
+  // Drafts only for a blank manual order (website / contact prefills already carry their data).
+  const draftKey = !isWebsite && !contactPrefill ? `${ORDER_DRAFT_PREFIX}${orderType}` : null;
+  const [draft] = useState<OrderDraft | null>(() => (draftKey ? readOrderDraft(draftKey) : null));
+  const [draftNotice, setDraftNotice] = useState(!!draft);
 
-  const { data: servicesCatalogData = [] } = useQuery<ServiceCatalogItem[]>({
-    queryKey: ["/api/services-catalog"],
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const { data: platformsCatalogData = [] } = useQuery<PlatformCatalogItem[]>({
-    queryKey: ["/api/platforms-catalog"],
-    staleTime: 5 * 60 * 1000,
-  });
+  const { data: servicesCatalogData = [] } = useQuery<ServiceCatalogItem[]>({ queryKey: ["/api/services-catalog"], staleTime: 5 * 60 * 1000 });
+  const { data: platformsCatalogData = [] } = useQuery<PlatformCatalogItem[]>({ queryKey: ["/api/platforms-catalog"], staleTime: 5 * 60 * 1000 });
+  const { data: catalogData = [] } = useQuery<CatalogItem[]>({ queryKey: ["/api/catalog"], staleTime: 5 * 60 * 1000 });
+  const { data: packageConfigsData = [] } = useQuery<PackageConfig[]>({ queryKey: ["/api/package-configs"], staleTime: 5 * 60 * 1000 });
+  const { data: workload = [] } = useQuery<DesignerWorkload[]>({ queryKey: ["/api/designers/workload"], staleTime: 60 * 1000 });
 
   const activeFormServiceTypes = servicesCatalogData.filter(s => s.isActive).map(s => s.name);
   const baseFormServiceTypes = activeFormServiceTypes.length > 0 ? activeFormServiceTypes : FALLBACK_SERVICE_TYPES;
@@ -2810,128 +2879,204 @@ export function CreateOrderForm({ designers, onSuccess, orderType, onBack, websi
     ? Array.from(new Set([...baseFormServiceTypes, ...websitePrefill!.services.map(s => s.serviceType).filter(Boolean)]))
     : baseFormServiceTypes;
   const activePlatforms = platformsCatalogData.filter(p => p.isActive);
-  const [clientName, setClientName] = useState(websitePrefill?.clientName ?? contactPrefill?.clientName ?? "");
-  const [clientPhone, setClientPhone] = useState(websitePrefill?.clientPhone ?? contactPrefill?.clientPhone ?? "");
-  const [clientType, setClientType] = useState<"national" | "international">(websitePrefill?.clientType ?? contactPrefill?.clientType ?? "national");
-  const [assignedToId, setAssignedToId] = useState("");
-  const [totalBill, setTotalBill] = useState(websitePrefill?.totalBill ?? "");
-  const [advanceAmount, setAdvanceAmount] = useState(websitePrefill?.amountReceived ?? "");
-  const [discountAmount, setDiscountAmount] = useState("");
+
+  const [clientName, setClientName] = useState(websitePrefill?.clientName ?? contactPrefill?.clientName ?? draft?.clientName ?? "");
+  const [clientPhone, setClientPhone] = useState(websitePrefill?.clientPhone ?? contactPrefill?.clientPhone ?? draft?.clientPhone ?? "");
+  const [clientType, setClientType] = useState<"national" | "international">(websitePrefill?.clientType ?? contactPrefill?.clientType ?? draft?.clientType ?? "national");
+  const [clientEmail, setClientEmail] = useState(websitePrefill?.clientEmail ?? draft?.clientEmail ?? "");
+  const [packageKey, setPackageKey] = useState(draft?.packageKey ?? "");
+  const [addonKeys, setAddonKeys] = useState<string[]>(draft?.addonKeys ?? []);
+  const [totalBill, setTotalBill] = useState(websitePrefill?.totalBill ?? draft?.totalBill ?? "");
+  // Once someone types a price, catalog picks no longer overwrite it.
+  const [priceTouched, setPriceTouched] = useState(isWebsite || !!draft?.priceTouched);
+  const [payMode, setPayMode] = useState<PayMode>(isWebsite ? "custom" : draft?.payMode ?? "half");
+  const [advanceAmount, setAdvanceAmount] = useState(websitePrefill?.amountReceived ?? draft?.advanceAmount ?? "");
   const [paymentMethod, setPaymentMethod] = useState<string>(websitePrefill?.paymentMethod ?? "");
-  const [platform, setPlatform] = useState(websitePrefill?.platform ?? "");
-  const [campaign, setCampaign] = useState(websitePrefill?.campaign ?? "");
-  const [adSet, setAdSet] = useState(websitePrefill?.adSet ?? "");
-  const [creative, setCreative] = useState(websitePrefill?.creative ?? "");
-  const [notes, setNotes] = useState(websitePrefill?.notes ?? contactPrefill?.notes ?? "");
-  const [numberOfRevisions, setNumberOfRevisions] = useState(websitePrefill?.numberOfRevisions ?? "");
-  const [supportPeriod, setSupportPeriod] = useState(websitePrefill?.supportPeriod ?? "");
-  const initialServices: OrderFormService[] = (websitePrefill?.services ?? []).map((s, i) => ({
-    id: i + 1, serviceNumber: i + 1, serviceType: s.serviceType, quantity: s.quantity, instructions: s.instructions,
-  } as OrderFormService));
-  const serviceIdRef = useRef(initialServices.length + 1);
-  const nextServiceNumberRef = useRef(initialServices.length + 1);
+  const [transactionId, setTransactionId] = useState(websitePrefill?.transactionId ?? draft?.transactionId ?? "");
+  const [screenshotUrl, setScreenshotUrl] = useState(websitePrefill?.screenshotUrl ?? "");
+  const [assignedToId, setAssignedToId] = useState(draft?.assignedToId ?? "");
+  const [platform, setPlatform] = useState(websitePrefill?.platform ?? draft?.platform ?? "");
+  const [campaign, setCampaign] = useState(websitePrefill?.campaign ?? draft?.campaign ?? "");
+  const [adSet, setAdSet] = useState(websitePrefill?.adSet ?? draft?.adSet ?? "");
+  const [creative, setCreative] = useState(websitePrefill?.creative ?? draft?.creative ?? "");
+  const [notes, setNotes] = useState(websitePrefill?.notes ?? contactPrefill?.notes ?? draft?.notes ?? "");
+  const [numberOfRevisions, setNumberOfRevisions] = useState(websitePrefill?.numberOfRevisions ?? draft?.numberOfRevisions ?? "");
+  const [supportPeriod, setSupportPeriod] = useState(websitePrefill?.supportPeriod ?? draft?.supportPeriod ?? "");
+  const initialServices: OrderFormService[] = websitePrefill
+    ? websitePrefill.services.map((s, i) => ({ id: i + 1, serviceNumber: i + 1, serviceType: s.serviceType, quantity: s.quantity, instructions: s.instructions } as OrderFormService))
+    : (draft?.services ?? []);
+  const maxServiceNo = initialServices.reduce((m, s) => Math.max(m, s.id, s.serviceNumber), 0);
+  const serviceIdRef = useRef(maxServiceNo + 1);
+  const nextServiceNumberRef = useRef(maxServiceNo + 1);
   const [services, setServices] = useState<OrderFormService[]>(initialServices);
   const customServicesTopRef = useRef<HTMLDivElement | null>(null);
-  
-  // Payment verification fields
+  const advanceInputRef = useRef<HTMLInputElement | null>(null);
   const [paymentScreenshot, setPaymentScreenshot] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [showErrors, setShowErrors] = useState(false);
 
-  const createMutation = useMutation({
-    mutationFn: async (data: any) => {
-      return apiRequest("POST", "/api/orders", data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
-      toast({ title: "Success", description: "Order created successfully" });
-      onSuccess();
-    },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to create order", variant: "destructive" });
-    },
+  // ---- 1) Client lookup by WhatsApp number -------------------------------------------
+  const phoneKey = pkPhoneKey(clientPhone);
+  const [lookupKey, setLookupKey] = useState<string | null>(null);
+  useEffect(() => {
+    const t = setTimeout(() => setLookupKey(phoneKey && phoneKey.length >= 11 ? phoneKey : null), 400);
+    return () => clearTimeout(t);
+  }, [phoneKey]);
+  const { data: lookup, isFetching: lookingUp } = useQuery<ClientLookup>({
+    queryKey: [`/api/clients/lookup?phone=${lookupKey ?? ""}`],
+    enabled: !!lookupKey,
+    staleTime: 60 * 1000,
   });
+  const autofilledFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!lookup?.found || !lookup.profile || autofilledFor.current === lookup.key) return;
+    autofilledFor.current = lookup.key ?? null;
+    // Only fill empty fields: never overwrite what was typed.
+    if (!clientName.trim()) setClientName(lookup.profile.name || "");
+    if (!clientEmail.trim() && lookup.profile.email) setClientEmail(lookup.profile.email);
+    if (!isWebsite && !contactPrefill && lookup.clientType && (lookup.clientType === "national" || lookup.clientType === "international")) setClientType(lookup.clientType);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lookup]);
 
-  const addService = () => {
-    setServices((prev) => prependNumberedService(
-      prev,
-      serviceIdRef.current++,
-      nextServiceNumberRef.current++,
-    ));
-    requestAnimationFrame(() => {
+  // ---- 2) Catalog: packages + add-ons, auto price ----------------------------------------
+  const pkrCatalog = catalogData.filter(i => i.isActive && i.currency === "PKR");
+  const preferredMarket = clientType === "international" ? "intl" : "pk";
+  const marketItems = pkrCatalog.some(i => i.market === preferredMarket) ? pkrCatalog.filter(i => i.market === preferredMarket) : pkrCatalog.filter(i => i.market === "pk");
+  const catalogPackages = marketItems.filter(i => i.kind === "package");
+  const catalogAddons = marketItems.filter(i => i.kind === "addon");
+  const selectedPackage = catalogPackages.find(p => p.key === packageKey) ?? null;
+  const selectedAddons = catalogAddons.filter(a => addonKeys.includes(a.key));
+  const catalogTotal = (selectedPackage?.price ?? 0) + selectedAddons.reduce((s, a) => s + a.price, 0); // paisa
+  useEffect(() => {
+    if (priceTouched || (!selectedPackage && selectedAddons.length === 0)) return;
+    setTotalBill(String(Math.round(catalogTotal / 100)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogTotal, priceTouched]);
+
+  // ---- 3) Payment quick buttons ---------------------------------------------------------
+  const totalRupees = parseInt(totalBill) || 0;
+  const advanceRupees = parseInt(advanceAmount) || 0;
+  useEffect(() => {
+    if (payMode === "half") setAdvanceAmount(totalRupees > 0 ? String(Math.round(totalRupees / 2)) : "");
+    if (payMode === "full") setAdvanceAmount(totalRupees > 0 ? String(totalRupees) : "");
+  }, [payMode, totalRupees]);
+
+  // ---- 4) Assign: lowest workload + due date --------------------------------------------
+  const activeDesignerIds = new Set(designers.map(d => d.id));
+  const loadById = new Map(workload.map(w => [w.id, w.active]));
+  const suggested = workload.find(w => activeDesignerIds.has(w.id)) ?? null;
+  const sortedDesigners = [...designers].sort((a, b) => (loadById.get(a.id) ?? 0) - (loadById.get(b.id) ?? 0) || a.name.localeCompare(b.name));
+  const packageTypeForOrder = selectedPackage ? (selectedPackage.crmPackageKey || selectedPackage.key) : null;
+  const configuredDays = useMemo(() => {
+    const m = new Map<string, number | null>();
+    packageConfigsData.forEach(p => m.set(p.key.toLowerCase(), p.deliveryDays ?? null));
+    return m;
+  }, [packageConfigsData]);
+  const deliveryDays = selectedPackage?.deliveryDays && !selectedPackage.crmPackageKey
+    ? selectedPackage.deliveryDays
+    : deliveryDaysFor(packageTypeForOrder, orderType, configuredDays);
+  const dueFrom = new Date();
+  const duePreview = addDays(dueFrom, deliveryDays);
+
+  // ---- Draft save -------------------------------------------------------------------------
+  useEffect(() => {
+    if (!draftKey) return;
+    const t = setTimeout(() => {
+      const blank = !clientName.trim() && !clientPhone.trim() && !totalBill && services.length === 0 && !notes.trim();
+      try {
+        if (blank) localStorage.removeItem(draftKey);
+        else localStorage.setItem(draftKey, JSON.stringify({
+          clientName, clientPhone, clientType, clientEmail, packageKey, addonKeys, totalBill, priceTouched, payMode, advanceAmount,
+          transactionId, assignedToId, numberOfRevisions, supportPeriod, platform, campaign, adSet, creative, notes, services, savedAt: Date.now(),
+        } satisfies OrderDraft));
+      } catch { /* storage full / private mode: drafts are best effort */ }
+    }, 500);
+    return () => clearTimeout(t);
+  }, [draftKey, clientName, clientPhone, clientType, clientEmail, packageKey, addonKeys, totalBill, priceTouched, payMode, advanceAmount, transactionId, assignedToId, numberOfRevisions, supportPeriod, platform, campaign, adSet, creative, notes, services]);
+
+  const clearDraft = () => { if (draftKey) { try { localStorage.removeItem(draftKey); } catch { /* ignore */ } } };
+  const startFresh = () => {
+    clearDraft();
+    setDraftNotice(false);
+    setClientName(""); setClientPhone(""); setClientType("national"); setClientEmail("");
+    setPackageKey(""); setAddonKeys([]); setTotalBill(""); setPriceTouched(false); setPayMode("half"); setAdvanceAmount("");
+    setTransactionId(""); setAssignedToId(""); setNumberOfRevisions(""); setSupportPeriod("");
+    setPlatform(""); setCampaign(""); setAdSet(""); setCreative(""); setNotes(""); setServices([]); setPaymentScreenshot(null);
+    setShowErrors(false); autofilledFor.current = null;
+  };
+
+  // ---- Services ---------------------------------------------------------------------------
+  const addService = (serviceType = "") => {
+    const id = serviceIdRef.current++;
+    const no = nextServiceNumberRef.current++;
+    setServices((prev) => {
+      const next = prependNumberedService(prev, id, no);
+      return serviceType ? next.map(s => (s.id === id ? { ...s, serviceType } : s)) : next;
+    });
+    if (!serviceType) requestAnimationFrame(() => {
       customServicesTopRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      const trigger = customServicesTopRef.current?.querySelector<HTMLButtonElement>('[data-testid^="select-service-type-"]');
-      trigger?.focus();
+      customServicesTopRef.current?.querySelector<HTMLButtonElement>('[data-testid^="select-service-type-"]')?.focus();
     });
   };
+  const removeService = (id: number) => setServices((prev) => prev.filter((s) => s.id !== id));
+  const updateService = (id: number, field: string, value: any) => setServices((prev) => prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)));
 
-  const removeService = (id: number) => {
-    setServices((prev) => prev.filter((s) => s.id !== id));
+  const pickPackage = (key: string) => {
+    const next = key === packageKey ? "" : key;
+    setPackageKey(next);
+    setPriceTouched(false);
+    const pkg = catalogPackages.find(p => p.key === next);
+    // Documentation orders: add the package's services that are not listed yet.
+    if (pkg && orderType === "documentation") {
+      const have = new Set(services.map(s => s.serviceType));
+      pkg.services.filter(s => !have.has(s)).forEach(s => addService(s));
+    }
+  };
+  const toggleAddon = (key: string) => {
+    setPriceTouched(false);
+    setAddonKeys(prev => (prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]));
   };
 
-  const updateService = (id: number, field: string, value: any) => {
-    setServices((prev) => prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)));
+  // ---- Validation (inline + on submit) ----------------------------------------------------
+  const emailBad = !!clientEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail.trim());
+  const errors = {
+    clientName: !clientName.trim() ? "Enter the client name." : "",
+    clientPhone: !clientPhone.trim() ? "Enter the WhatsApp number." : (phoneKey ?? "").length < 10 ? "This number looks too short." : "",
+    clientEmail: emailBad ? "Check the email address." : "",
+    services: orderType === "documentation" && services.every(s => !s.serviceType) ? "Add at least one service." : "",
+    totalBill: totalRupees <= 0 ? "Enter the total bill." : "",
+    advance: advanceRupees > totalRupees && totalRupees > 0 ? `${isWebsite ? "Amount received" : "Advance"} cannot be more than the total bill.`
+      : !isWebsite && isSupport && advanceRupees <= 0 ? "Enter the advance received." : "",
+    screenshot: !isWebsite && isSupport && advanceRupees > 0 && !paymentScreenshot ? "Add the payment screenshot." : "",
+    screenshotUrl: isWebsite && screenshotUrl.trim() && !/^https?:\/\/\S+$/i.test(screenshotUrl.trim()) ? "Paste a full http(s) link." : "",
   };
+  const errorCount = Object.values(errors).filter(Boolean).length;
+  const err = (k: keyof typeof errors) => showErrors && !!errors[k];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    const totalPriceValue = totalBill ? Math.round(parseFloat(totalBill) * 100) : 0;
-    const discountValue = 0;
-    const finalPayableValue = totalPriceValue;
-    const advanceValue = advanceAmount ? Math.round(parseFloat(advanceAmount) * 100) : 0;
-    const remainingValue = Math.max(0, finalPayableValue - advanceValue);
-    const isSupport = currentUser?.role !== 'admin';
-
-    const missingFields: string[] = [];
-    if (!clientName.trim()) missingFields.push("Client Name");
-    if (!clientPhone.trim()) missingFields.push("Phone Number");
-    if (!clientType) missingFields.push("Client Type");
-    if (orderType === "documentation" && services.every(s => !s.serviceType)) missingFields.push("At least one service");
-    if (!totalBill.trim() || totalPriceValue <= 0) missingFields.push("Total Bill");
-    if (!isWebsite) {
-      if (isSupport && advanceValue <= 0) missingFields.push("Advance Paid (greater than 0)");
-      if (isSupport && advanceValue > 0 && !paymentScreenshot) missingFields.push("Payment Screenshot / Proof");
-    }
-    if (isWebsite && screenshotUrl.trim() && !/^https?:\/\/\S+$/i.test(screenshotUrl.trim())) {
-      toast({ title: "Invalid screenshot URL", description: "Paste a full http(s) link to the payment screenshot.", variant: "destructive" });
-      return;
-    }
-    if (isWebsite && clientEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail.trim())) {
-      toast({ title: "Invalid email", description: "Check the client email address.", variant: "destructive" });
+    setShowErrors(true);
+    if (errorCount > 0) {
+      toast({ title: "Check the form", description: Object.values(errors).filter(Boolean).slice(0, 3).join(" "), variant: "destructive" });
+      requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-create-order] [role="alert"]')?.scrollIntoView({ behavior: "smooth", block: "center" }));
       return;
     }
 
-    if (missingFields.length > 0) {
-      toast({ 
-        title: "Missing Fields", 
-        description: `Please fill: ${missingFields.join(", ")}`, 
-        variant: "destructive" 
-      });
-      return;
-    }
-
-    if (advanceValue > totalPriceValue) {
-      toast({ 
-        title: "Invalid amount", 
-        description: "Advance paid cannot be greater than total bill.", 
-        variant: "destructive" 
-      });
-      return;
-    }
-
-    // The payment verification stores the advance collected. If the advance
-    // covers the full bill, record it as a full payment.
-    const paymentType: "advance" | "full" = advanceValue >= finalPayableValue && advanceValue > 0 ? "full" : "advance";
-    const paymentAmount = advanceValue;
+    const totalPriceValue = totalRupees * 100;
+    const advanceValue = advanceRupees * 100;
+    const remainingValue = Math.max(0, totalPriceValue - advanceValue);
+    const paymentType: "advance" | "full" = advanceValue >= totalPriceValue && advanceValue > 0 ? "full" : "advance";
+    const catalogNote = selectedPackage || selectedAddons.length
+      ? `Catalog: ${[selectedPackage?.label, ...selectedAddons.map(a => `+ ${a.label}`)].filter(Boolean).join(", ")}`
+      : "";
+    // Admin orders have no verification record, so the transaction ID is kept in the notes.
+    const txnNote = !isWebsite && isAdmin && transactionId.trim() ? `Txn ID: ${transactionId.trim()}` : "";
+    const finalNotes = [notes.trim(), catalogNote, txnNote].filter(Boolean).join("\n");
 
     setIsUploading(true);
     try {
       const orderServices = orderType === "documentation"
-        ? services.filter(s => s.serviceType).map(s => ({
-            serviceType: s.serviceType,
-            quantity: s.quantity || 1,
-            instructions: s.instructions || null,
-          }))
+        ? services.filter(s => s.serviceType).map(s => ({ serviceType: s.serviceType, quantity: s.quantity || 1, instructions: s.instructions || null }))
         : [];
 
       if (isWebsite) {
@@ -2941,25 +3086,13 @@ export function CreateOrderForm({ designers, onSuccess, orderType, onBack, websi
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            clientName: clientName.trim(),
-            clientPhone: clientPhone.trim(),
-            clientEmail: clientEmail.trim() || null,
-            clientType,
-            orderType,
+            clientName: clientName.trim(), clientPhone: clientPhone.trim(), clientEmail: clientEmail.trim() || null, clientType, orderType,
             assignedToId: assignedToId ? parseInt(assignedToId) : null,
-            totalPrice: totalPriceValue,
-            amountReceived: advanceValue,
-            paymentMethod: paymentMethod.trim() || null,
-            transactionId: transactionId.trim() || null,
-            screenshotUrl: screenshotUrl.trim() || null,
-            numberOfRevisions: numberOfRevisions ? parseInt(numberOfRevisions) : null,
-            supportPeriod: supportPeriod || null,
-            platform: platform.trim() || null,
-            campaign: campaign.trim() || null,
-            adSet: adSet.trim() || null,
-            creative: creative.trim() || null,
-            notes: notes.trim() || null,
-            services: orderServices,
+            totalPrice: totalPriceValue, amountReceived: advanceValue,
+            paymentMethod: paymentMethod.trim() || null, transactionId: transactionId.trim() || null, screenshotUrl: screenshotUrl.trim() || null,
+            numberOfRevisions: numberOfRevisions ? parseInt(numberOfRevisions) : null, supportPeriod: supportPeriod || null,
+            platform: platform.trim() || null, campaign: campaign.trim() || null, adSet: adSet.trim() || null, creative: creative.trim() || null,
+            notes: notes.trim() || null, services: orderServices,
           }),
         });
         const result = await res.json().catch(() => ({}));
@@ -2972,441 +3105,399 @@ export function CreateOrderForm({ designers, onSuccess, orderType, onBack, websi
         return;
       }
 
-      const isAdmin = currentUser?.role === 'admin';
       const orderRes = await apiRequest("POST", "/api/orders", {
         clientName: clientName.trim(),
         clientPhone: clientPhone.trim(),
+        clientEmail: clientEmail.trim() || null,
         clientType,
         orderType,
+        packageType: packageTypeForOrder,
         assignedToId: assignedToId ? parseInt(assignedToId) : null,
         paymentStatus: "pending",
         totalPrice: totalPriceValue,
-        discountAmount: discountValue,
-        paymentMethod: paymentMethod || null,
-        // Admin: advance is collected immediately — send real values.
-        // Support: advance goes through verification — starts at 0.
+        // Admin: advance is collected immediately. Support: it goes through verification, starts at 0.
         advanceAmount: isAdmin ? advanceValue : 0,
-        remainingAmount: isAdmin ? remainingValue : finalPayableValue,
+        remainingAmount: isAdmin ? remainingValue : totalPriceValue,
         numberOfRevisions: numberOfRevisions ? parseInt(numberOfRevisions) : null,
         supportPeriod: supportPeriod || null,
         platform: platform.trim() || null,
         campaign: campaign.trim() || null,
         adSet: adSet.trim() || null,
         creative: creative.trim() || null,
-        notes: notes.trim() || null,
+        notes: finalNotes || null,
         services: orderServices,
       });
-      
       const order = await orderRes.json();
-      
-      // Then create payment verification request with screenshot
-      if (paymentScreenshot && paymentAmount > 0) {
+
+      if (paymentScreenshot && advanceValue > 0 && !isAdmin) {
         const formData = new FormData();
         formData.append("screenshot", paymentScreenshot);
         formData.append("orderId", order.id.toString());
         formData.append("paymentType", paymentType);
-        formData.append("amount", paymentAmount.toString());
-        
+        formData.append("amount", advanceValue.toString());
+        if (transactionId.trim()) formData.append("transactionId", transactionId.trim());
         const verificationRes = await fetch("/api/payment-verifications", {
           method: "POST",
           body: formData,
           credentials: "include",
         });
-        
         if (!verificationRes.ok) {
           const errorData = await verificationRes.json().catch(() => ({}));
-          throw new Error(errorData.error || "Failed to submit payment verification");
+          throw new Error(errorData.error || "Order saved, but the payment screenshot failed. Add it from the order.");
         }
       }
-      
+
+      clearDraft();
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/payment-verifications"] });
-      if (currentUser?.role === 'admin') {
-        toast({ title: "Order placed", description: "Order created and approved automatically" });
-      } else if (paymentScreenshot) {
-        toast({ title: "Order placed", description: "Payment screenshot submitted — awaiting admin approval" });
-      } else {
-        toast({ title: "Order placed", description: "Order created successfully" });
-      }
+      toast({
+        title: "Order placed",
+        description: isAdmin ? "Order created and approved automatically" : paymentScreenshot ? "Payment screenshot submitted — awaiting admin approval" : "Order created successfully",
+      });
       await onCreated?.(order);
       onSuccess();
     } catch (error: any) {
-      toast({ 
-        title: "Error", 
-        description: error?.message || "Failed to create order", 
-        variant: "destructive" 
-      });
+      toast({ title: "Error", description: error?.message || "Failed to create order", variant: "destructive" });
     } finally {
       setIsUploading(false);
     }
   };
 
-  return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={onBack}
-        className="-ml-2 h-auto p-2 text-slate-400 hover:text-white"
-        data-testid="button-back-to-service-selection"
-      >
-        <ArrowLeft className="mr-1 h-4 w-4" />
-        Choose Service
-      </Button>
+  const inputCls = "bg-slate-950 border-slate-800 text-white";
+  const bad = "border-rose-500/70 focus-visible:ring-rose-500/40";
 
-      <div className="space-y-4">
-        <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Client Information</h4>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="space-y-2">
-            <Label className="text-slate-300">Client Name *</Label>
-            <Input 
-              value={clientName} 
-              onChange={(e) => setClientName(e.target.value)} 
-              className="bg-slate-950 border-slate-800 text-white"
-              placeholder="Enter client name"
-              data-testid="input-client-name"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-slate-300">Phone Number *</Label>
-            <Input 
-              value={clientPhone} 
-              onChange={(e) => setClientPhone(e.target.value)} 
-              className="bg-slate-950 border-slate-800 text-white"
-              placeholder="+92 300 1234567"
-              data-testid="input-client-phone"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-slate-300">Client Type *</Label>
-            <Select value={clientType} onValueChange={(value: "national" | "international") => setClientType(value)}>
-              <SelectTrigger className="bg-slate-950 border-slate-800 text-white" data-testid="select-client-type">
-                <SelectValue placeholder="Select client type" />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                <SelectItem value="national">National Client</SelectItem>
-                <SelectItem value="international">International Client</SelectItem>
-              </SelectContent>
-            </Select>
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4" data-create-order noValidate>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={onBack} className="-ml-2 h-auto p-2 text-slate-400 hover:text-white" data-testid="button-back-to-service-selection">
+          <ArrowLeft className="mr-1 h-4 w-4" />
+          Choose Service
+        </Button>
+        {draftKey && <span className="text-xs text-slate-500" data-testid="text-draft-status">Draft saves automatically on this device</span>}
+      </div>
+
+      {draftNotice && draft && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-[hsl(var(--accent))] px-3 py-2 text-sm" data-testid="banner-draft-restored">
+          <span className="text-slate-200">Restored your unsaved order from {format(new Date(draft.savedAt), "d MMM, h:mm a")}.</span>
+          <div className="flex gap-2">
+            <Button type="button" size="sm" variant="ghost" onClick={() => setDraftNotice(false)}>Keep</Button>
+            <Button type="button" size="sm" variant="outline" onClick={startFresh} data-testid="button-draft-discard">Start fresh</Button>
           </div>
         </div>
-        {isWebsite && (
+      )}
+
+      {/* 1) Client */}
+      <FormSection n={1} title="Client" hint="Start with the WhatsApp number. Returning clients fill in automatically." testId="section-client">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label className="text-slate-300">Email</Label>
-            <Input
-              type="email"
-              value={clientEmail}
-              onChange={(e) => setClientEmail(e.target.value)}
-              className="bg-slate-950 border-slate-800 text-white"
-              placeholder="client@email.com"
-              data-testid="input-client-email"
-            />
+            <Label className="text-slate-300" htmlFor="co-phone">WhatsApp number *</Label>
+            <div className="relative">
+              <Input id="co-phone" type="tel" inputMode="tel" autoComplete="off" autoFocus={!isWebsite && !clientPhone} value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} className={cn(inputCls, err("clientPhone") && bad)} placeholder="0300 1234567" data-testid="input-client-phone" />
+              {lookingUp && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-500" />}
+            </div>
+            <FieldError show={err("clientPhone")} testId="error-client-phone">{errors.clientPhone}</FieldError>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-slate-300" htmlFor="co-name">Client name *</Label>
+            <Input id="co-name" value={clientName} onChange={(e) => setClientName(e.target.value)} className={cn(inputCls, err("clientName") && bad)} placeholder="Full name" data-testid="input-client-name" />
+            <FieldError show={err("clientName")} testId="error-client-name">{errors.clientName}</FieldError>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-slate-300">Client type *</Label>
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Client type" data-testid="select-client-type">
+              {(["national", "international"] as const).map(t => (
+                <button key={t} type="button" role="radio" aria-checked={clientType === t} onClick={() => setClientType(t)}
+                  className={cn("min-h-touch rounded-md border px-3 text-sm transition-colors", clientType === t ? "border-primary bg-[hsl(var(--accent))] font-medium text-primary" : "border-slate-800 text-slate-400 hover:text-white")}
+                  data-testid={`radio-client-type-${t}`}>
+                  {t === "national" ? "National" : "International"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-slate-300" htmlFor="co-email">Email <span className="text-slate-500">(optional)</span></Label>
+            <Input id="co-email" type="email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} className={cn(inputCls, err("clientEmail") && bad)} placeholder="client@email.com" data-testid="input-client-email" />
+            <FieldError show={err("clientEmail")}>{errors.clientEmail}</FieldError>
+          </div>
+        </div>
+        {lookup?.found && lookup.profile && (
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm" data-testid="card-returning-client">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-slate-200">
+                <span className="font-semibold text-emerald-400">Returning client</span> · {lookup.profile.orderCount} order{lookup.profile.orderCount === 1 ? "" : "s"} · spent {rupees(lookup.profile.totalSpent)}
+                {lookup.profile.lastOrderAt && <> · last {format(new Date(lookup.profile.lastOrderAt), "d MMM yyyy")}</>}
+              </p>
+              <a href={`/clients/${lookup.profile.key}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline" data-testid="link-client-profile">
+                Profile <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+            {!!lookup.recentOrders?.length && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {lookup.recentOrders.map(o => (
+                  <span key={o.id} className="rounded-md border border-border bg-card px-2 py-0.5 text-xs text-slate-400">
+                    {o.orderNumber || `#${o.id}`} · {o.status?.replace(/_/g, " ")}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         )}
-      </div>
+        {lookupKey && lookup && !lookup.found && !lookingUp && (
+          <p className="text-xs text-slate-500" data-testid="text-new-client">New client — no previous orders on this number.</p>
+        )}
+      </FormSection>
 
-      <div className="space-y-4">
-        <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Order Details</h4>
-        <div className="space-y-2">
-          <Label className="text-slate-300">Assigned Designer</Label>
-          <Select value={assignedToId} onValueChange={setAssignedToId}>
-            <SelectTrigger className="bg-slate-950 border-slate-800 text-white" data-testid="select-designer">
-              <SelectValue placeholder="Select designer" />
-            </SelectTrigger>
-            <SelectContent className="bg-slate-900 border-slate-800 text-white">
-              {designers.map(d => (
-                <SelectItem key={d.id} value={d.id.toString()}>{d.name}</SelectItem>
+      {/* 2) Package & add-ons */}
+      <FormSection n={2} title={orderType === "documentation" ? "Package, services & add-ons" : "Package & price"} hint={catalogPackages.length || catalogAddons.length ? "Prices come from the catalog in Settings. You can still edit the total." : "No catalog items yet. Enter the price manually (admins can add packages in Settings → Catalog)."} testId="section-package">
+        {catalogPackages.length > 0 && (
+          <div className="space-y-2">
+            <Label className="text-slate-300">Package</Label>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {catalogPackages.map(p => (
+                <button key={p.key} type="button" onClick={() => pickPackage(p.key)} aria-pressed={packageKey === p.key}
+                  className={cn("rounded-lg border p-3 text-left transition-colors", packageKey === p.key ? "border-primary bg-[hsl(var(--accent))]" : "border-slate-800 hover:border-slate-600")}
+                  data-testid={`button-package-${p.key}`}>
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-slate-200">{p.label}</span>
+                    {packageKey === p.key && <Check className="h-4 w-4 text-primary" />}
+                  </span>
+                  <span className="block text-sm font-semibold text-primary">{rupees(p.price)}</span>
+                  {p.description && <span className="mt-1 block text-xs text-slate-500 line-clamp-2">{p.description}</span>}
+                </button>
               ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {orderType === "documentation" && (
-      <>
-      <div className="space-y-4" ref={customServicesTopRef}>
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Services *</h4>
-              <p className="mt-1 text-xs text-slate-500">Add the services included in this order.</p>
             </div>
-            <Button type="button" variant="ghost" size="sm" onClick={addService} className="text-blue-400 hover:text-blue-300" data-testid="button-add-service">
-              <Plus className="w-4 h-4 mr-1" /> Add Service
-            </Button>
           </div>
-
-          {services.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-slate-700 bg-slate-950/60 px-4 py-5 text-sm text-slate-500">
-              Add at least one service for this order.
+        )}
+        {catalogAddons.length > 0 && (
+          <div className="space-y-2">
+            <Label className="text-slate-300">Add-ons</Label>
+            <div className="flex flex-wrap gap-2">
+              {catalogAddons.map(a => {
+                const on = addonKeys.includes(a.key);
+                return (
+                  <button key={a.key} type="button" onClick={() => toggleAddon(a.key)} aria-pressed={on}
+                    className={cn("min-h-touch rounded-full border px-3 text-sm transition-colors", on ? "border-primary bg-[hsl(var(--accent))] text-primary" : "border-slate-800 text-slate-400 hover:text-white")}
+                    data-testid={`button-addon-${a.key}`}>
+                    {on ? "✓ " : "+ "}{a.label} · {rupees(a.price)}
+                  </button>
+                );
+              })}
             </div>
-          ) : services.map((service, index) => (
-            <div key={service.id} className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-400">Service {service.serviceNumber}</span>
-                <Button type="button" variant="ghost" size="icon" onClick={() => removeService(service.id)} className="h-6 w-6 text-red-400 hover:text-red-300" data-testid={`button-remove-service-${index}`}>
-                  <Trash2 className="w-3 h-3" />
-                </Button>
+          </div>
+        )}
+
+        {orderType === "documentation" && (
+          <div className="space-y-3" ref={customServicesTopRef}>
+            <div className="flex items-center justify-between">
+              <Label className="text-slate-300">Services *</Label>
+              <Button type="button" variant="ghost" size="sm" onClick={() => addService()} className="text-blue-400 hover:text-blue-300" data-testid="button-add-service">
+                <Plus className="mr-1 h-4 w-4" /> Add service
+              </Button>
+            </div>
+            {services.length === 0 ? (
+              <div className={cn("rounded-lg border border-dashed px-4 py-4 text-sm text-slate-500", err("services") ? "border-rose-500/70" : "border-slate-700")}>
+                Add at least one service for this order.
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="md:col-span-2">
-                  <Select value={service.serviceType} onValueChange={(val) => updateService(service.id, 'serviceType', val)}>
-                    <SelectTrigger className="bg-slate-900 border-slate-700 text-white" data-testid={`select-service-type-${index}`}>
+            ) : services.map((service, index) => (
+              <div key={service.id} className="space-y-3 rounded-lg border border-slate-800 bg-slate-950 p-3">
+                <div className="grid grid-cols-[1fr_80px_auto] items-center gap-2">
+                  <Select value={service.serviceType} onValueChange={(val) => updateService(service.id, "serviceType", val)}>
+                    <SelectTrigger className="border-slate-700 bg-slate-900 text-white" data-testid={`select-service-type-${index}`}>
                       <SelectValue placeholder="Select service type" />
                     </SelectTrigger>
-                    <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                      {formServiceTypes.map(type => (
+                    <SelectContent className="border-slate-800 bg-slate-900 text-white">
+                      {Array.from(new Set([...formServiceTypes, service.serviceType].filter(Boolean))).map(type => (
                         <SelectItem key={type} value={type}>{type}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  <Input type="number" min="1" value={service.quantity} onChange={(e) => updateService(service.id, "quantity", parseInt(e.target.value) || 1)} onWheel={(e) => e.currentTarget.blur()} className="border-slate-700 bg-slate-900 text-white" aria-label="Quantity" data-testid={`input-quantity-${index}`} />
+                  <Button type="button" variant="ghost" size="icon" onClick={() => removeService(service.id)} className="text-red-400 hover:text-red-300" aria-label="Remove service" data-testid={`button-remove-service-${index}`}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
-                <div>
-                  <Input 
-                    type="number" 
-                    min="1" 
-                    value={service.quantity} 
-                    onChange={(e) => updateService(service.id, 'quantity', parseInt(e.target.value) || 1)} 
-                    onWheel={(e) => e.currentTarget.blur()}
-                    className="bg-slate-900 border-slate-700 text-white"
-                    placeholder="Qty"
-                    data-testid={`input-quantity-${index}`}
-                  />
-                </div>
+                <Textarea value={service.instructions} onChange={(e) => updateService(service.id, "instructions", e.target.value)} className="resize-none border-slate-700 bg-slate-900 text-white" placeholder="Special instructions for this service..." rows={2} data-testid={`input-instructions-${index}`} />
               </div>
-              <Textarea 
-                value={service.instructions} 
-                onChange={(e) => updateService(service.id, 'instructions', e.target.value)} 
-                className="bg-slate-900 border-slate-700 text-white resize-none"
-                placeholder="Special instructions for this service..."
-                rows={2}
-                data-testid={`input-instructions-${index}`}
-              />
-            </div>
-          ))}
-        </div>
-      </>
-      )}
+            ))}
+            <FieldError show={err("services")} testId="error-services">{errors.services}</FieldError>
+          </div>
+        )}
 
-      <div className="space-y-4">
-        <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Order Settings</h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="space-y-2">
+            <Label className="text-slate-300" htmlFor="co-total">Total bill (₨) *</Label>
+            <Input id="co-total" type="number" inputMode="numeric" min="0" step="1" value={totalBill}
+              onChange={(e) => { setTotalBill(e.target.value.replace(/[^0-9]/g, "")); setPriceTouched(true); }}
+              onWheel={(e) => e.currentTarget.blur()} className={cn(inputCls, err("totalBill") && bad)} placeholder="0" data-testid="input-total-bill" />
+            {(selectedPackage || selectedAddons.length > 0) && (
+              <p className="text-xs text-slate-500">
+                Catalog price {rupees(catalogTotal)}
+                {priceTouched && totalRupees * 100 !== catalogTotal && (
+                  <> · <button type="button" className="text-primary hover:underline" onClick={() => setPriceTouched(false)} data-testid="button-use-catalog-price">use it</button></>
+                )}
+              </p>
+            )}
+            <FieldError show={err("totalBill")} testId="error-total-bill">{errors.totalBill}</FieldError>
+          </div>
           {orderType !== "resume_distribution" && (
             <div className="space-y-2">
-              <Label className="text-slate-300">Number of Revisions</Label>
+              <Label className="text-slate-300">Revisions</Label>
               <Select value={numberOfRevisions} onValueChange={setNumberOfRevisions}>
-                <SelectTrigger className="bg-slate-950 border-slate-800 text-white" data-testid="select-revisions">
-                  <SelectValue placeholder="Select revisions" />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                  {REVISION_COUNT_OPTIONS.map(count => (
-                    <SelectItem key={count} value={count}>{count} Revision{count === "1" ? "" : "s"}</SelectItem>
-                  ))}
+                <SelectTrigger className={inputCls} data-testid="select-revisions"><SelectValue placeholder="Select revisions" /></SelectTrigger>
+                <SelectContent className="border-slate-800 bg-slate-900 text-white">
+                  {REVISION_COUNT_OPTIONS.map(count => <SelectItem key={count} value={count}>{count} Revision{count === "1" ? "" : "s"}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
           )}
           <div className="space-y-2">
-            <Label className="text-slate-300">Support Period</Label>
+            <Label className="text-slate-300">Support period</Label>
             <Select value={supportPeriod} onValueChange={setSupportPeriod}>
-              <SelectTrigger className="bg-slate-950 border-slate-800 text-white" data-testid="select-support-period">
-                <SelectValue placeholder="Select support period" />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-900 border-slate-800 text-white">
-                {SUPPORT_PERIOD_OPTIONS.map(opt => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                ))}
+              <SelectTrigger className={inputCls} data-testid="select-support-period"><SelectValue placeholder="Select support period" /></SelectTrigger>
+              <SelectContent className="border-slate-800 bg-slate-900 text-white">
+                {SUPPORT_PERIOD_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
         </div>
-      </div>
+      </FormSection>
 
-      <div className="space-y-4">
-        <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Billing (PKR)</h4>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* 3) Payment */}
+      <FormSection n={3} title="Payment" hint={isWebsite ? "Defaults to the website total. Lower it for a partial payment." + (websitePrefill?.totalHint ? ` ${websitePrefill.totalHint}` : "") : isAdmin ? "Admin orders are approved immediately." : "The order stays pending until an admin approves the payment."} testId="section-payment">
+        <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Amount received">
+          {([["half", "50%"], ["full", "Full"], ["custom", "Custom"]] as const).map(([mode, label]) => (
+            <button key={mode} type="button" role="radio" aria-checked={payMode === mode}
+              onClick={() => { setPayMode(mode); if (mode === "custom") requestAnimationFrame(() => advanceInputRef.current?.focus()); }}
+              className={cn("min-h-touch rounded-md border text-sm transition-colors", payMode === mode ? "border-primary bg-[hsl(var(--accent))] font-medium text-primary" : "border-slate-800 text-slate-400 hover:text-white")}
+              data-testid={`button-pay-${mode}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label className="text-slate-300">Total Bill (₨) *</Label>
-            <Input 
-              type="number"
-              min="0"
-              step="1"
-              value={totalBill} 
-              onChange={(e) => setTotalBill(e.target.value.replace(/[^0-9]/g, ''))} 
-              onWheel={(e) => e.currentTarget.blur()}
-              className="bg-slate-950 border-slate-800 text-white"
-              placeholder="0"
-              data-testid="input-total-bill"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-slate-300">{isWebsite ? "Amount Received (₨)" : "Advance Paid (₨)"}</Label>
-            <Input 
-              type="number"
-              min="0"
-              step="1"
-              value={advanceAmount} 
-              onChange={(e) => setAdvanceAmount(e.target.value.replace(/[^0-9]/g, ''))} 
-              onWheel={(e) => e.currentTarget.blur()}
-              className="bg-slate-950 border-slate-800 text-white"
-              placeholder="0"
-              data-testid="input-advance-amount"
-            />
+            <Label className="text-slate-300" htmlFor="co-advance">{isWebsite ? "Amount received (₨)" : "Advance received (₨)"}{!isWebsite && isSupport && " *"}</Label>
+            <Input id="co-advance" ref={advanceInputRef} type="number" inputMode="numeric" min="0" step="1" value={advanceAmount}
+              onChange={(e) => { setPayMode("custom"); setAdvanceAmount(e.target.value.replace(/[^0-9]/g, "")); }}
+              onWheel={(e) => e.currentTarget.blur()} className={cn(inputCls, err("advance") && bad)} placeholder="0" data-testid="input-advance-amount" />
+            <FieldError show={err("advance") || (!!errors.advance && advanceRupees > totalRupees)} testId="text-advance-warning">{errors.advance}</FieldError>
           </div>
           <div className="space-y-2">
             <Label className="text-slate-300">Remaining</Label>
-            <div className="h-9 flex items-center px-3 bg-slate-950 border border-slate-800 rounded-md text-white" data-testid="text-remaining">
-              ₨{Math.max(0, (parseInt(totalBill) || 0) - (parseInt(advanceAmount) || 0)).toLocaleString()}
+            <div className="flex h-control items-center rounded-md border border-slate-800 bg-slate-950 px-3 text-white tabular-nums" data-testid="text-remaining">
+              ₨{Math.max(0, totalRupees - advanceRupees).toLocaleString()}
             </div>
           </div>
-        </div>
-        {(parseInt(advanceAmount) || 0) > (parseInt(totalBill) || 0) && (
-          <p className="text-xs text-red-400" data-testid="text-advance-warning">{isWebsite ? "Amount received" : "Advance paid"} cannot be greater than total bill.</p>
-        )}
-        {isWebsite && (
-          <p className="text-xs text-slate-500">
-            Defaults to the website total. Lower it for a partial / advance payment.{websitePrefill?.totalHint ? ` ${websitePrefill.totalHint}` : ""}
-          </p>
-        )}
-      </div>
-
-      {isWebsite && (
-        <div className="space-y-4">
-          <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
-            Payment Proof {currentUser?.role !== 'admin' && <span className="text-red-400 normal-case font-normal">(Required)</span>}
-          </h4>
-          <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-3">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label className="text-slate-300">Payment Method</Label>
-                <Input value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className="bg-slate-900 border-slate-700 text-white" placeholder="e.g. JazzCash, Bank transfer" data-testid="input-payment-method" />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-slate-300">Transaction ID</Label>
-                <Input value={transactionId} onChange={(e) => setTransactionId(e.target.value)} className="bg-slate-900 border-slate-700 text-white" placeholder="Transaction / reference ID" data-testid="input-transaction-id" />
-              </div>
-            </div>
+          {isWebsite && (
             <div className="space-y-2">
-              <Label className="text-slate-300">Payment Screenshot URL</Label>
-              <Input value={screenshotUrl} onChange={(e) => setScreenshotUrl(e.target.value)} className="bg-slate-900 border-slate-700 text-white" placeholder="https://res.cloudinary.com/..." data-testid="input-screenshot-url" />
+              <Label className="text-slate-300">Payment method</Label>
+              <Input value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className={inputCls} placeholder="e.g. JazzCash, Bank transfer" data-testid="input-payment-method" />
             </div>
+          )}
+          <div className="space-y-2">
+            <Label className="text-slate-300" htmlFor="co-txn">Transaction ID <span className="text-slate-500">(optional)</span></Label>
+            <Input id="co-txn" value={transactionId} onChange={(e) => setTransactionId(e.target.value)} className={inputCls} placeholder="Transaction / reference ID" data-testid="input-transaction-id" />
+          </div>
+        </div>
+
+        {isWebsite ? (
+          <div className="space-y-2">
+            <Label className="text-slate-300">Payment screenshot URL {isSupport && <span className="text-rose-400">(required)</span>}</Label>
+            <Input value={screenshotUrl} onChange={(e) => setScreenshotUrl(e.target.value)} className={cn(inputCls, err("screenshotUrl") && bad)} placeholder="https://res.cloudinary.com/..." data-testid="input-screenshot-url" />
+            <FieldError show={err("screenshotUrl")}>{errors.screenshotUrl}</FieldError>
             {/^https?:\/\/\S+$/i.test(screenshotUrl.trim()) && (
               <a href={screenshotUrl.trim()} target="_blank" rel="noopener noreferrer" className="inline-block" data-testid="link-screenshot-preview">
                 <img src={screenshotUrl.trim()} alt="Payment screenshot" className="h-24 w-auto rounded-md border border-slate-700 object-cover" />
               </a>
             )}
-            <p className="text-xs text-slate-500">
-              {currentUser?.role === 'admin'
-                ? "Saved with the payment record. Admin orders are approved immediately."
-                : "Saved as the payment proof. The order stays pending until an admin approves it."}
-            </p>
           </div>
-        </div>
-      )}
-
-      {currentUser?.role !== 'admin' && !isWebsite && (
-        <div className="space-y-4">
-          <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
-            Payment Screenshot / Proof <span className="text-red-400 normal-case font-normal">(Required)</span>
-          </h4>
-          <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-2">
+        ) : isSupport ? (
+          <div className="space-y-2">
+            <Label className="text-slate-300">Payment screenshot *</Label>
             <ImageDropzone
               value={paymentScreenshot}
               onFile={setPaymentScreenshot}
               accept="image/png,image/jpeg,image/jpg,image/webp"
               label="Choose payment proof"
-              description="Paste from clipboard or drag an image here"
-              className={(parseInt(advanceAmount) || 0) > 0 && !paymentScreenshot ? "border-red-500/50" : ""}
+              description="Press Ctrl+V to paste, drag an image here, or take a photo"
+              className={err("screenshot") ? "border-rose-500/70" : ""}
+              listenForPaste
               testId="input-payment-screenshot"
             />
-            {paymentScreenshot && (
-              <p className="text-xs text-slate-400" data-testid="text-screenshot-filename">Selected: {paymentScreenshot.name}</p>
+            {paymentScreenshot && <p className="text-xs text-slate-400" data-testid="text-screenshot-filename">Selected: {paymentScreenshot.name}</p>}
+            <FieldError show={err("screenshot")} testId="error-screenshot">{errors.screenshot}</FieldError>
+          </div>
+        ) : null}
+      </FormSection>
+
+      {/* 4) Assign */}
+      <FormSection n={4} title="Assign" hint="Designers are sorted by current workload (fewest active orders first)." testId="section-assign">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label className="text-slate-300">Designer</Label>
+            <Select value={assignedToId} onValueChange={setAssignedToId}>
+              <SelectTrigger className={inputCls} data-testid="select-designer"><SelectValue placeholder="Select designer" /></SelectTrigger>
+              <SelectContent className="border-slate-800 bg-slate-900 text-white">
+                {sortedDesigners.map(d => (
+                  <SelectItem key={d.id} value={d.id.toString()}>
+                    {d.name}{loadById.has(d.id) ? ` · ${loadById.get(d.id)} active` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {suggested && assignedToId !== String(suggested.id) && (
+              <button type="button" onClick={() => setAssignedToId(String(suggested.id))} className="text-xs text-primary hover:underline" data-testid="button-use-suggested-designer">
+                Suggested: {suggested.name} ({suggested.active} active) — use
+              </button>
             )}
-            <p className="text-xs text-slate-500">
-              Upload proof of the advance payment. Your order stays pending until an admin approves it.
-            </p>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-slate-300">Due date</Label>
+            <div className="flex h-control items-center gap-2 rounded-md border border-slate-800 bg-slate-950 px-3 text-white" data-testid="text-due-preview">
+              <CalendarIcon className="h-4 w-4 text-slate-500" />
+              {format(duePreview, "EEE d MMM")} <span className="text-xs text-slate-500">({deliveryDays} day{deliveryDays === 1 ? "" : "s"})</span>
+            </div>
+            <p className="text-xs text-slate-500">{isAdmin || isWebsite ? "Set automatically when the order is placed." : "Counted from when the payment is approved."}</p>
           </div>
         </div>
-      )}
 
-      <div className="space-y-4">
-        <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Marketing</h4>
-        <div className="space-y-2">
-          <Label className="text-slate-300">How did the client find us?</Label>
-          <Select value={platform} onValueChange={(val) => {
-            setPlatform(val);
-            const found = platformsCatalogData.find(p => p.name === val);
-            if (!found?.hasCampaignFields) {
-              setCampaign("");
-              setAdSet("");
-              setCreative("");
-            }
-          }}>
-            <SelectTrigger className="bg-slate-950 border-slate-800 text-white" data-testid="select-platform">
-              <SelectValue placeholder="Select platform..." />
-            </SelectTrigger>
-            <SelectContent className="bg-slate-900 border-slate-700">
-              {activePlatforms.length > 0 ? activePlatforms.map(p => (
-                <SelectItem key={p.id} value={p.name} className="text-white hover:bg-slate-800">{p.name}</SelectItem>
-              )) : (
-                <SelectItem value="Other" className="text-white hover:bg-slate-800">Other</SelectItem>
-              )}
-            </SelectContent>
-          </Select>
-        </div>
-        {(() => {
-          const selectedPlatform = platformsCatalogData.find(p => p.name === platform);
-          if (!selectedPlatform?.hasCampaignFields) return null;
-          return (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label className="text-slate-300">Campaign</Label>
-                <Input 
-                  value={campaign} 
-                  onChange={(e) => setCampaign(e.target.value)} 
-                  className="bg-slate-950 border-slate-800 text-white"
-                  placeholder="Campaign name..."
-                  data-testid="input-campaign"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-slate-300">Ad Set</Label>
-                <Input 
-                  value={adSet} 
-                  onChange={(e) => setAdSet(e.target.value)} 
-                  className="bg-slate-950 border-slate-800 text-white"
-                  placeholder="Ad set name..."
-                  data-testid="input-ad-set"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-slate-300">Creative</Label>
-                <Input 
-                  value={creative} 
-                  onChange={(e) => setCreative(e.target.value)} 
-                  className="bg-slate-950 border-slate-800 text-white"
-                  placeholder="Creative name..."
-                  data-testid="input-creative"
-                />
-              </div>
+        <details className="group rounded-lg border border-slate-800 p-3" open={!!(platform || notes)}>
+          <summary className="cursor-pointer select-none text-sm text-slate-300">Source & notes</summary>
+          <div className="mt-3 space-y-4">
+            <div className="space-y-2">
+              <Label className="text-slate-300">How did the client find us?</Label>
+              <Select value={platform} onValueChange={(val) => {
+                setPlatform(val);
+                if (!platformsCatalogData.find(p => p.name === val)?.hasCampaignFields) { setCampaign(""); setAdSet(""); setCreative(""); }
+              }}>
+                <SelectTrigger className={inputCls} data-testid="select-platform"><SelectValue placeholder="Select platform..." /></SelectTrigger>
+                <SelectContent className="border-slate-700 bg-slate-900">
+                  {activePlatforms.length > 0
+                    ? activePlatforms.map(p => <SelectItem key={p.id} value={p.name} className="text-white hover:bg-slate-800">{p.name}</SelectItem>)
+                    : <SelectItem value="Other" className="text-white hover:bg-slate-800">Other</SelectItem>}
+                </SelectContent>
+              </Select>
             </div>
-          );
-        })()}
-      </div>
+            {platformsCatalogData.find(p => p.name === platform)?.hasCampaignFields && (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <Input value={campaign} onChange={(e) => setCampaign(e.target.value)} className={inputCls} placeholder="Campaign" aria-label="Campaign" data-testid="input-campaign" />
+                <Input value={adSet} onChange={(e) => setAdSet(e.target.value)} className={inputCls} placeholder="Ad set" aria-label="Ad set" data-testid="input-ad-set" />
+                <Input value={creative} onChange={(e) => setCreative(e.target.value)} className={inputCls} placeholder="Creative" aria-label="Creative" data-testid="input-creative" />
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label className="text-slate-300">Internal notes</Label>
+              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className={cn(inputCls, "resize-none")} placeholder="Add any internal notes..." rows={3} data-testid="input-notes" />
+            </div>
+          </div>
+        </details>
+      </FormSection>
 
-      <div className="space-y-2">
-        <Label className="text-slate-300">Internal Notes</Label>
-        <Textarea 
-          value={notes} 
-          onChange={(e) => setNotes(e.target.value)} 
-          className="bg-slate-950 border-slate-800 text-white resize-none"
-          placeholder="Add any internal notes..."
-          rows={3}
-          data-testid="input-notes"
-        />
-      </div>
-
-      <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+      <div className="sticky bottom-0 -mx-1 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 bg-card/95 px-1 py-3 backdrop-blur">
+        <p className="text-sm text-slate-400" data-testid="text-order-summary">
+          Total <span className="font-semibold text-slate-200">₨{totalRupees.toLocaleString()}</span> · received <span className="font-semibold text-slate-200">₨{advanceRupees.toLocaleString()}</span>
+          {showErrors && errorCount > 0 && <span className="ml-2 text-rose-400">{errorCount} to fix</span>}
+        </p>
         <Button type="submit" className="bg-primary" disabled={isUploading} data-testid="button-submit-order">
           {isUploading ? (isWebsite ? "Placing order..." : "Creating Order...") : isWebsite ? "Verify & place order" : "Create Order"}
         </Button>

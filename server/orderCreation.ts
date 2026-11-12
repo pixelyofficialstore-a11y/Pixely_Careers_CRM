@@ -7,6 +7,7 @@
 import { orders, orderServices, activityLogs, type Order, type InsertOrder, type InsertOrderService } from "@shared/schema";
 import { storage } from "./storage";
 import { dueAtForNewOrder } from "./orderProcess";
+import { pkPhoneKey } from "@shared/phone";
 
 export type PlaceOrderInput = {
   order: Omit<InsertOrder, "orderNumber" | "status" | "advancePaymentStatus" | "createdById" | "assignedToId" | "intendedDesignerId" | "remainingAmount" | "paymentStatus" | "advanceAmount"> & {
@@ -36,7 +37,7 @@ export async function placeApprovedOrderTx(tx: any, input: PlaceOrderInput): Pro
   // Meta tracking and Phase 2 process columns are server-owned; never accept them from a request body.
   const {
     metaEventId: _m1, metaStatus: _m2, metaPurchaseSentAt: _m3,
-    workStatus: _p1, dueAt: _p2, payLaterApprovedById: _p3, payLaterApprovedAt: _p4,
+    workStatus: _p1, dueAt: _p2, payLaterApprovedById: _p3, payLaterApprovedAt: _p4, clientKey: _k,
     ...orderFields
   } = input.order as any;
   const now = new Date();
@@ -46,6 +47,7 @@ export async function placeApprovedOrderTx(tx: any, input: PlaceOrderInput): Pro
   const payLater = advanceAmount === 0 ? { payLaterApprovedById: input.actorId, payLaterApprovedAt: now } : {};
   const [order] = await tx.insert(orders).values({
     ...orderFields,
+    clientKey: pkPhoneKey(orderFields.clientPhone),
     totalPrice,
     advanceAmount,
     remainingAmount,

@@ -38,6 +38,8 @@ function applyScopes(scopes: string[]) {
   if (scopes.includes("orders")) {
     queryClient.invalidateQueries(startsWith("/api/orders"));
     queryClient.invalidateQueries(startsWith("/api/analytics"));
+    queryClient.invalidateQueries(startsWith("/api/clients"));
+    queryClient.invalidateQueries(startsWith("/api/designers/workload"));
   }
   if (scopes.includes("stats")) {
     queryClient.invalidateQueries(startsWith("/api/stats"));
@@ -45,6 +47,11 @@ function applyScopes(scopes: string[]) {
   }
   if (scopes.includes("feedback")) queryClient.invalidateQueries(startsWith("/api/feedback"));
   if (scopes.includes("website_requests")) queryClient.invalidateQueries(startsWith("/api/website-requests"));
+  if (scopes.includes("settings")) {
+    queryClient.invalidateQueries(startsWith("/api/catalog"));
+    queryClient.invalidateQueries(startsWith("/api/whatsapp-templates"));
+  }
+  if (scopes.includes("stats")) queryClient.invalidateQueries(startsWith("/api/analytics/roi"));
   if (scopes.includes("refunds")) queryClient.invalidateQueries(startsWith("/api/refunds"));
 }
 

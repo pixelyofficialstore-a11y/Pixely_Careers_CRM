@@ -178,6 +178,8 @@ export function registerPaymentRoutes(app: Express) {
         screenshotMimeType,
         submittedById: user.id,
         status: "pending_confirmation",
+        // Phase 5: optional transaction / reference ID typed on the Create Order form.
+        notes: typeof req.body?.transactionId === "string" && req.body.transactionId.trim() ? `Txn ID: ${req.body.transactionId.trim().slice(0, 120)}` : null,
       });
       await storage.createActivityLog({
         orderId: order.id, actorId: user.id, activityType: "payment_change",

@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard, FileText, Users, BarChart3, LogOut, CreditCard, Settings, FileWarning,
-  MessageSquareHeart, Globe, BellRing, KanbanSquare, PanelLeftClose, PanelLeftOpen,
+  MessageSquareHeart, Globe, Contact, BellRing, KanbanSquare, PanelLeftClose, PanelLeftOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -16,6 +16,7 @@ export const NAV_LINKS: NavLink[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "support", "designer"] },
   { href: "/orders", label: "Orders", icon: FileText, roles: ["admin", "support", "designer"] },
   { href: "/board", label: "Board", icon: KanbanSquare, roles: ["admin", "support", "designer"] },
+  { href: "/clients", label: "Clients", icon: Contact, roles: ["admin", "support"], match: p => p.startsWith("/clients") },
   { href: "/website-requests", label: "Website Requests", icon: Globe, roles: ["admin", "support"] },
   { href: "/payments", label: "Payments", icon: CreditCard, roles: ["admin", "support", "designer"] },
   { href: "/complaints", label: "Complaints", icon: FileWarning, roles: ["admin", "support", "designer"], match: p => p.startsWith("/complaints") },
