@@ -44,6 +44,7 @@ function applyScopes(scopes: string[]) {
   }
   if (scopes.includes("feedback")) queryClient.invalidateQueries(startsWith("/api/feedback"));
   if (scopes.includes("website_requests")) queryClient.invalidateQueries(startsWith("/api/website-requests"));
+  if (scopes.includes("refunds")) queryClient.invalidateQueries(startsWith("/api/refunds"));
 }
 
 let source: EventSource | null = null;

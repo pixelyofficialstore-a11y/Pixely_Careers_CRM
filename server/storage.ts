@@ -238,9 +238,13 @@ export class DatabaseStorage implements IStorage {
 
       const now = new Date();
       const advanceAmount = Math.max(0, Number(existing.advanceAmount || 0));
-      const refundAmount = cancellation.advanceRefunded ? advanceAmount : 0;
+      // Phase 2: refund records already approved on this order are not refunded twice.
+      const recorded = await tx.execute(sql`SELECT coalesce(sum(approved_amount), 0)::int AS v FROM refunds WHERE order_id = ${id} AND status IN ('approved', 'paid')`);
+      const alreadyRefunded = Number(((recorded as any).rows ?? recorded)[0]?.v || 0);
+      const refundAmount = cancellation.advanceRefunded ? Math.max(0, advanceAmount - alreadyRefunded) : 0;
       const [updated] = await tx.update(orders).set({
         status: "canceled",
+        workStatus: "canceled",
         cancellationReason: cancellation.reason,
         canceledByUserId: cancellation.actorId,
         canceledAt: now,

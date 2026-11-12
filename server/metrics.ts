@@ -19,7 +19,7 @@
  *  - Collected   = approved payments in the period (+ advances on admin-created
  *                  orders, which are approved without a payment record).
  *  - Outstanding = total due − collected on non-canceled orders.
- *  - Refunded    = refunds recorded in the period.
+ *  - Refunded    = refunds recorded in the period (cancel refunds + approved refund records).
  */
 import { pool } from "./db";
 import { getStartOfBusinessDay, getStartOfBusinessMonth, BUSINESS_TIME_ZONE } from "@shared/business-time";
@@ -29,7 +29,10 @@ export type Viewer = { role: string; id: number };
 // ---- SQL building blocks (mirror shared/order-accounting.ts exactly) --------
 const ADV = "greatest(coalesce(o.advance_amount, 0), 0)";
 const REM = "greatest(coalesce(o.remaining_amount, 0), 0)";
-const REFUND = `(case when o.status = 'canceled' and o.advance_refunded is true then least(${ADV}, greatest(coalesce(o.refund_amount, 0), 0)) else 0 end)`;
+const LEGACY_REFUND = `(case when o.status = 'canceled' and o.advance_refunded is true then greatest(coalesce(o.refund_amount, 0), 0) else 0 end)`;
+/** Phase 2 refund records (approved or paid) on one order. */
+const RECORD_REFUNDS = `coalesce((select sum(r.approved_amount) from refunds r where r.order_id = o.id and r.status in ('approved', 'paid')), 0)`;
+const REFUND = `least(${ADV}, ${LEGACY_REFUND} + ${RECORD_REFUNDS})`;
 /** Net collected on one order. */
 export const SQL_NET_COLLECTED = `greatest(0, ${ADV} - ${REFUND})`;
 /** Remaining receivable on one order (0 when canceled). */
@@ -195,12 +198,20 @@ async function collectedBetween(start: Date, end: Date = FAR_FUTURE) {
 
 /** Refunds recorded in [start, end). */
 async function refundedBetween(start: Date, end: Date = FAR_FUTURE) {
-  const r = await pool.query(
-    `select coalesce(sum(o.refund_amount),0)::bigint as v from orders o
-     where ${PLACED} and o.status = 'canceled' and coalesce(o.refund_amount,0) > 0 and o.refund_recorded_at >= $1 and o.refund_recorded_at < $2`,
-    [iso(start), iso(end)],
-  );
-  return n(r.rows[0]?.v);
+  const [legacy, records] = await Promise.all([
+    pool.query(
+      `select coalesce(sum(o.refund_amount),0)::bigint as v from orders o
+       where ${PLACED} and o.status = 'canceled' and coalesce(o.refund_amount,0) > 0 and o.refund_recorded_at >= $1 and o.refund_recorded_at < $2`,
+      [iso(start), iso(end)],
+    ),
+    // Phase 2 refund records count on the day the admin approved them.
+    pool.query(
+      `select coalesce(sum(r.approved_amount),0)::bigint as v from refunds r join orders o on o.id = r.order_id
+       where ${PLACED} and r.status in ('approved', 'paid') and r.decided_at >= $1 and r.decided_at < $2`,
+      [iso(start), iso(end)],
+    ),
+  ]);
+  return n(legacy.rows[0]?.v) + n(records.rows[0]?.v);
 }
 
 /** Admin finance block for "today" and "this month" (business time). */

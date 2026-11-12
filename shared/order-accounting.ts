@@ -16,12 +16,13 @@ const money = (value: number | null | undefined) => {
   return Number.isFinite(amount) ? Math.max(0, amount) : 0;
 };
 
-export function getOrderAccounting(order: OrderAccountingInput) {
+/** `refundsTotal` = approved/paid refund records (Phase 2 refunds table). */
+export function getOrderAccounting(order: OrderAccountingInput, refundsTotal = 0) {
   const advance = money(order.advanceAmount);
   const remaining = money(order.remainingAmount);
   const canceled = order.status === "canceled";
   const refunded = canceled && order.advanceRefunded === true;
-  const refund = refunded ? Math.min(advance, money(order.refundAmount)) : 0;
+  const refund = Math.min(advance, (refunded ? money(order.refundAmount) : 0) + money(refundsTotal));
   const netCollected = Math.max(0, advance - refund);
   const remainingReceivable = canceled ? 0 : remaining;
 

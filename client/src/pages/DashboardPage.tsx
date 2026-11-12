@@ -268,9 +268,9 @@ function AdminDashboard({ m, feedbackStats, openFeedback, setLocation }: DashPro
   ];
   const s = m.orders.byStatus;
   const orderPipeline = [
-    { label: "New", status: "new", count: s.new, color: "bg-amber-300", text: "text-amber-300" },
+    { label: "Confirmed", status: "new", count: s.new, color: "bg-amber-300", text: "text-amber-300" },
     { label: "In progress", status: "working", count: s.working, color: "bg-cyan-300", text: "text-cyan-300" },
-    { label: "Ready", status: "ready", count: s.ready, color: "bg-emerald-300", text: "text-emerald-300" },
+    { label: "Draft sent / Revisions", status: "ready", count: s.ready, color: "bg-emerald-300", text: "text-emerald-300" },
     { label: "Delivered", status: "delivered", count: s.delivered, color: "bg-emerald-500", text: "text-emerald-400" },
     { label: "Canceled", status: "canceled", count: s.canceled, color: "bg-rose-300", text: "text-rose-300" },
   ];
@@ -399,7 +399,7 @@ function DesignerDashboard({ m, feedbackStats, openFeedback, setLocation, role }
           <div className="p-4">
             <DashboardRow label="New" value={s.new} tone="warning" />
             <DashboardRow label="In progress" value={s.working} />
-            <DashboardRow label="Ready" value={s.ready} tone="success" />
+            <DashboardRow label="Draft sent / Revisions" value={s.ready} tone="success" />
             <DashboardRow label="Delivered" value={s.delivered} tone="success" />
             <DashboardRow label="Canceled" value={s.canceled} tone="danger" />
           </div>

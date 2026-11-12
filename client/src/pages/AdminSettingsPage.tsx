@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getErrorMessage } from "@/lib/queryClient";
+import { deliveryDaysFor } from "@shared/order-process";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,10 +38,35 @@ import {
   Globe,
   FileWarning,
   Shield,
+  Package,
 } from "lucide-react";
 import SecuritySettings from "@/components/SecuritySettings";
 import type { ServiceCatalogItem, PackageConfig, PlatformCatalogItem, ComplaintCategoryConfig } from "@shared/schema";
 import { PageHeader } from "@/components/CRMPrimitives";
+
+/** Phase 2: per-package delivery days (empty = built-in default). Saves on blur / Enter. */
+function DeliveryDaysInput({ value, fallback, disabled, onSave }: { value: number | null; fallback: number; disabled?: boolean; onSave: (days: number | null) => void }) {
+  const [text, setText] = useState(value != null ? String(value) : "");
+  const commit = () => {
+    const trimmed = text.trim();
+    const next = trimmed === "" ? null : Number(trimmed);
+    if (next !== null && (!Number.isInteger(next) || next < 1 || next > 365)) { setText(value != null ? String(value) : ""); return; }
+    if (next !== value) onSave(next);
+  };
+  return (
+    <Input
+      inputMode="numeric"
+      value={text}
+      placeholder={`${fallback} (default)`}
+      disabled={disabled}
+      onChange={e => setText(e.target.value.replace(/[^0-9]/g, ""))}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+      className="h-8 w-28 bg-slate-950 text-sm"
+      aria-label="Delivery days"
+    />
+  );
+}
 
 export default function AdminSettingsPage() {
   const { user } = useAuth();
@@ -62,6 +88,10 @@ export default function AdminSettingsPage() {
             <Wrench className="w-4 h-4" />
             Services
           </TabsTrigger>
+          <TabsTrigger value="packages" className="gap-2">
+            <Package className="w-4 h-4" />
+            Packages
+          </TabsTrigger>
           <TabsTrigger value="platforms" className="gap-2">
             <Globe className="w-4 h-4" />
             Platforms
@@ -78,6 +108,10 @@ export default function AdminSettingsPage() {
 
         <TabsContent value="services">
           <ServicesSection />
+        </TabsContent>
+
+        <TabsContent value="packages">
+          <PackagesSection />
         </TabsContent>
 
         <TabsContent value="platforms">
@@ -449,8 +483,8 @@ function PackagesSection() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, label, isActive }: { id: number; label?: string; isActive?: boolean }) => {
-      const res = await apiRequest("PATCH", `/api/package-configs/${id}`, { label, isActive });
+    mutationFn: async ({ id, label, isActive, deliveryDays }: { id: number; label?: string; isActive?: boolean; deliveryDays?: number | null }) => {
+      const res = await apiRequest("PATCH", `/api/package-configs/${id}`, { label, isActive, ...(deliveryDays !== undefined ? { deliveryDays } : {}) });
       return res.json();
     },
     onSuccess: () => {
@@ -458,9 +492,8 @@ function PackagesSection() {
       setEditItem(null);
       toast({ title: "Success", description: "Package updated" });
     },
-    onError: async (err: any) => {
-      const body = err?.response ? await err.response.json().catch(() => ({})) : {};
-      toast({ title: "Error", description: body.message || "Failed to update package", variant: "destructive" });
+    onError: (err: any) => {
+      toast({ title: "Error", description: getErrorMessage(err, "Failed to update package"), variant: "destructive" });
     },
   });
 
@@ -518,6 +551,7 @@ function PackagesSection() {
               <tr className="border-b border-slate-800">
                 <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Label</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Key</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider" title="Used for the due date of new orders. Empty = built-in default.">Delivery days</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</th>
                 <th className="text-right px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Actions</th>
               </tr>
@@ -528,6 +562,14 @@ function PackagesSection() {
                   <td className="px-5 py-3.5 text-sm font-medium text-white">{pkg.label}</td>
                   <td className="px-5 py-3.5">
                     <code className="rounded border border-slate-800 bg-slate-950 px-2 py-0.5 text-xs text-cyan-300">{pkg.key}</code>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <DeliveryDaysInput
+                      value={pkg.deliveryDays ?? null}
+                      fallback={deliveryDaysFor(pkg.key, null)}
+                      disabled={updateMutation.isPending}
+                      onSave={(deliveryDays) => updateMutation.mutate({ id: pkg.id, deliveryDays })}
+                    />
                   </td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-2">

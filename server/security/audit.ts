@@ -24,6 +24,10 @@ export const AUDIT_ACTIONS = [
   "payment_disapproved",
   "export",
   "settings_changed",
+  "order_pay_later_approved",
+  "refund_approved",
+  "refund_rejected",
+  "refund_paid",
 ] as const;
 export type AuditAction = typeof AUDIT_ACTIONS[number];
 

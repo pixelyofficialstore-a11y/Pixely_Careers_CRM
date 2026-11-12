@@ -451,7 +451,7 @@ export function registerWebsiteRequestRoutes(app: Express, deps: Deps) {
     const user = req.user as User;
     try {
       const outcome = await db.transaction(async tx => {
-        const row = rowsOf(await tx.execute(sql`SELECT id, name, status, total, currency, crm_order_id, submitted_by FROM website.orders WHERE id = ${id} FOR UPDATE`))[0];
+        const row = rowsOf(await tx.execute(sql`SELECT id, name, status, total, currency, crm_order_id, submitted_by, package FROM website.orders WHERE id = ${id} FOR UPDATE`))[0];
         if (!row) throw new HttpError(404, "Request not found");
         if (row.crm_order_id) throw new HttpError(409, "This request already has a CRM order and can't be rejected.");
         if (row.status === "rejected") throw new HttpError(409, "This request is already rejected.");
@@ -557,6 +557,8 @@ export function registerWebsiteRequestRoutes(app: Express, deps: Deps) {
           designerId: data.assignedToId || null,
           actorId: user.id,
           source: { source: "website_request", websiteRequestId: id, submittedBy: row.submitted_by ?? null },
+          // Due date from the website package (e.g. executive_bundle = 11.11 Bundle, 5 days).
+          deliveryPackageKey: typeof row.package === "string" ? row.package : null,
         });
 
         // Payment record (approved) keeps the amount + proof on file and feeds the dashboard cash flow.

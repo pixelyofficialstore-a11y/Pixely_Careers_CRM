@@ -7,6 +7,7 @@ import { and, desc, eq, gte, inArray, lt, or, sql, type SQL } from "drizzle-orm"
 import { db } from "./db";
 import { orders, orderServices, users, type OrderService, type OrderWithServices, type User } from "@shared/schema";
 import { getStartOfBusinessDay } from "@shared/business-time";
+import { DEFAULT_PACKAGE_DELIVERY_DAYS, DEFAULT_ORDER_TYPE_DELIVERY_DAYS, FALLBACK_DELIVERY_DAYS } from "@shared/order-process";
 import { businessMonthRange } from "./metrics";
 
 /** Status filter keys used by the Orders page (old status values; Phase 2 maps them). */
@@ -23,7 +24,9 @@ export const orderListQuerySchema = z.object({
   page: int.min(1).max(100_000).default(1),
   pageSize: int.min(1).max(100).default(50),
   search: z.string().trim().max(100).optional(),
-  status: z.enum(["pending", "working", "ready", "delivered", "canceled"]).optional(),
+  status: z.enum(["pending", "working", "ready", "delivered", "canceled", "overdue"]).optional(),
+  /** Phase 2: "requests" = orders still waiting for a verified payment or pay-later approval (admin, support). */
+  view: z.enum(["requests"]).optional(),
   designerId: int.positive().optional(),
   orderType: z.enum(["documentation", "resume_distribution", "portfolio_website"]).optional(),
   period: z.enum(["today", "month", "all"]).default("all"),
@@ -68,9 +71,32 @@ function visibility(user: Pick<User, "id" | "role">): SQL {
   return user.role === "designer" ? and(placed, eq(orders.assignedToId, user.id))! : placed;
 }
 
+/** SQL delivery days for an order (package setting → package default → order type default → 3). Mirrors deliveryDaysFor(). */
+function sqlDeliveryDays(): SQL {
+  const pkg = Object.entries(DEFAULT_PACKAGE_DELIVERY_DAYS).map(([k, d]) => sql`when ${k} then ${d}::int`);
+  const type = Object.entries(DEFAULT_ORDER_TYPE_DELIVERY_DAYS).map(([k, d]) => sql`when ${k} then ${d}::int`);
+  return sql`coalesce(
+    (select pc.delivery_days from package_configs pc where lower(pc.key) = lower(trim(${orders.packageType})) and pc.delivery_days > 0 limit 1),
+    case lower(trim(coalesce(${orders.packageType}, ''))) ${sql.join(pkg, sql` `)} else null end,
+    case ${orders.orderType} ${sql.join(type, sql` `)} else null end,
+    ${FALLBACK_DELIVERY_DAYS}::int)`;
+}
+/** Overdue (Confirmed / In progress past the stored or computed due date). Mirrors isOverdue(). */
+export function sqlOverdue(): SQL {
+  return sql`(${orders.status} in ('new', 'working')
+    and coalesce(${orders.dueAt}, ${orders.createdAt} + make_interval(days => ${sqlDeliveryDays()})) < (now() at time zone 'utc'))`;
+}
+
 export function buildOrderListWhere(user: Pick<User, "id" | "role">, q: OrderListQuery): SQL {
+  if (q.view === "requests" && user.role !== "designer") {
+    // Requests are not orders yet: only these rows, no other visibility rule.
+    const where: Array<SQL | undefined> = [sql`${orders.status} = 'pending_payment' and coalesce(${orders.advancePaymentStatus}, 'pending') <> 'approved'`];
+    if (q.search) where.push(searchCondition(q.search));
+    return and(...where.filter(Boolean) as SQL[])!;
+  }
   const where: Array<SQL | undefined> = [visibility(user)];
-  if (q.status) where.push(inArray(orders.status, ORDER_STATUS_FILTERS[q.status] as any));
+  if (q.status === "overdue") where.push(sqlOverdue());
+  else if (q.status) where.push(inArray(orders.status, ORDER_STATUS_FILTERS[q.status] as any));
   if (q.designerId && user.role !== "designer") where.push(eq(orders.assignedToId, q.designerId));
   if (q.orderType) where.push(sql`coalesce(${orders.orderType}, 'documentation') = ${q.orderType}`);
   if (q.search) {

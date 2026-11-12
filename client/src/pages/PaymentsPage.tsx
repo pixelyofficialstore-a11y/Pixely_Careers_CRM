@@ -46,6 +46,7 @@ import { cn } from "@/lib/utils";
 import { queryClient, apiRequest, getErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/CRMPrimitives";
+import { RefundsQueue } from "@/components/OrderRefunds";
 import { PaymentStatusBadge } from "@/components/StatusBadge";
 import { ImageDropzone } from "@/components/ImageDropzone";
 import type { OrderPick } from "@/lib/orders";
@@ -632,6 +633,8 @@ export default function PaymentsPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {(isAdmin || user?.role === "support") && <RefundsQueue isAdmin={isAdmin} />}
     </div>
   );
 }

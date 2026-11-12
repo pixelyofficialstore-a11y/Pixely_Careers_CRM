@@ -6,6 +6,7 @@
  */
 import { orders, orderServices, activityLogs, type Order, type InsertOrder, type InsertOrderService } from "@shared/schema";
 import { storage } from "./storage";
+import { dueAtForNewOrder } from "./orderProcess";
 
 export type PlaceOrderInput = {
   order: Omit<InsertOrder, "orderNumber" | "status" | "advancePaymentStatus" | "createdById" | "assignedToId" | "intendedDesignerId" | "remainingAmount" | "paymentStatus" | "advanceAmount"> & {
@@ -16,6 +17,8 @@ export type PlaceOrderInput = {
   actorId: number;
   /** Extra details stored on the order_created activity entry. */
   source?: Record<string, unknown>;
+  /** Package key used for the due date when it differs from packageType (website package keys). */
+  deliveryPackageKey?: string | null;
 };
 
 /**
@@ -30,8 +33,17 @@ export async function placeApprovedOrderTx(tx: any, input: PlaceOrderInput): Pro
   const designerId = input.designerId || null;
   const orderNumber = await storage.generateOrderNumber(tx);
 
-  // Meta tracking columns are server-owned; never accept them from a request body.
-  const { metaEventId: _m1, metaStatus: _m2, metaPurchaseSentAt: _m3, ...orderFields } = input.order as any;
+  // Meta tracking and Phase 2 process columns are server-owned; never accept them from a request body.
+  const {
+    metaEventId: _m1, metaStatus: _m2, metaPurchaseSentAt: _m3,
+    workStatus: _p1, dueAt: _p2, payLaterApprovedById: _p3, payLaterApprovedAt: _p4,
+    ...orderFields
+  } = input.order as any;
+  const now = new Date();
+  // Phase 2: a placed order is Confirmed. With no payment collected, placing it
+  // is the admin approving "pay later", which is recorded.
+  const dueAt = await dueAtForNewOrder(input.deliveryPackageKey ?? orderFields.packageType, orderFields.orderType, now);
+  const payLater = advanceAmount === 0 ? { payLaterApprovedById: input.actorId, payLaterApprovedAt: now } : {};
   const [order] = await tx.insert(orders).values({
     ...orderFields,
     totalPrice,
@@ -44,6 +56,9 @@ export async function placeApprovedOrderTx(tx: any, input: PlaceOrderInput): Pro
     orderNumber,
     createdById: input.actorId,
     status: "new",
+    workStatus: "confirmed",
+    dueAt,
+    ...payLater,
   }).returning();
 
   if (input.services.length > 0) {

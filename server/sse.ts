@@ -58,6 +58,7 @@ export function broadcastRealtime(scopes: string[]) {
 
 /** Which live-update scopes a successful write to an API path affects. */
 export function scopesForPath(path: string): string[] {
+  if (/^\/api\/orders\/\d+\/refunds/.test(path) || path.startsWith("/api/refunds")) return ["refunds", "orders", "stats"];
   if (/^\/api\/(orders|order-services)(\/|$)/.test(path)) return ["orders", "stats"];
   if (path.startsWith("/api/payment-verifications")) return ["payments", "orders", "stats"];
   if (path.startsWith("/api/complaints")) return ["complaints", "stats"];

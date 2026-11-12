@@ -1,5 +1,6 @@
 /** Designer assignments and the catalogs (platforms, complaint categories, services, packages). */
 import type { Express } from "express";
+import { clearDeliveryDaysCache } from "../orderProcess";
 import { storage } from "../storage";
 import { z } from "zod";
 import { type User } from "@shared/schema";
@@ -209,7 +210,16 @@ export function registerSettingsRoutes(app: Express) {
       if (updates.key) {
         updates.key = updates.key.trim().toLowerCase().replace(/\s+/g, "_");
       }
+      // Phase 2: delivery days (empty = the built-in default for that package).
+      if ("deliveryDays" in updates) {
+        const d = updates.deliveryDays;
+        if (d === null || d === "") updates.deliveryDays = null;
+        else if (!Number.isInteger(Number(d)) || Number(d) < 1 || Number(d) > 365) {
+          return res.status(400).json({ message: "Delivery days must be a whole number from 1 to 365" });
+        } else updates.deliveryDays = Number(d);
+      }
       const updated = await storage.updatePackageConfig(id, updates);
+      clearDeliveryDaysCache();
       res.json(updated);
     } catch (err: any) {
       if (err?.code === "23505") {

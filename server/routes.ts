@@ -28,6 +28,8 @@ import { registerAnalyticsRoutes } from "./routes/analytics";
 import { registerFeedbackRoutes } from "./routes/feedback";
 import { registerComplaintRoutes } from "./routes/complaints";
 import { registerPaymentRoutes } from "./routes/payments";
+import { registerRefundRoutes } from "./routes/refunds";
+import { startOverdueNotifier } from "./overdueJob";
 import { registerWebsiteRequestNotifications } from "./routes/website-requests";
 
 const PgSession = connectPgSimple(session);
@@ -196,8 +198,10 @@ export async function registerRoutes(
   registerFeedbackRoutes(app);
   registerComplaintRoutes(app);
   registerPaymentRoutes(app);
+  registerRefundRoutes(app);
   registerFileRoutes(app, requireAuth);
   registerWebsiteRequestNotifications(app);
+  startOverdueNotifier();
 
   return httpServer;
 }

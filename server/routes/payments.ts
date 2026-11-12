@@ -1,6 +1,7 @@
 /** Payment verifications (paginated list, submit, approve, disapprove) and payment files. */
 import type { Express } from "express";
 import { storage } from "../storage";
+import { dueAtForNewOrder } from "../orderProcess";
 import { type User, orders, paymentVerifications, activityLogs } from "@shared/schema";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { db } from "../db";
@@ -269,7 +270,13 @@ export function registerPaymentRoutes(app: Express) {
           ? Math.max(0, currentRemaining - verification.amount)
           : 0;
       const isFullyPaid = newRemaining <= 0;
+      // Phase 2: a verified first payment confirms the order; the due date starts now.
+      const confirm = {
+        workStatus: "confirmed" as const,
+        dueAt: lockedOrder.dueAt ?? await dueAtForNewOrder(lockedOrder.packageType, lockedOrder.orderType),
+      };
       const orderUpdates = verification.paymentType === "advance" ? {
+        ...confirm,
         orderNumber,
         advanceAmount: currentAdvance + verification.amount,
         remainingAmount: newRemaining,
@@ -279,6 +286,7 @@ export function registerPaymentRoutes(app: Express) {
         status: "new" as const,
         paymentDate: new Date(),
       } : verification.paymentType === "full" ? {
+        ...confirm,
         orderNumber,
         advanceAmount: lockedOrder.totalPrice,
         remainingAmount: 0,
@@ -291,7 +299,7 @@ export function registerPaymentRoutes(app: Express) {
         advanceAmount: currentAdvance + verification.amount,
         remainingAmount: newRemaining,
         paymentStatus: isFullyPaid ? "paid" : "pending",
-        ...(isFullyPaid ? { status: "delivered" as const, deliveredAt: new Date(), paymentDate: new Date() } : {}),
+        ...(isFullyPaid ? { status: "delivered" as const, workStatus: "delivered" as const, deliveredAt: new Date(), paymentDate: new Date() } : {}),
       };
       const [updatedOrder] = await tx.update(orders).set(orderUpdates)
         .where(and(eq(orders.id, order.id), ne(orders.status, "canceled")))

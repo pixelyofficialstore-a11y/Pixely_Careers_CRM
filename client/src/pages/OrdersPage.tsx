@@ -96,7 +96,9 @@ import { apiRequest, queryClient, getErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { OrderWithServices, User, SupportDesignerAssignment, ServiceCatalogItem, PackageConfig, PlatformCatalogItem, PaymentVerification, ComplaintResponse, ComplaintHistoryEntry, ActivityLogWithActor, ClientReview, ClientSuggestion } from "@shared/schema";
 import { ComplaintDialog } from "@/components/ComplaintDialog";
-import { AdvancePaymentStatusBadge, ComplaintStatusBadge, OrderStatusBadge, PaymentLineStatusBadge, SuggestionStatusBadge } from "@/components/StatusBadge";
+import { AdvancePaymentStatusBadge, ComplaintStatusBadge, OrderStatusBadge, PaymentLineStatusBadge, SuggestionStatusBadge, WorkStatusBadge, PaymentStateBadge } from "@/components/StatusBadge";
+import { OrderRefunds } from "@/components/OrderRefunds";
+import { processOf, WORK_STATUS_LABELS, PAYMENT_STATE_LABELS, type DisplayWorkStatus, type OrderProcess } from "@shared/order-process";
 import { ComplaintDetails } from "@/pages/ComplaintsPage";
 import { ReviewForm, ReviewDetails, SuggestionDetails, type Review } from "@/pages/FeedbackPage";
 import { getOrderAccounting } from "@shared/order-accounting";
@@ -123,21 +125,26 @@ const FALLBACK_PACKAGE_LABELS: Record<string, string> = {
   custom: "Custom Order",
 };
 
+// Phase 2 work-status filters (server maps them to the old status values).
 const ORDER_STATUS_FILTERS: Array<{ value: string; label: string; statuses: string[] }> = [
-  { value: "pending", label: "Pending", statuses: ["pending_payment", "new"] },
-  { value: "working", label: "Working", statuses: ["working"] },
-  { value: "delivered", label: "Delivered", statuses: ["delivered"] },
-  { value: "canceled", label: "Cancelled", statuses: ["canceled"] },
-  { value: "ready", label: "Ready", statuses: ["ready"] },
+  { value: "pending", label: "Confirmed", statuses: ["new"] },
+  { value: "working", label: "In progress", statuses: ["working"] },
+  { value: "ready", label: "Draft sent / Revisions", statuses: ["ready"] },
+  { value: "delivered", label: "Delivered / Closed", statuses: ["delivered"] },
+  { value: "overdue", label: "Overdue", statuses: [] },
+  { value: "canceled", label: "Canceled", statuses: ["canceled"] },
 ];
+
+type OrderRow = OrderWithServices & { process?: OrderProcess };
+const dueLabel = (p: OrderProcess) => p.dueAt ? format(new Date(p.dueAt), "MMM dd") : null;
 
 const orderActivityLabel = (entry: ActivityLogWithActor) => {
   const details = (entry.details || {}) as Record<string, unknown>;
   switch (entry.activityType) {
     case "order_created": return "Order created";
     case "assignment": return entry.previousValue ? "Designer reassigned" : "Designer assigned";
-    case "status_change": return `Order status updated to ${reportStatus(entry.newValue)}`;
-    case "payment_change": return `Payment ${reportStatus(entry.newValue || "updated").toLowerCase()}`;
+    case "status_change": return `Order status updated to ${typeof details.workStatus === "string" && details.workStatus in WORK_STATUS_LABELS ? WORK_STATUS_LABELS[details.workStatus as DisplayWorkStatus] : reportStatus(entry.newValue)}${details.payLater ? " (pay later approved)" : ""}`;
+    case "payment_change": return `${String(entry.newValue || "").startsWith("refund_") ? "" : "Payment "}${reportStatus(entry.newValue || "updated").toLowerCase()}`.replace(/^r/, "R");
     case "complaint_created": return `Complaint ${String(details.complaintNumber || "").trim()} filed`.replace("  ", " ");
     case "complaint_status": return `Complaint ${reportStatus(entry.newValue).toLowerCase()}`;
     case "complaint_resolved": return entry.newValue === "refunded" ? "Complaint refunded and Order canceled" : "Complaint resolved";
@@ -162,11 +169,20 @@ const reportMoney = (value: unknown) => `Rs${Math.round(Number(value || 0) / 100
 const reportStatus = (value: unknown) => {
   const status = String(value || "");
   const labels: Record<string, string> = {
-    pending_payment: "Pending Payment",
-    new: "New",
-    working: "In Progress",
-    ready: "Completed",
+    pending_payment: "Request",
+    new: "Confirmed",
+    working: "In progress",
+    ready: "Draft sent",
     delivered: "Delivered",
+    request: "Request",
+    in_progress: "In progress",
+    draft_sent: "Draft sent",
+    revisions: "Revisions",
+    closed: "Closed",
+    refund_requested: "Refund requested",
+    refund_approved: "Refund approved",
+    refund_rejected: "Refund rejected",
+    refund_paid: "Refund paid",
     canceled: "Canceled",
     confirmed: "Confirmed",
     dismissed: "Dismissed",
@@ -326,7 +342,7 @@ export default function OrdersPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth().toString());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
-  const [activeOrdersTab, setActiveOrdersTab] = useState<"today" | "monthly">("today");
+  const [activeOrdersTab, setActiveOrdersTab] = useState<"today" | "monthly" | "requests">("today");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState("all");
   const [selectedDesignerFilter, setSelectedDesignerFilter] = useState("all");
   const [selectedServiceTypeFilter, setSelectedServiceTypeFilter] = useState("all");
@@ -362,10 +378,10 @@ export default function OrdersPage() {
     page,
     pageSize: ORDERS_PAGE_SIZE,
     search: trimmedSearch || undefined,
-    status: selectedStatusFilter,
-    designerId: selectedDesignerFilter,
-    orderType: selectedServiceTypeFilter,
-    period: trimmedSearch ? "all" : activeOrdersTab === "today" ? "today" : "month",
+    ...(activeOrdersTab === "requests"
+      ? { view: "requests" as const }
+      : { status: selectedStatusFilter, designerId: selectedDesignerFilter, orderType: selectedServiceTypeFilter }),
+    period: trimmedSearch || activeOrdersTab === "requests" ? "all" : activeOrdersTab === "today" ? "today" : "month",
     year: Number(selectedYear),
     month: Number(selectedMonth) + 1,
   };
@@ -383,7 +399,7 @@ export default function OrdersPage() {
   const totalRows = orderPage?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalRows / ORDERS_PAGE_SIZE));
 
-  const summaryParams = { year: Number(selectedYear), month: Number(selectedMonth) + 1, status: selectedStatusFilter, designerId: selectedDesignerFilter, orderType: selectedServiceTypeFilter };
+  const summaryParams = { year: Number(selectedYear), month: Number(selectedMonth) + 1, status: selectedStatusFilter === "overdue" ? "all" : selectedStatusFilter, designerId: selectedDesignerFilter, orderType: selectedServiceTypeFilter };
   const { data: orderSummary } = useQuery<{ monthCount: number; monthSales: number; monthCollected: number; monthRemaining: number; todaySales: number }>({
     queryKey: ["/api/orders", "summary", summaryParams],
     queryFn: async () => {
@@ -511,10 +527,20 @@ export default function OrdersPage() {
       patchOrderInPlace(updated.id, updated);
       toast({ title: "Success", description: "Order updated successfully" });
     },
-    onError: (_err, _variables, context) => {
+    onError: (err, _variables, context) => {
       if (context?.previousOrders) restoreOrderCaches(queryClient, context.previousOrders);
-      toast({ title: "Error", description: "Failed to update order", variant: "destructive" });
+      toast({ title: "Couldn't update order", description: getErrorMessage(err, "Failed to update order"), variant: "destructive" });
     },
+  });
+
+  // Phase 2: admin confirms a Request without a payment ("pay later").
+  const approvePayLaterMutation = useMutation({
+    mutationFn: async (id: number) => (await apiRequest("POST", `/api/orders/${id}/approve-pay-later`, {})).json(),
+    onSuccess: (order) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      toast({ title: "Order confirmed", description: `${order.orderNumber || "The order"} was approved to pay later.` });
+    },
+    onError: (err) => toast({ title: "Couldn't approve", description: getErrorMessage(err), variant: "destructive" }),
   });
 
   const metaRetryMutation = useMutation({
@@ -1195,37 +1221,55 @@ export default function OrdersPage() {
   };
 
   // ── Shared order table (used by Search, Today, and Monthly so they stay identical) ──
-  const getStatusOptionsFor = (order: OrderWithServices) => {
+  // Phase 2 work statuses. Delivered is offered only when fully paid (server enforces it too).
+  const getStatusOptionsFor = (order: OrderRow) => {
+    const ws = processOf(order).workStatus;
+    const opt = (value: DisplayWorkStatus) => ({ value, label: WORK_STATUS_LABELS[value] });
+    const fullyPaid = (order.remainingAmount ?? 0) === 0;
+    if (ws === "request" || ws === "canceled") return [];
     if (isDesigner) {
-      if (order.status === 'delivered') return [{ value: "delivered", label: "Delivered" }];
-      const hasNoRemaining = (order.remainingAmount ?? 0) === 0;
-      if (order.status === 'ready') {
-        if (hasNoRemaining) return [{ value: "ready", label: "Ready" }, { value: "delivered", label: "Delivered" }];
-        return [{ value: "ready", label: "Ready" }];
-      }
-      const opts = [
-        { value: "new", label: "New" },
-        { value: "working", label: "Working" },
-        { value: "ready", label: "Ready" },
-      ];
-      if (hasNoRemaining) opts.push({ value: "delivered", label: "Delivered" });
-      return opts;
+      if (ws === "delivered" || ws === "closed") return [];
+      if (ws === "draft_sent" || ws === "revisions") return [opt("draft_sent"), opt("revisions"), ...(fullyPaid ? [opt("delivered")] : [])];
+      return [opt("confirmed"), opt("in_progress"), opt("draft_sent"), ...(fullyPaid ? [opt("delivered")] : [])];
     }
-    if (isSupport) {
-      return [
-        { value: "new", label: "New" },
-        { value: "working", label: "Working" },
-        { value: "ready", label: "Ready" },
-        { value: "delivered", label: "Delivered" },
-      ];
-    }
-    return [
-      { value: "new", label: "New" },
-      { value: "working", label: "Working" },
-      { value: "ready", label: "Ready" },
-      { value: "delivered", label: "Delivered" },
-      { value: "canceled", label: "Canceled" },
-    ];
+    const opts = [opt("confirmed"), opt("in_progress"), opt("draft_sent"), opt("revisions"), ...(fullyPaid || ws === "delivered" || ws === "closed" ? [opt("delivered")] : [])];
+    return isAdmin ? [...opts, opt("canceled")] : opts;
+  };
+
+  const renderWorkStatusCell = (order: OrderRow) => {
+    const p = processOf(order);
+    const options = getStatusOptionsFor(order);
+    const due = dueLabel(p);
+    return (
+      <div className="flex flex-col items-start gap-1">
+        {options.length === 0 ? <WorkStatusBadge status={p.workStatus} /> : (
+          <Select
+            value={p.workStatus}
+            onValueChange={(val) => {
+              if (val === p.workStatus) return;
+              if (val === "canceled") { setOrderToCancel(order); return; }
+              updateOrderMutation.mutate({ id: order.id, updates: { workStatus: val } });
+            }}
+          >
+            <SelectTrigger className="w-36 bg-transparent border-0 h-auto p-0 focus:ring-0 shadow-none hover:bg-white/5 rounded px-2 py-1" data-testid={`select-status-${order.id}`}>
+              <SelectValue><WorkStatusBadge status={p.workStatus} /></SelectValue>
+            </SelectTrigger>
+            <SelectContent className="bg-slate-900 border-slate-800">
+              {options.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
+        {due && p.workStatus !== "canceled" && p.workStatus !== "request" && (
+          <span
+            className={cn("px-2 text-[11px]", p.overdue ? "font-semibold text-rose-400" : "text-slate-500")}
+            title={p.dueStored ? "Due date" : "Due date (estimated from the order date and package)"}
+            data-testid={`text-due-${order.id}`}
+          >
+            {p.overdue ? "Overdue · " : "Due "}{due}
+          </span>
+        )}
+      </div>
+    );
   };
 
   const orderColSpan = 9 + (!isDesigner ? 2 : 0) + (canSeeAmounts ? 3 : 0) + (isAdmin ? 1 : 0);
@@ -1327,21 +1371,7 @@ export default function OrdersPage() {
           </div>
         </TableCell>
       )}
-       <TableCell className="whitespace-nowrap">
-        <Select
-          defaultValue={order.status}
-          onValueChange={(val) => updateOrderMutation.mutate({ id: order.id, updates: { status: val } })}
-        >
-          <SelectTrigger className="w-32 bg-transparent border-0 h-auto p-0 focus:ring-0 shadow-none hover:bg-white/5 rounded px-2 py-1" data-testid={`select-status-${order.id}`}>
-            <SelectValue>{getStatusBadge(order.status)}</SelectValue>
-          </SelectTrigger>
-          <SelectContent className="bg-slate-900 border-slate-800">
-            {getStatusOptionsFor(order).map(opt => (
-              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </TableCell>
+       <TableCell className="whitespace-nowrap">{renderWorkStatusCell(order)}</TableCell>
       {!isDesigner && (
        <TableCell className="whitespace-nowrap">
          {isAdmin ? (
@@ -1371,7 +1401,7 @@ export default function OrdersPage() {
           >
            <SelectTrigger className="h-auto w-28 rounded border-0 bg-transparent p-0 px-2 py-1 shadow-none hover:bg-white/5 focus:ring-0" data-testid={`select-payment-${order.id}`}>
              <SelectValue>
-               <PaymentLineStatusBadge status={order.paymentStatus} />
+               <PaymentStateBadge state={processOf(order).paymentState} />
               </SelectValue>
             </SelectTrigger>
             <SelectContent className="bg-slate-900 border-slate-800">
@@ -1380,7 +1410,7 @@ export default function OrdersPage() {
             </SelectContent>
           </Select>
         ) : (
-           <PaymentLineStatusBadge status={order.paymentStatus} />
+           <PaymentStateBadge state={processOf(order).paymentState} />
         )}
       </TableCell>
        {canSeeAmounts && (
@@ -1631,7 +1661,7 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {isSearchActive ? (
+      {isSearchActive && activeOrdersTab !== "requests" ? (
         <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden" data-testid="panel-search-results">
           <div className="p-6 border-b border-slate-800">
             <h3 className="text-lg font-bold text-white">Search Results</h3>
@@ -1656,11 +1686,62 @@ export default function OrdersPage() {
           </div>
         </div>
       ) : (
-      <Tabs value={activeOrdersTab} onValueChange={(val) => setActiveOrdersTab(val as "today" | "monthly")} className="w-full">
+      <Tabs value={activeOrdersTab} onValueChange={(val) => setActiveOrdersTab(val as "today" | "monthly" | "requests")} className="w-full">
         <TabsList className="mb-6 w-full justify-start border border-slate-800 bg-slate-900/70 p-1 sm:w-fit">
           <TabsTrigger value="today" className="px-5" data-testid="tab-today-orders">Today's Orders</TabsTrigger>
           <TabsTrigger value="monthly" className="px-5" data-testid="tab-monthly-orders">Monthly Orders</TabsTrigger>
+          {(isAdmin || isSupport) && <TabsTrigger value="requests" className="px-5" data-testid="tab-order-requests">Requests</TabsTrigger>}
         </TabsList>
+
+        {(isAdmin || isSupport) && (
+          <TabsContent value="requests">
+            <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
+              <div className="p-6 border-b border-slate-800">
+                <h3 className="text-lg font-bold text-white">Requests</h3>
+                <p className="text-sm text-slate-500">Orders waiting for a verified payment{isAdmin ? " — or approve them to pay later" : ""}. A request becomes Confirmed once approved.</p>
+              </div>
+              <div className="table-scroll-wrapper">
+                <Table>
+                  <TableHeader className="bg-slate-900/50">
+                    <TableRow className="border-slate-800 hover:bg-transparent">
+                      <TableHead className="text-slate-400">Requested</TableHead>
+                      <TableHead className="text-slate-400">Client</TableHead>
+                      <TableHead className="text-slate-400">Contact</TableHead>
+                      <TableHead className="text-slate-400">Created By</TableHead>
+                      <TableHead className="text-slate-400">Payment</TableHead>
+                      <TableHead className="text-slate-400 text-right">Total Bill</TableHead>
+                      <TableHead className="text-slate-400 text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pageRows.map((order: OrderRow) => (
+                      <TableRow key={order.id} className="border-slate-800" data-testid={`row-request-${order.id}`}>
+                        <TableCell className="whitespace-nowrap text-sm text-slate-300">{order.createdAt ? format(new Date(order.createdAt), "MMM dd, yyyy · h:mm a") : "—"}</TableCell>
+                        <TableCell className="text-sm text-white">{order.clientName}</TableCell>
+                        <TableCell className="whitespace-nowrap text-sm text-slate-400">{order.clientPhone || "—"}</TableCell>
+                        <TableCell className="whitespace-nowrap text-sm text-slate-400">{getCreatedByLabel(order).split(" (")[0]}</TableCell>
+                        <TableCell><AdvancePaymentStatusBadge status={order.advancePaymentStatus} /></TableCell>
+                        <TableCell className="whitespace-nowrap text-right font-medium text-white">{formatRs(order.totalPrice)}</TableCell>
+                        <TableCell className="text-right">
+                          {isAdmin ? (
+                            <Button size="sm" variant="outline" disabled={approvePayLaterMutation.isPending} onClick={() => approvePayLaterMutation.mutate(order.id)} data-testid={`button-approve-pay-later-${order.id}`}>
+                              Approve pay later
+                            </Button>
+                          ) : <span className="text-xs text-slate-500">Waiting for admin</span>}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {pageRows.length === 0 && (
+                      <TableRow className="border-slate-800">
+                        <TableCell colSpan={7} className="text-center text-slate-500 py-8" data-testid="text-no-requests">No open requests.</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          </TabsContent>
+        )}
 
         <TabsContent value="today">
           <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
@@ -1772,8 +1853,11 @@ export default function OrdersPage() {
             <div className="detail-drawer-body mt-8 space-y-6">
               <div className="space-y-4">
                 <div className="flex items-center justify-between flex-wrap gap-2 pr-8">
-                  <span className="text-2xl font-bold text-blue-400 font-mono">{selectedOrder.orderNumber}</span>
-                  {getStatusBadge(selectedOrder.status)}
+                  <span className="text-2xl font-bold text-blue-400 font-mono">{selectedOrder.orderNumber || "Request"}</span>
+                  <span className="flex items-center gap-1.5">
+                    <WorkStatusBadge status={processOf(selectedOrder as OrderRow).workStatus} />
+                    {!isDesigner && <PaymentStateBadge state={processOf(selectedOrder as OrderRow).paymentState} />}
+                  </span>
                 </div>
                 <p className="text-slate-400 text-sm">Created {format(new Date(selectedOrder.createdAt!), "MMMM dd, yyyy 'at' h:mm a")}</p>
                 <Button size="sm" variant="outline" disabled={clientCaseReportMutation.isPending} onClick={() => clientCaseReportMutation.mutate(selectedOrder.id)}><Download className="mr-2 h-4 w-4" />{clientCaseReportMutation.isPending ? "Preparing report…" : "Client Case Report"}</Button>
@@ -1783,7 +1867,16 @@ export default function OrdersPage() {
                 <h4 className="detail-section-label">Order Summary</h4>
                 <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
                   <div><p className="text-xs text-slate-500">Order ID</p><p className="mt-1 font-mono text-sm text-white">{selectedOrder.orderNumber}</p></div>
-                  <div><p className="text-xs text-slate-500">Status</p><p className="mt-1 text-sm text-white">{reportStatus(selectedOrder.status)}</p></div>
+                  <div><p className="text-xs text-slate-500">Status</p><p className="mt-1 text-sm text-white">{WORK_STATUS_LABELS[processOf(selectedOrder as OrderRow).workStatus]}</p></div>
+                  <div>
+                    <p className="text-xs text-slate-500">Due</p>
+                    {(() => { const p = processOf(selectedOrder as OrderRow); return (
+                      <p className={cn("mt-1 text-sm", p.overdue ? "font-semibold text-rose-400" : "text-white")} title={p.dueStored ? undefined : "Estimated from the order date and package"}>
+                        {p.dueAt ? format(new Date(p.dueAt), "MMM dd, yyyy") : "—"}{p.overdue ? " · Overdue" : ""}{p.dueAt && !p.dueStored ? " (est.)" : ""}
+                      </p>
+                    ); })()}
+                  </div>
+                  <div><p className="text-xs text-slate-500">Payment</p><p className="mt-1 text-sm text-white">{PAYMENT_STATE_LABELS[processOf(selectedOrder as OrderRow).paymentState]}</p></div>
                   <div><p className="text-xs text-slate-500">Created</p><p className="mt-1 text-sm text-white">{format(selectedOrder.createdAt ? new Date(selectedOrder.createdAt) : new Date(), "MMM dd, yyyy · h:mm a")}</p></div>
                   <div><p className="text-xs text-slate-500">Created By</p><p className="mt-1 text-sm text-white">{getCreatedByLabel(selectedOrder).split(" (")[0]}</p><p className="mt-0.5 text-xs text-slate-500">{getCreatedByLabel(selectedOrder).match(/\(([^)]+)\)/)?.[1] || ""}</p></div>
                 </div>
@@ -1942,6 +2035,11 @@ export default function OrdersPage() {
                       </span>
                     )}
                   </div>
+                  {(isAdmin || isSupport) && selectedOrder.advancePaymentStatus === "approved" && (
+                    <div className="border-t border-slate-800 pt-3">
+                      <OrderRefunds orderId={selectedOrder.id} isAdmin={isAdmin} canRequest={isAdmin || isSupport} />
+                    </div>
+                  )}
                   {selectedOrder.status === "canceled" && <div className="grid grid-cols-2 gap-3 border-t border-slate-800 pt-3 text-sm"><div><p className="text-xs text-slate-500">Net Collected</p><p className="mt-1 font-medium text-white">{formatRs(selectedOrder.advanceRefunded ? 0 : selectedOrder.advanceAmount)}</p></div><div><p className="text-xs text-slate-500">Remaining Receivable</p><p className="mt-1 font-medium text-white">Rs0</p></div><div className="col-span-2"><p className="text-xs text-slate-500">Cancellation Reason</p><p className="mt-1 text-slate-300">{selectedOrder.cancellationReason || "Legacy cancellation — reason not recorded."}</p></div></div>}
                 </div>
               )}

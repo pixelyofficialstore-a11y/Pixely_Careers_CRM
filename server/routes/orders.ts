@@ -13,6 +13,10 @@ import { listOrders, lookupOrders, findOrderRef, orderListQuerySchema, orderLook
 import { canAccessOrderCase, projectCaseActivity, type CaseRole } from "@shared/case-access";
 import { dispatchNotifications, safeUser, safeUserSummary, requireAuth, requireRole, notifyAdminPlacedOrder, canAccessOrder } from "./shared";
 import { feedbackProjection } from "./feedback";
+import { withProcess, dueAtForNewOrder } from "../orderProcess";
+import { refunds, orders as ordersTable, activityLogs as activityLogsTable } from "@shared/schema";
+import { eq, sql } from "drizzle-orm";
+import { WORK_TO_LEGACY, LEGACY_TO_WORK, SETTABLE_WORK_STATUSES, WORK_STATUS_LABELS, storedOrMappedWorkStatus, type WorkStatus } from "@shared/order-process";
 
 export function registerOrderRoutes(app: Express) {
   const sanitizeOrderForRole = <T extends { totalPrice?: number | null; advanceAmount?: number | null; remainingAmount?: number | null; assignee?: any }>(o: T, role: string) => ({
@@ -29,7 +33,8 @@ export function registerOrderRoutes(app: Express) {
     const q = orderListQuerySchema.parse(req.query);
     const usersById = new Map((await storage.getUsers()).map(u => [u.id, u]));
     const result = await listOrders(user, q, usersById);
-    res.json({ ...result, rows: result.rows.map(o => sanitizeOrderForRole(o, user.role)) });
+    const rows = await withProcess(result.rows, user.role);
+    res.json({ ...result, rows: rows.map(o => sanitizeOrderForRole(o, user.role)) });
   });
 
   // Small search for order pickers (complaints, feedback, payments).
@@ -46,7 +51,8 @@ export function registerOrderRoutes(app: Express) {
     if (!id) return res.status(404).json({ message: "Order not found." });
     const order = await storage.getOrder(id);
     if (!order) return res.status(404).json({ message: "Order not found." });
-    res.json(sanitizeOrderForRole(order, user.role));
+    const [withP] = await withProcess([order], user.role);
+    res.json(sanitizeOrderForRole(withP, user.role));
   });
 
   // Orders page summary cards (admin): month + today, same filters as the list.
@@ -114,22 +120,24 @@ export function registerOrderRoutes(app: Express) {
         notes: z.string().optional().nullable(),
       });
 
-      orderSchema.parse(orderData);
+      const parsedOrder: Record<string, any> = orderSchema.parse(orderData);
 
       const user = req.user as User;
 
-      const intendedDesignerId = orderData.assignedToId;
-      const totalPrice = orderData.totalPrice || 0;
+      const intendedDesignerId = parsedOrder.assignedToId;
+      const totalPrice = parsedOrder.totalPrice || 0;
+      // Only validated fields reach the database (process/meta/refund columns are server-owned).
+      const { amountPaid: _amountPaid, ...validFields } = parsedOrder;
       // Remaining revisions starts equal to the purchased allowance.
-      (orderData as any).remainingRevisions = orderData.numberOfRevisions ?? null;
+      validFields.remainingRevisions = parsedOrder.numberOfRevisions ?? null;
 
       if (user.role === 'admin') {
         // Admin orders are auto-approved — advance is collected immediately, no screenshot needed.
         // Same function as Website Requests "Verify & place order"; one transaction.
-        const { assignedToId: _ignored, ...orderFields } = orderData;
+        const { assignedToId: _ignored, ...orderFields } = validFields;
         const { order, metaPayload } = await db.transaction(async tx => {
           const order = await placeApprovedOrderTx(tx, {
-            order: { ...orderFields, totalPrice, advanceAmount: orderData.advanceAmount || 0 },
+            order: { ...(orderFields as any), totalPrice, advanceAmount: parsedOrder.advanceAmount || 0 },
             services: services || [],
             designerId: intendedDesignerId || null,
             actorId: user.id,
@@ -145,7 +153,7 @@ export function registerOrderRoutes(app: Express) {
 
       // Non-admin: order goes through payment verification flow
       const order = await storage.createOrder({
-        ...orderData,
+        ...(validFields as any),
         totalPrice: totalPrice,
         advanceAmount: 0,
         remainingAmount: totalPrice,
@@ -156,6 +164,8 @@ export function registerOrderRoutes(app: Express) {
         orderNumber: null,
         createdById: user.id,
         status: "pending_payment",
+        // Phase 2: a Request until a payment is verified or an admin approves pay later.
+        workStatus: "request",
       }, services || []);
       await storage.createActivityLog({ orderId: order.id, actorId: user.id, activityType: "order_created", newValue: "pending_payment" });
 
@@ -191,8 +201,9 @@ export function registerOrderRoutes(app: Express) {
     if (user.role === 'designer' && order.assignedToId !== user.id) {
       return res.sendStatus(403);
     }
+    const [withP] = await withProcess([order], user.role);
     const sanitized = {
-      ...order,
+      ...withP,
       assignee: safeUser(order.assignee),
       totalPrice: (user.role === 'admin' || user.role === 'support') ? order.totalPrice : undefined,
       advanceAmount: (user.role === 'admin' || user.role === 'support' || user.role === 'designer') ? order.advanceAmount : undefined,
@@ -272,12 +283,47 @@ export function registerOrderRoutes(app: Express) {
   app.patch(api.orders.update.path, requireAuth, async (req, res) => {
     const orderId = Number(req.params.id);
     const updates = { ...req.body };
-    // Meta Purchase tracking is server-owned.
+    // Meta Purchase tracking and pay-later approval are server-owned.
     delete updates.metaEventId; delete updates.metaStatus; delete updates.metaPurchaseSentAt;
+    delete updates.payLaterApprovedById; delete updates.payLaterApprovedAt;
+    delete updates.process;
     const user = req.user as User;
 
     const existingOrder = await storage.getOrder(orderId);
     if (!existingOrder) return res.sendStatus(404);
+
+    // Phase 2: the work status drives the old status (kept in sync for every existing rule).
+    let requestedWork: WorkStatus | undefined;
+    if ("workStatus" in updates) {
+      const ws = updates.workStatus;
+      if (!SETTABLE_WORK_STATUSES.includes(ws)) {
+        return res.status(400).json({ message: "Invalid work status" });
+      }
+      requestedWork = ws as WorkStatus;
+      const legacy = WORK_TO_LEGACY[requestedWork];
+      if (updates.status && updates.status !== legacy) {
+        return res.status(400).json({ message: "Status and work status don't match" });
+      }
+      delete updates.workStatus;
+      updates.status = legacy;
+    }
+    // Only admins may change the due date.
+    if ("dueAt" in updates) {
+      if (user.role !== "admin") return res.status(403).json({ message: "Only admins can change the due date" });
+      const due = updates.dueAt === null ? null : new Date(updates.dueAt);
+      if (due && Number.isNaN(due.getTime())) return res.status(400).json({ message: "Invalid due date" });
+      updates.dueAt = due;
+    }
+    // A Request is confirmed only by a verified payment or an admin approving pay later.
+    if (updates.status && existingOrder.status === "pending_payment" && updates.status !== "pending_payment" && updates.status !== "canceled") {
+      return res.status(409).json({ message: "This order is still a Request. Verify a payment or use Approve pay later to confirm it." });
+    }
+    if (updates.status === "pending_payment" && existingOrder.status !== "pending_payment") {
+      return res.status(400).json({ message: "A confirmed order can't go back to Request" });
+    }
+    if (updates.status === "canceled" && existingOrder.status !== "canceled") {
+      return res.status(400).json({ message: "Use Cancel order to cancel (it records the reason and any refund)" });
+    }
 
     if ("clientType" in updates && !["national", "international"].includes(updates.clientType)) {
       return res.status(400).json({ message: "Client type must be national or international" });
@@ -360,11 +406,12 @@ export function registerOrderRoutes(app: Express) {
 
       // Once ready, designer can only move to delivered if there is no remaining balance
       if (updates.status && existingOrder.status === 'ready') {
-        if (updates.status !== 'delivered') {
+        // Draft sent <-> Revisions stays within the old "ready" status.
+        if (updates.status !== 'delivered' && updates.status !== 'ready') {
           return res.status(403).json({ message: "Order status is locked once completed" });
         }
         const remaining = existingOrder.remainingAmount || 0;
-        if (remaining > 0) {
+        if (updates.status === 'delivered' && remaining > 0) {
           return res.status(403).json({ message: "Cannot mark as delivered: remaining balance must be cleared by admin first" });
         }
       }
@@ -413,6 +460,20 @@ export function registerOrderRoutes(app: Express) {
       }
     }
 
+    // Phase 2 rule: Delivered only when fully paid (every role; an admin can mark it paid in the same save).
+    if (updates.status === 'delivered' && existingOrder.status !== 'delivered') {
+      const remainingAfter = Number(updates.remainingAmount ?? existingOrder.remainingAmount ?? 0) || 0;
+      if (remainingAfter > 0) {
+        return res.status(409).json({ message: "Cannot mark as Delivered: the order isn't fully paid yet. Collect the remaining balance first." });
+      }
+    }
+
+    // Store the work status whenever the status is set (new data only; old rows map in code).
+    const previousWork = storedOrMappedWorkStatus(existingOrder);
+    if (updates.status) {
+      updates.workStatus = requestedWork ?? (updates.status === existingOrder.status ? previousWork : LEGACY_TO_WORK[updates.status]);
+    }
+
     const updatedOrder = await storage.updateOrder(orderId, updates);
     if ("assignedToId" in updates && updates.assignedToId !== oldAssignedToId) {
       const [previousDesigner, nextDesigner] = await Promise.all([
@@ -430,7 +491,10 @@ export function registerOrderRoutes(app: Express) {
       });
     }
     if (updates.status && updates.status !== existingOrder.status) {
-      await storage.createActivityLog({ orderId, actorId: user.id, activityType: "status_change", previousValue: existingOrder.status, newValue: updates.status });
+      await storage.createActivityLog({ orderId, actorId: user.id, activityType: "status_change", previousValue: existingOrder.status, newValue: updates.status, details: { workStatus: updates.workStatus, previousWorkStatus: previousWork } });
+    } else if (updates.workStatus && updates.workStatus !== previousWork) {
+      // Draft sent <-> Revisions (same old status): log the work stage change.
+      await storage.createActivityLog({ orderId, actorId: user.id, activityType: "status_change", previousValue: WORK_STATUS_LABELS[previousWork], newValue: WORK_STATUS_LABELS[updates.workStatus as WorkStatus], details: { workStatus: updates.workStatus, previousWorkStatus: previousWork } });
     }
 
     // Only admins can replace an order's services (add / remove / edit quantity & instructions).
@@ -451,7 +515,69 @@ export function registerOrderRoutes(app: Express) {
       await storage.replaceOrderServices(orderId, cleanedServices);
     }
 
-    res.json(updatedOrder);
+    // Merged into cached rows on the client: send only real fields (no assignee
+    // placeholder), and never the total to a designer.
+    const [withP] = await withProcess([updatedOrder], user.role);
+    const out: Record<string, unknown> = { ...withP };
+    if (user.role === "designer") delete out.totalPrice;
+    res.json(out);
+  });
+
+  // Phase 2: admin approves "pay later" for a Request → Confirmed (no payment yet).
+  app.post("/api/orders/:id/approve-pay-later", requireRole(["admin"]), async (req, res) => {
+    const orderId = Number(req.params.id);
+    if (!Number.isInteger(orderId) || orderId <= 0) return res.status(400).json({ message: "Invalid order id" });
+    const input = z.object({ note: z.string().trim().max(500).optional() }).strict().parse(req.body ?? {});
+    const actor = req.user as User;
+    const result = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`);
+      const [locked] = await tx.select().from(ordersTable).where(eq(ordersTable.id, orderId));
+      if (!locked) return { status: 404 as const };
+      if (locked.status !== "pending_payment" || locked.advancePaymentStatus === "approved") {
+        return { status: 409 as const, message: "Only a Request (not yet confirmed) can be approved for pay later." };
+      }
+      const pending = await tx.execute(sql`SELECT 1 FROM payment_verifications WHERE order_id = ${orderId} AND status = 'pending_confirmation' LIMIT 1`);
+      if (((pending as any).rows ?? pending).length) {
+        return { status: 409 as const, message: "This order has a payment waiting for verification. Review that payment instead." };
+      }
+      const now = new Date();
+      const orderNumber = locked.orderNumber || await storage.generateOrderNumber(tx);
+      const [order] = await tx.update(ordersTable).set({
+        orderNumber,
+        status: "new",
+        workStatus: "confirmed",
+        advancePaymentStatus: "approved",
+        assignedToId: locked.intendedDesignerId,
+        payLaterApprovedById: actor.id,
+        payLaterApprovedAt: now,
+        dueAt: locked.dueAt ?? await dueAtForNewOrder(locked.packageType, locked.orderType, now),
+      }).where(eq(ordersTable.id, orderId)).returning();
+      await tx.insert(activityLogsTable).values({
+        orderId, actorId: actor.id, activityType: "status_change",
+        previousValue: "pending_payment", newValue: "new",
+        details: { workStatus: "confirmed", previousWorkStatus: "request", payLater: true, note: input.note || null },
+      });
+      return { status: 200 as const, order };
+    });
+    if (result.status === 404) return res.sendStatus(404);
+    if (result.status === 409) return res.status(409).json({ message: result.message });
+    const order = result.order;
+    void logAudit({ action: "order_pay_later_approved", actor, targetType: "order", targetId: orderId, details: { orderNumber: order.orderNumber, note: input.note || null }, req });
+    await notifyAdminPlacedOrder(order, actor.id);
+    if (order.createdById && order.createdById !== actor.id) {
+      await dispatchNotifications([order.createdById], {
+        event: "order_pay_later_approved",
+        type: "order",
+        title: "Order confirmed (pay later)",
+        message: `${order.orderNumber} for ${order.clientName} was approved to pay later and is now Confirmed.`,
+        priority: "update",
+        relatedId: order.id,
+        relatedType: "order",
+        sourceEventId: `pay-later:${order.id}`,
+      });
+    }
+    const [withP] = await withProcess([order], actor.role);
+    res.json(withP);
   });
 
   app.patch("/api/order-services/:id", requireAuth, async (req, res) => {
@@ -524,6 +650,11 @@ export function registerOrderRoutes(app: Express) {
 
     const existingOrder = await storage.getOrder(orderId);
     if (!existingOrder) return res.sendStatus(404);
+
+    const [hasRefund] = await db.select({ id: refunds.id }).from(refunds).where(eq(refunds.orderId, orderId)).limit(1);
+    if (hasRefund) {
+      return res.status(409).json({ message: "This order has refund records and cannot be deleted. Refunds must remain auditable." });
+    }
 
     const relatedComplaints = await storage.getComplaints("admin", user.id, { orderId });
     if (relatedComplaints.length > 0) {

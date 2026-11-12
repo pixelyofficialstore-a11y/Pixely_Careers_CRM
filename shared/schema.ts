@@ -27,6 +27,8 @@ export const packageConfigs = pgTable("package_configs", {
   isActive: boolean("is_active").default(true).notNull(),
   sortOrder: integer("sort_order").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
+  // Phase 2: delivery days for the due date (NULL = code default, see shared/order-process.ts).
+  deliveryDays: integer("delivery_days"),
 });
 
 export const complaintCategoryConfigs = pgTable("complaint_category_configs", {
@@ -40,6 +42,9 @@ export const complaintCategoryConfigs = pgTable("complaint_category_configs", {
 
 export const userRoles = ["admin", "support", "designer"] as const;
 export const orderStatuses = ["pending_payment", "new", "working", "ready", "delivered", "canceled"] as const;
+/** Phase 2 work status (stored on new orders; old rows map from `status` in code). */
+export const orderWorkStatuses = ["request", "confirmed", "in_progress", "draft_sent", "revisions", "delivered", "canceled"] as const;
+export const refundRecordStatuses = ["requested", "approved", "rejected", "paid"] as const;
 export const priorities = ["normal", "high", "urgent"] as const;
 export const paymentVerificationStatuses = ["pending_confirmation", "approved", "disapproved"] as const;
 export const paymentTypes = ["advance", "full", "remaining"] as const;
@@ -155,6 +160,29 @@ export const orders = pgTable("orders", {
   metaEventId: text("meta_event_id"),
   metaStatus: text("meta_status"),
   metaPurchaseSentAt: timestamp("meta_purchase_sent_at", { withTimezone: true }),
+  // Phase 2 (all nullable; NULL on old rows = computed in code, never written back)
+  workStatus: text("work_status", { enum: orderWorkStatuses }),
+  dueAt: timestamp("due_at"),
+  payLaterApprovedById: integer("pay_later_approved_by_id").references(() => users.id),
+  payLaterApprovedAt: timestamp("pay_later_approved_at"),
+});
+
+/** Phase 2 refunds: support requests → admin approves with an amount. Money in paisa. */
+export const refunds = pgTable("refunds", {
+  id: serial("id").primaryKey(),
+  orderId: integer("order_id").notNull().references(() => orders.id),
+  complaintId: integer("complaint_id"),
+  status: text("status", { enum: refundRecordStatuses }).notNull().default("requested"),
+  requestedAmount: integer("requested_amount").notNull(),
+  approvedAmount: integer("approved_amount"),
+  reason: text("reason").notNull(),
+  method: text("method"),
+  adminNote: text("admin_note"),
+  requestedById: integer("requested_by_id").notNull().references(() => users.id),
+  requestedAt: timestamp("requested_at").defaultNow().notNull(),
+  decidedById: integer("decided_by_id").references(() => users.id),
+  decidedAt: timestamp("decided_at"),
+  paidAt: timestamp("paid_at"),
 });
 
 export const orderServices = pgTable("order_services", {
@@ -521,6 +549,7 @@ export const insertComplaintCategoryConfigSchema = createInsertSchema(complaintC
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Order = typeof orders.$inferSelect;
+export type Refund = typeof refunds.$inferSelect;
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
 export type OrderService = typeof orderServices.$inferSelect;
 export type InsertOrderService = z.infer<typeof insertOrderServiceSchema>;

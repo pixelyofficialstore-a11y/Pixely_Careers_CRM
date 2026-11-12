@@ -53,6 +53,11 @@ const NOTIFIABLE_EVENTS = [
   "website_request_new",
   "website_request_approval",
   "website_request_decision",
+  // Phase 2
+  "order_pay_later_approved",
+  "order_overdue",
+  "refund_requested",
+  "refund_decided",
 ] as const;
 
 type NotificationEvent = typeof NOTIFIABLE_EVENTS[number];
@@ -71,6 +76,10 @@ const EVENT_SCOPES: Record<NotificationEvent, string[]> = {
   website_request_new: ["notifications", "website_requests"],
   website_request_approval: ["notifications", "website_requests"],
   website_request_decision: ["notifications", "website_requests", "orders", "stats"],
+  order_pay_later_approved: ["notifications", "orders", "stats"],
+  order_overdue: ["notifications", "orders"],
+  refund_requested: ["notifications", "refunds", "orders"],
+  refund_decided: ["notifications", "refunds", "orders", "stats"],
 };
 
 const SOUND_EVENTS = new Set<NotificationEvent>([
@@ -80,6 +89,7 @@ const SOUND_EVENTS = new Set<NotificationEvent>([
   "review_created",
   "website_request_new",
   "website_request_approval",
+  "refund_requested",
 ]);
 
 function notificationTag(event: NotificationEvent, relatedType: string | undefined, relatedId: number | undefined, sourceEventId: string | number): string {

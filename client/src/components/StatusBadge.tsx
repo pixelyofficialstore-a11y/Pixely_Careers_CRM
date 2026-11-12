@@ -1,14 +1,51 @@
 import { cn } from "@/lib/utils";
+import { WORK_STATUS_LABELS, PAYMENT_STATE_LABELS, type DisplayWorkStatus, type PaymentState } from "@shared/order-process";
+
+const workStatusColors: Record<DisplayWorkStatus, string> = {
+  request: "bg-amber-500/10 text-amber-300 border-amber-500/20",
+  confirmed: "bg-sky-500/10 text-sky-300 border-sky-500/20",
+  in_progress: "bg-cyan-500/10 text-cyan-200 border-cyan-500/20",
+  draft_sent: "bg-violet-500/10 text-violet-300 border-violet-500/20",
+  revisions: "bg-orange-500/10 text-orange-300 border-orange-500/20",
+  delivered: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20",
+  closed: "bg-slate-500/10 text-slate-400 border-slate-500/20",
+  canceled: "bg-rose-500/10 text-rose-300 border-rose-500/20",
+};
+const paymentStateColors: Record<PaymentState, string> = {
+  unpaid: "bg-rose-500/10 text-rose-300 border-rose-500/20",
+  advance_paid: "bg-amber-500/10 text-amber-300 border-amber-500/20",
+  fully_paid: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20",
+  refunded: "bg-slate-500/10 text-slate-300 border-slate-500/20",
+  partially_refunded: "bg-fuchsia-500/10 text-fuchsia-300 border-fuchsia-500/20",
+};
+
+/** Phase 2 work status (Request → … → Delivered → Closed, + Canceled). */
+export function WorkStatusBadge({ status, className }: { status: DisplayWorkStatus; className?: string }) {
+  return (
+    <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border whitespace-nowrap", workStatusColors[status] || workStatusColors.confirmed, className)}>
+      {WORK_STATUS_LABELS[status] || status}
+    </span>
+  );
+}
+
+/** Phase 2 payment status (computed). */
+export function PaymentStateBadge({ state, className }: { state: PaymentState; className?: string }) {
+  return (
+    <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border whitespace-nowrap", paymentStateColors[state] || paymentStateColors.unpaid, className)}>
+      {PAYMENT_STATE_LABELS[state] || state}
+    </span>
+  );
+}
 
 type StatusKind = "order" | "complaint" | "suggestion" | "payment" | "advance-payment" | "payment-line";
 type StatusConfig = { color: string; label: string };
 
 const orderStatusConfig: Record<string, StatusConfig> = {
-  pending_payment: { color: "bg-amber-500/10 text-amber-300 border-amber-500/20", label: "Pending Payment" },
+  pending_payment: { color: "bg-amber-500/10 text-amber-300 border-amber-500/20", label: "Request" },
   pending: { color: "bg-amber-500/10 text-amber-300 border-amber-500/20", label: "Pending" },
-  new: { color: "bg-amber-500/10 text-amber-300 border-amber-500/20", label: "New" },
-  working: { color: "bg-cyan-500/10 text-cyan-200 border-cyan-500/20", label: "Working" },
-  ready: { color: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20", label: "Ready" },
+  new: { color: "bg-sky-500/10 text-sky-300 border-sky-500/20", label: "Confirmed" },
+  working: { color: "bg-cyan-500/10 text-cyan-200 border-cyan-500/20", label: "In progress" },
+  ready: { color: "bg-violet-500/10 text-violet-300 border-violet-500/20", label: "Draft sent" },
   delivered: { color: "bg-slate-500/10 text-slate-300 border-slate-500/20", label: "Delivered" },
   canceled: { color: "bg-rose-500/10 text-rose-300 border-rose-500/20", label: "Canceled" },
 };
