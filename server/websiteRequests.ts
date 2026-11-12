@@ -22,6 +22,10 @@ import { storage } from "./storage";
 import { placeApprovedOrderTx } from "./orderCreation";
 import { claimWebsitePurchaseTx, queuePurchase, retryPurchase, sendTestWebsitePurchase, txQueryOf } from "./lib/metaCapi";
 import { logAudit } from "./security/audit";
+import multer from "multer";
+import { uploadPrivateImage } from "./files";
+import { isCloudinaryConfigured } from "./cloudinary";
+import { normalizeImage } from "./routes/shared";
 import { paymentVerifications, activityLogs, type Order, type User } from "@shared/schema";
 import { getStartOfBusinessDay, getStartOfBusinessMonth } from "@shared/business-time";
 
@@ -172,7 +176,7 @@ async function runCsv(cfg: ListConfig, query: Record<string, any>) {
 
 const ORDER_COLUMNS = `
   id, created_at, updated_at, market, country, utm_source, utm_medium, utm_campaign,
-  status, package, package_price, addons, same_day, offer, is_bundle, pay_choice,
+  status, package, package_price, addons, same_day, offer, is_bundle, pay_choice, utm_content, landing_page, referrer,
   discount, subtotal, total, currency, name, whatsapp, email, target_country, target_role,
   notes, cv_url, payment_method, payment_screenshot_url, transaction_id, step_reached,
   last_activity_at, paid_at, crm_order_id, paid_amount, verified_by, verified_at,
@@ -180,7 +184,17 @@ const ORDER_COLUMNS = `
   meta_status, meta_event_id, meta_purchase_sent_at
 `;
 const CONVERTED_SQL = `(crm_order_id IS NOT NULL OR status IN ('converted','paid'))`;
+// Payment choice from the website, mapped in code (raw values are never rewritten).
+const PAY_FULL_SQL = `lower(coalesce(pay_choice,'')) IN ('now','full','paid_full','100')`;
+const PAY_HALF_SQL = `lower(coalesce(pay_choice,'')) IN ('half','advance','partial','50','paid_half')`;
+const PAY_TALK_SQL = `NOT (${PAY_FULL_SQL}) AND NOT (${PAY_HALF_SQL})`;
+const PENDING_SQL = `crm_order_id IS NULL AND status NOT IN ('rejected','cart','abandoned','converted','paid')`;
 const ORDER_STATUSES: Record<string, string> = {
+  pending: PENDING_SQL,
+  paid_full: `${PENDING_SQL} AND ${PAY_FULL_SQL}`,
+  paid_half: `${PENDING_SQL} AND ${PAY_HALF_SQL}`,
+  talk_first: `${PENDING_SQL} AND ${PAY_TALK_SQL}`,
+  placed: CONVERTED_SQL,
   verification: `status = 'payment_submitted' AND crm_order_id IS NULL`,
   awaiting_approval: `status = 'pending_approval' AND crm_order_id IS NULL`,
   pay_later: `pay_choice = 'later' AND NOT ${CONVERTED_SQL} AND status NOT IN ('rejected','cart','abandoned','pending_approval')`,
@@ -196,7 +210,7 @@ const ORDERS_CFG: ListConfig = {
   table: "website.orders",
   columns: ORDER_COLUMNS,
   statuses: ORDER_STATUSES,
-  defaultStatus: "verification",
+  defaultStatus: "pending",
   searchColumns: ["name", "whatsapp", "transaction_id", "email"],
   extraFilters: { market: "market", package: "package" },
   csv: [
@@ -224,7 +238,7 @@ const placeSchema = z.object({
   amountReceived: z.number().int().min(0),
   paymentMethod: z.string().max(80).optional().nullable(),
   transactionId: z.string().max(200).optional().nullable(),
-  screenshotUrl: z.string().url().refine(u => /^https?:\/\//i.test(u), "Screenshot must be an http(s) URL").optional().nullable(),
+  screenshotUrl: z.string().refine(u => /^https?:\/\/\S+$/i.test(u) || /^\/api\/files\/\d+$/.test(u), "Screenshot must be an http(s) URL").optional().nullable(),
   numberOfRevisions: z.number().int().min(1).max(5).optional().nullable(),
   supportPeriod: z.enum(["15_days", "1_month", "2_months", "3_months", "4_months", "5_months", "6_months"]).optional().nullable(),
   platform: z.string().optional().nullable(),
@@ -613,6 +627,66 @@ export function registerWebsiteRequestRoutes(app: Express, deps: Deps) {
   };
   app.post(`${base}/orders/:id/place`, guard, placeHandler("place"));
   app.post(`${base}/orders/:id/approve`, guard, placeHandler("approve"));
+
+  /** Talk-first: mark the client as contacted (status only). */
+  app.post(`${base}/orders/:id/contacted`, guard, async (req, res) => {
+    const user = req.user as User;
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ message: "Invalid request id" });
+    try {
+      const { rows } = await pool.query(
+        `UPDATE website.orders SET status = 'contacted', contacted_at = COALESCE(contacted_at, NOW()), updated_at = NOW()
+         WHERE id = $1 AND crm_order_id IS NULL AND status IN ('new','payment_submitted') RETURNING id`, [id]);
+      if (!rows[0]) return res.status(409).json({ message: "This request can't be marked contacted any more. Reload the page." });
+      await logActivity(id, user.id, "contacted");
+      res.json(await getOrderRequest(id));
+    } catch (err) { fail(res, req, err, "Mark contacted"); }
+  });
+
+  /** Screenshot for "Record advance" (private Cloudinary file; returns /api/files/:id). */
+  const advanceUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+    fileFilter: (_req, file, cb) => cb(null, ["image/png", "image/jpeg", "image/webp"].includes(file.mimetype)) });
+  app.post(`${base}/orders/:id/advance-screenshot`, guard, (req, res) => {
+    advanceUpload.single("screenshot")(req, res, async (err: any) => {
+      if (err) return res.status(400).json({ message: err.message });
+      if (!req.file) return res.status(400).json({ message: "Choose a PNG, JPG or WebP screenshot." });
+      if (!isCloudinaryConfigured()) return res.status(503).json({ message: "Uploads need Cloudinary configuration." });
+      try {
+        const url = await uploadPrivateImage(await normalizeImage(req.file.buffer), { kind: "payment", folder: "pixelcrm/payments", uploadedById: (req.user as User).id });
+        res.json({ url });
+      } catch (e) { fail(res, req, e, "Uploading the screenshot"); }
+    });
+  });
+
+  /** Talk-first client paid later: record the advance (rupees + screenshot URL). Becomes Paid 50% / 100%. */
+  const advanceSchema = z.object({
+    amount: z.number().positive(),
+    screenshotUrl: z.string().refine(u => /^https:\/\/\S+$/i.test(u) || /^\/api\/files\/\d+$/.test(u), "Upload a payment screenshot"),
+    paymentMethod: z.string().max(80).optional().nullable(),
+    transactionId: z.string().max(200).optional().nullable(),
+  });
+  app.post(`${base}/orders/:id/record-advance`, guard, async (req, res) => {
+    const user = req.user as User;
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ message: "Invalid request id" });
+    const parsed = advanceSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0].message });
+    const d = parsed.data;
+    try {
+      const cur = (await pool.query(`SELECT total, pay_choice, crm_order_id, status FROM website.orders WHERE id = $1`, [id])).rows[0];
+      if (!cur) return res.status(404).json({ message: "Request not found" });
+      if (cur.crm_order_id || ["rejected", "cart", "abandoned"].includes(cur.status)) return res.status(409).json({ message: "This request can't take a payment any more." });
+      if (d.amount > Number(cur.total)) return res.status(400).json({ message: "Amount is more than the order total." });
+      const choice = d.amount >= Number(cur.total) ? "full" : "half";
+      await pool.query(
+        `UPDATE website.orders SET pay_choice = $2, payment_screenshot_url = $3, payment_method = COALESCE($4, payment_method),
+           transaction_id = COALESCE($5, transaction_id), paid_amount = $6, status = 'payment_submitted', updated_at = NOW()
+         WHERE id = $1 AND crm_order_id IS NULL`,
+        [id, choice, d.screenshotUrl, d.paymentMethod || null, d.transactionId || null, d.amount]);
+      await logActivity(id, user.id, "advance_recorded", { amount: d.amount, previousChoice: cur.pay_choice, choice });
+      res.json(await getOrderRequest(id));
+    } catch (err) { fail(res, req, err, "Record advance"); }
+  });
 
   app.post(`${base}/orders/:id/meta-retry`, guard, async (req, res) => {
     const user = req.user as User;

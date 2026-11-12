@@ -31,6 +31,7 @@ import {
   CreateOrderForm, ServiceTypeSelector, ORDER_SERVICE_TYPE_TITLES,
   type OrderServiceType, type WebsiteOrderPrefill, type ContactPrefill,
 } from "@/pages/OrdersPage";
+import { DEFAULT_PACKAGE_DELIVERY_DAYS } from "@shared/order-process";
 import type { User, SupportDesignerAssignment, PlatformCatalogItem } from "@shared/schema";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -42,6 +43,7 @@ type Activity = { id: number; action: string; details: Record<string, any> | nul
 type WebsiteOrder = {
   id: string; created_at: string; updated_at: string; market: string | null; country: string | null;
   utm_source: string | null; utm_medium: string | null; utm_campaign: string | null;
+  utm_content?: string | null; landing_page?: string | null; referrer?: string | null;
   status: string; package: string; package_price: number; addons: Addon[] | null; same_day: boolean; offer: string | null;
   is_bundle: boolean; pay_choice: string | null; discount: number; subtotal: number; total: number; currency: string;
   name: string | null; whatsapp: string | null; email: string | null; target_country: string | null; target_role: string | null;
@@ -90,11 +92,12 @@ const TAB_LABELS: Record<TabKey, string> = { orders: "Orders", reviews: "Free CV
 
 const STATUS_FILTERS: Record<TabKey, Array<{ value: string; label: string }>> = {
   orders: [
-    { value: "verification", label: "Needs verification" },
+    { value: "pending", label: "All pending" },
+    { value: "paid_full", label: "Paid 100%" },
+    { value: "paid_half", label: "Paid 50%" },
+    { value: "talk_first", label: "Talk first" },
     { value: "awaiting_approval", label: "Awaiting approval" },
-    { value: "pay_later", label: "Pay later" },
-    { value: "abandoned", label: "Abandoned" },
-    { value: "converted", label: "Converted" },
+    { value: "placed", label: "Placed" },
     { value: "rejected", label: "Rejected" },
     { value: "all", label: "All" },
   ],
@@ -115,7 +118,7 @@ const STATUS_FILTERS: Record<TabKey, Array<{ value: string; label: string }>> = 
     { value: "all", label: "All" },
   ],
 };
-const DEFAULT_STATUS: Record<TabKey, string> = { orders: "verification", reviews: "new", partners: "new" };
+const DEFAULT_STATUS: Record<TabKey, string> = { orders: "pending", reviews: "new", partners: "new" };
 const TABLE_TEXT: Record<TabKey, { title: string; subtitle: string; search: string }> = {
   orders: { title: "Website Orders", subtitle: "Checkout submissions from pixelycareers.com", search: "Search name, WhatsApp, email or transaction ID..." },
   reviews: { title: "Free CV Reviews", subtitle: "Free CV review requests from the website", search: "Search name, WhatsApp, email or role..." },
@@ -202,7 +205,7 @@ const money = (amount: number | string | null | undefined, currency = "PKR") => 
   return (currency || "PKR").toUpperCase() === "PKR" ? `Rs ${n}` : `${currency.toUpperCase()} ${n}`;
 };
 const waLink = (phone: string | null) => `https://wa.me/${(phone || "").replace(/[^0-9]/g, "")}`;
-const safeUrl = (url: string | null | undefined) => (url && /^https?:\/\//i.test(url) ? url : null);
+const safeUrl = (url: string | null | undefined) => (url && (/^https?:\/\//i.test(url) || /^\/api\/files\/\d+$/.test(url)) ? url : null);
 const isPkr = (r: WebsiteOrder) => (r.currency || "").toUpperCase() === "PKR";
 const ageDays = (iso: string) => (Date.now() - new Date(iso).getTime()) / 86_400_000;
 
@@ -217,6 +220,58 @@ function timeAgo(iso: string) {
   if (days < 7) return `${days} d ago`;
   return format(new Date(iso), "MMM d, yyyy");
 }
+
+// ── Orders tab helpers (payment choice + market are mapped in code) ──
+type PayKind = "full" | "half" | "talk";
+function payKind(r: Pick<WebsiteOrder, "pay_choice">): PayKind {
+  const v = (r.pay_choice || "").toLowerCase();
+  if (["now", "full", "paid_full", "100"].includes(v)) return "full";
+  if (["half", "advance", "partial", "50", "paid_half"].includes(v)) return "half";
+  return "talk";
+}
+/** Rupees the client paid today: recorded amount, else 100% / 50% of the total, else 0. */
+function paidToday(r: Pick<WebsiteOrder, "pay_choice" | "paid_amount" | "total">): number {
+  if (r.paid_amount != null && Number(r.paid_amount) > 0) return Number(r.paid_amount);
+  const k = payKind(r);
+  return k === "full" ? Number(r.total || 0) : k === "half" ? Math.round(Number(r.total || 0) / 2) : 0;
+}
+const MARKETS: Record<string, { flag: string; name: string }> = {
+  pk: { flag: "🇵🇰", name: "Pakistan" }, us: { flag: "🇺🇸", name: "USA" }, uk: { flag: "🇬🇧", name: "UK" }, gb: { flag: "🇬🇧", name: "UK" },
+  ae: { flag: "🇦🇪", name: "UAE" }, sa: { flag: "🇸🇦", name: "KSA" },
+};
+function landingPath(r: Pick<WebsiteOrder, "landing_page">): string {
+  try { return r.landing_page ? new URL(r.landing_page, "https://pixelycareers.com").pathname : "—"; } catch { return r.landing_page || "—"; }
+}
+/** /pk → Pakistan, /uk → UK, /ae → UAE, /sa → KSA, "/" → USA; falls back to the stored market. */
+function marketOf(r: Pick<WebsiteOrder, "landing_page" | "market">) {
+  const path = landingPath(r);
+  const seg = path.split("/").filter(Boolean)[0]?.toLowerCase();
+  if (seg && MARKETS[seg]) return MARKETS[seg];
+  if (path !== "—" && !(seg && seg.length === 2)) return MARKETS.us;
+  return MARKETS[(r.market || "").toLowerCase()] ?? { flag: "🌐", name: (r.market || "—").toUpperCase() };
+}
+function sourceText(r: Pick<WebsiteOrder, "utm_campaign" | "utm_medium" | "utm_content" | "utm_source" | "referrer">) {
+  const parts = [r.utm_campaign, r.utm_medium, r.utm_content].filter(Boolean);
+  if (parts.length) return parts.join(" › ");
+  const src = (r.utm_source || "").toLowerCase();
+  if (src) return /organic|seo|google/.test(src) ? "Organic" : r.utm_source!;
+  if (r.referrer && !/pixelycareers\.com/i.test(r.referrer)) return "Referral";
+  return "Direct";
+}
+function PayBadge({ r }: { r: WebsiteOrder }) {
+  const k = payKind(r);
+  const cls = k === "full" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : k === "half" ? "border-blue-500/30 bg-blue-500/10 text-blue-300" : "border-amber-500/30 bg-amber-500/10 text-amber-300";
+  return <span className={cn("inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium", cls)}>{k === "full" ? "Paid 100%" : k === "half" ? "Paid 50%" : "Talk first"}</span>;
+}
+function requestStatus(r: WebsiteOrder): { label: string; cls: string } {
+  if (r.crm_order_id || r.status === "converted" || r.status === "paid") return { label: "Placed", cls: "text-emerald-300" };
+  if (r.status === "rejected") return { label: "Rejected", cls: "text-rose-300" };
+  if (r.status === "pending_approval") return { label: "Awaiting approval", cls: "text-orange-300" };
+  if (r.status === "contacted") return { label: "Contacted", cls: "text-cyan-300" };
+  return { label: "New", cls: "text-slate-200" };
+}
+const isUnhandled = (r: WebsiteOrder) =>
+  !r.crm_order_id && ["new", "payment_submitted"].includes(r.status) && Date.now() - new Date(r.created_at).getTime() > 15 * 60_000;
 
 function buildPrefill(r: WebsiteOrder, platformNames: string[]): { orderType: OrderServiceType; prefill: WebsiteOrderPrefill } {
   const pkg = PACKAGE_MAP[r.package?.toLowerCase()];
@@ -248,7 +303,7 @@ function buildPrefill(r: WebsiteOrder, platformNames: string[]): { orderType: Or
   const metaPlatform = platformNames.find(n => /meta/i.test(n));
   const platform = /fb|facebook|ig|instagram|meta/.test(src) && metaPlatform ? metaPlatform : "";
   // Pay-later requests start with nothing received; the admin can edit before placing.
-  const received = r.pay_choice === "later" ? "0" : total;
+  const received = pkr ? String(paidToday(r)) : "";
 
   return {
     orderType,
@@ -395,33 +450,61 @@ function RowMenu({ children, disabled, testId }: { children: React.ReactNode; di
   );
 }
 
-function PlacePopover({ r, busy, label, platformNames, onConfirm, onEdit }: { r: WebsiteOrder; busy: boolean; label: string; platformNames: string[]; onConfirm: () => void; onEdit: () => void }) {
+type DesignerLoad = { id: number; name: string; active: number };
+function PlacePopover({ r, busy, label, platformNames, onConfirm, onEdit }: { r: WebsiteOrder; busy: boolean; label: string; platformNames: string[]; onConfirm: (designerId: number | null) => void; onEdit: () => void }) {
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"choose" | "now">("choose");
   const { amountReceived, totalPrice } = buildPlaceBody(r, platformNames);
+  const { data: designers = [] } = useQuery<DesignerLoad[]>({ queryKey: ["/api/designers/workload"], enabled: open, staleTime: 60_000 });
+  const lowest = useMemo(() => [...designers].sort((a, b) => a.active - b.active)[0]?.id ?? null, [designers]);
+  const [designerId, setDesignerId] = useState<number | null>(null);
+  useEffect(() => { if (open && designerId === null && lowest !== null) setDesignerId(lowest); }, [open, lowest, designerId]);
+  const days = (DEFAULT_PACKAGE_DELIVERY_DAYS as Record<string, number>)[(r.package || "").toLowerCase().replace(/-/g, "_")] ?? null;
   const canOneClick = isPkr(r) && totalPrice > 0;
   const old = ageDays(r.created_at) > 6 && amountReceived > 0;
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={o => { setOpen(o); if (!o) setMode("choose"); }}>
       <PopoverTrigger asChild>
         <Button size="sm" className="h-8 min-w-0 bg-primary px-2.5" disabled={busy} onClick={e => e.stopPropagation()} data-testid={`button-place-${r.id}`}>
           {busy ? <Loader2 className="mr-1.5 h-3.5 w-3.5 shrink-0 animate-spin" /> : <ShieldCheck className="mr-1.5 h-3.5 w-3.5 shrink-0" />}
           <span className="truncate">{busy ? "Placing..." : label}</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-72 border-slate-800 bg-slate-900 text-left" onClick={e => e.stopPropagation()}>
-        <p className="text-sm font-semibold text-white">{label}?</p>
-        <div className="mt-2 space-y-1 text-sm">
-          <div className="flex justify-between gap-3 text-slate-400"><span>Package</span><span className="text-right text-white">{packageLabel(r.package)}</span></div>
-          <div className="flex justify-between text-slate-400"><span>Total</span><span className="text-white">{money(r.total, r.currency)}</span></div>
-          <div className="flex justify-between text-slate-400"><span>Payment recorded</span><span className="text-white">{canOneClick ? money(amountReceived / 100) : "—"}</span></div>
-        </div>
-        {!canOneClick && <p className="mt-2 text-xs text-amber-300">Non-PKR total — use “Edit before placing” to enter the PKR amount.</p>}
-        {canOneClick && amountReceived === 0 && <p className="mt-2 text-xs text-slate-400">Pay later — order is placed with no payment recorded (no Meta Purchase).</p>}
-        {old && <p className="mt-2 flex gap-1.5 text-xs text-amber-300" data-testid="warning-meta-age"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />Submitted {Math.floor(ageDays(r.created_at))} days ago — Meta may not attribute this Purchase to the ad (7-day window).</p>}
-        <div className="mt-3 flex items-center justify-between gap-2">
-          <button type="button" className="text-xs text-cyan-300 hover:underline" onClick={() => { setOpen(false); onEdit(); }} data-testid={`button-edit-before-placing-${r.id}`}>Edit before placing</button>
-          <Button size="sm" className="h-8 bg-primary" disabled={!canOneClick || busy} onClick={() => { setOpen(false); onConfirm(); }} data-testid={`button-confirm-place-${r.id}`}>Confirm</Button>
-        </div>
+      <PopoverContent align="end" className="w-80 border-slate-800 bg-slate-900 text-left" onClick={e => e.stopPropagation()} data-testid="place-modal">
+        {mode === "choose" ? (
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-white">{label}</p>
+            <button type="button" disabled={!canOneClick} onClick={() => setMode("now")} className="w-full rounded-lg border border-slate-700 p-3 text-left hover:border-primary disabled:opacity-50" data-testid={`button-place-now-${r.id}`}>
+              <p className="text-sm font-medium text-white">Place order now</p><p className="text-xs text-slate-400">Pick the designer and confirm.</p>
+            </button>
+            <button type="button" onClick={() => { setOpen(false); onEdit(); }} className="w-full rounded-lg border border-slate-700 p-3 text-left hover:border-primary" data-testid={`button-edit-before-placing-${r.id}`}>
+              <p className="text-sm font-medium text-white">Edit before placing</p><p className="text-xs text-slate-400">Open the full order form, prefilled.</p>
+            </button>
+            {!canOneClick && <p className="text-xs text-amber-300">Non-PKR total — use “Edit before placing” to enter the PKR amount.</p>}
+          </div>
+        ) : (
+          <div>
+            <p className="text-sm font-semibold text-white">Place order now</p>
+            <div className="mt-2 space-y-1 text-sm">
+              <div className="flex justify-between gap-3 text-slate-400"><span>Package</span><span className="text-right text-white">{packageLabel(r.package)}</span></div>
+              <div className="flex justify-between text-slate-400"><span>Total</span><span className="text-white">{money(totalPrice / 100)}</span></div>
+              <div className="flex justify-between text-slate-400"><span>Received</span><span className="text-white">{money(amountReceived / 100)}</span></div>
+              <div className="flex justify-between text-slate-400"><span>Balance</span><span className="text-white">{money(Math.max(0, totalPrice - amountReceived) / 100)}</span></div>
+              <div className="flex justify-between text-slate-400"><span>Due</span><span className="text-white">{days ? format(new Date(Date.now() + days * 86_400_000), "MMM d") + ` (${days} days)` : "Auto from package"}</span></div>
+            </div>
+            <Label className="mt-3 block text-xs text-slate-400">Designer</Label>
+            <Select value={designerId ? String(designerId) : ""} onValueChange={v => setDesignerId(Number(v))}>
+              <SelectTrigger className="mt-1 h-9" data-testid="select-place-designer"><SelectValue placeholder="Choose designer" /></SelectTrigger>
+              <SelectContent>{designers.map(d => <SelectItem key={d.id} value={String(d.id)}>{d.name} · {d.active} active{d.id === lowest ? " (lowest)" : ""}</SelectItem>)}</SelectContent>
+            </Select>
+            {amountReceived === 0 && <p className="mt-2 text-xs text-slate-400">No payment recorded — no Meta Purchase.</p>}
+            {old && <p className="mt-2 flex gap-1.5 text-xs text-amber-300" data-testid="warning-meta-age"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />Submitted {Math.floor(ageDays(r.created_at))} days ago — Meta may not attribute this Purchase to the ad (7-day window).</p>}
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <button type="button" className="text-xs text-slate-400 hover:underline" onClick={() => setMode("choose")}>Back</button>
+              <Button size="sm" className="h-8 bg-primary" disabled={busy || !designerId} onClick={() => { setOpen(false); setMode("choose"); onConfirm(designerId); }} data-testid={`button-confirm-place-${r.id}`}>Confirm</Button>
+            </div>
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );
@@ -609,6 +692,7 @@ export default function WebsiteRequestsPage() {
   }, [tab, status, filters]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [advanceTarget, setAdvanceTarget] = useState<WebsiteOrder | null>(null);
   const [rejectTarget, setRejectTarget] = useState<{ kind: "order" | "review"; id: string; name: string | null; awaiting: boolean; amount?: string } | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [rejectNote, setRejectNote] = useState("");
@@ -752,10 +836,11 @@ export default function WebsiteRequestsPage() {
   if (user && !allowed) return <Redirect to="/" />;
 
   // ── Orders tab actions ──
-  const placeOrder = (r: WebsiteOrder) => {
+  const copyText = (text: string) => { navigator.clipboard.writeText(text); toast({ title: "WhatsApp number copied" }); };
+  const placeOrder = (r: WebsiteOrder, designerId?: number | null) => {
     const awaiting = r.status === "pending_approval";
     run({
-      tab: "orders", id: r.id, method: "POST", path: awaiting ? "/approve" : "/place", body: buildPlaceBody(r, platformNames).body,
+      tab: "orders", id: r.id, method: "POST", path: awaiting ? "/approve" : "/place", body: { ...buildPlaceBody(r, platformNames).body, assignedToId: designerId ?? null },
       success: awaiting ? "Approved & order placed" : "Order placed",
       onDone: () => {
         queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
@@ -774,16 +859,23 @@ export default function WebsiteRequestsPage() {
     const awaiting = r.status === "pending_approval";
     if (awaiting && !isAdmin) return <span className="inline-flex items-center gap-1 text-xs text-orange-200"><Clock className="h-3.5 w-3.5" />Waiting for admin</span>;
     const reject = () => setRejectTarget({ kind: "order", id: r.id, name: r.name, awaiting, amount: money(r.total, r.currency) });
+    const talk = payKind(r) === "talk" && paidToday(r) === 0;
     return (
       <div className="flex min-w-0 items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
-        {isAdmin ? (
-          <PlacePopover r={r} busy={busy} platformNames={platformNames} label={awaiting ? "Approve & place" : "Verify & place order"} onConfirm={() => placeOrder(r)} onEdit={() => openEdit(r)} />
+        {talk ? (
+          r.status === "contacted"
+            ? <span className="text-xs text-cyan-300">Contacted</span>
+            : <PrimaryButton busy={busy} icon={MessageCircle} onClick={() => run({ tab: "orders", id: r.id, method: "POST", path: "/contacted", optimistic: { status: "contacted" }, success: "Marked contacted" })} testId={`button-contacted-${r.id}`}>Mark contacted</PrimaryButton>
+        ) : isAdmin ? (
+          <PlacePopover r={r} busy={busy} platformNames={platformNames} label={awaiting ? "Approve & place" : "Verify & place"} onConfirm={(designerId) => placeOrder(r, designerId)} onEdit={() => openEdit(r)} />
         ) : (
           <SendForApprovalPopover busy={busy} onSend={note => run({ tab: "orders", id: r.id, method: "POST", path: "/send-for-approval", body: { note: note || null }, optimistic: { status: "pending_approval" }, success: "Sent to admin for approval" })} />
         )}
         <RowMenu disabled={busy} testId={`menu-order-${r.id}`}>
-          {isAdmin && <DropdownMenuItem onSelect={() => openEdit(r)}>Edit before placing</DropdownMenuItem>}
-          <DropdownMenuItem className="text-rose-300 focus:text-rose-200" onSelect={reject} data-testid={`button-reject-${r.id}`}>{awaiting ? "Decline" : "Reject"}</DropdownMenuItem>
+          {talk && <DropdownMenuItem onSelect={() => setAdvanceTarget(r)} data-testid={`button-record-advance-${r.id}`}>Record advance</DropdownMenuItem>}
+          {isAdmin && !talk && <DropdownMenuItem onSelect={() => openEdit(r)}>Edit before placing</DropdownMenuItem>}
+          <DropdownMenuItem onSelect={() => setSelectedId(r.id)}>Add note</DropdownMenuItem>
+          <DropdownMenuItem className="text-rose-300 focus:text-rose-200" onSelect={reject} data-testid={`button-reject-${r.id}`}>{talk ? "Not interested" : awaiting ? "Decline" : "Reject"}</DropdownMenuItem>
         </RowMenu>
       </div>
     );
@@ -864,13 +956,16 @@ export default function WebsiteRequestsPage() {
   // Column layouts (fixed widths → no horizontal scroll).
   const cols: Record<TabKey, Array<{ label: string; width: string; className?: string }>> = {
     orders: [
-      { label: "Customer", width: showMeta ? "22%" : "25%" },
-      { label: "Package", width: showMeta ? "15%" : "17%" },
-      { label: "Amount", width: "12%" },
-      { label: "Proof", width: "7%" },
-      { label: "Status", width: "13%" },
-      ...(showMeta ? [{ label: "Meta", width: "10%" }] : []),
-      { label: "Actions", width: showMeta ? "21%" : "26%", className: "text-right" },
+      { label: "Received", width: "8%" },
+      { label: "Client", width: "12%" },
+      { label: "WhatsApp", width: "11%" },
+      { label: "Market", width: "8%" },
+      { label: "Package", width: "11%" },
+      { label: "Total", width: "8%" },
+      { label: "Payment", width: "11%" },
+      { label: "Proof", width: "5%" },
+      { label: "Status", width: "8%" },
+      { label: "Action", width: "18%", className: "text-right" },
     ],
     reviews: [
       { label: "Customer", width: "24%" },
@@ -928,9 +1023,20 @@ export default function WebsiteRequestsPage() {
             </div>
           </div>
 
+          {tab === "orders" && (
+            <div className="flex flex-wrap gap-2" data-testid="order-chips">
+              {filterOptions.filter(o => o.value !== "awaiting_approval" || (statusCounts?.awaiting_approval ?? 0) > 0).map(o => (
+                <button key={o.value} type="button" onClick={() => setFilters({ status: o.value === DEFAULT_STATUS.orders ? "" : o.value })}
+                  className={cn("rounded-full border px-3 py-1 text-xs font-medium transition-colors", status === o.value ? "border-primary bg-primary text-on-color" : "border-slate-700 text-slate-300 hover:border-slate-500")}
+                  data-testid={`chip-${o.value}`}>
+                  {o.label}{statusCounts?.[o.value] !== undefined ? ` · ${statusCounts[o.value]}` : ""}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2" data-testid="website-request-filters">
             <Filter className="mr-1 hidden h-4 w-4 text-slate-500 md:block" aria-hidden="true" />
-            <Select value={status} onValueChange={v => setFilters({ status: v === DEFAULT_STATUS[tab] ? "" : v })}>
+            {tab !== "orders" && <Select value={status} onValueChange={v => setFilters({ status: v === DEFAULT_STATUS[tab] ? "" : v })}>
               <SelectTrigger className="w-52" data-testid="select-status-filter"><SelectValue /></SelectTrigger>
               <SelectContent className="">
                 {filterOptions.map(o => (
@@ -939,7 +1045,7 @@ export default function WebsiteRequestsPage() {
                   </SelectItem>
                 ))}
               </SelectContent>
-            </Select>
+            </Select>}
             {tab === "orders" && (
               <>
                 <Select value={filters.market} onValueChange={v => setFilters({ market: v })}>
@@ -1021,7 +1127,28 @@ export default function WebsiteRequestsPage() {
             </Button>
           )}
         </div>
-        <div className="overflow-x-auto"><Table className="min-w-[860px] table-fixed" data-testid={`table-website-${tab}`}>
+        {tab === "orders" && (
+          <div className="divide-y divide-slate-800 md:hidden" data-testid="order-cards">
+            {list.isLoading && <p className="p-4 text-sm text-slate-500">Loading…</p>}
+            {!list.isLoading && rows.length === 0 && <p className="p-6 text-center text-sm text-slate-500">{emptyText}</p>}
+            {rows.map((r: WebsiteOrder) => { const st = requestStatus(r); const paid = paidToday(r); const m = marketOf(r); return (
+              <div key={r.id} className={cn("space-y-2 p-4", isUnhandled(r) && "shadow-[inset_3px_0_0_rgba(244,63,94,0.7)]")} onClick={() => setSelectedId(r.id)} data-testid={`card-website-request-${r.id}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0"><p className="truncate font-semibold text-white">{r.name || "—"}</p><p className="text-xs text-slate-500" title={format(new Date(r.created_at), "MMM dd, yyyy · h:mm a")}>{timeAgo(r.created_at)} · {m.flag} {m.name}</p></div>
+                  <span className={cn("shrink-0 text-xs font-medium", st.cls)}>{st.label}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-sm"><span className="text-slate-200">{packageLabel(r.package)}</span>{isBundlePackage(r) && <BundleTag />}<span className="ml-auto font-medium text-white">{money(r.total, r.currency)}</span></div>
+                <div className="flex flex-wrap items-center gap-2"><PayBadge r={r} /><span className="text-xs text-slate-500">{paid > 0 ? `${money(paid, r.currency)} paid` : "Nothing paid yet"}</span>
+                  {safeUrl(r.payment_screenshot_url) && <a href={safeUrl(r.payment_screenshot_url)!} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-xs text-cyan-300 hover:underline">Proof</a>}</div>
+                <div className="flex items-center justify-between gap-2" onClick={e => e.stopPropagation()}>
+                  {r.whatsapp ? <span className="flex min-w-0 items-center gap-1"><a href={waLink(r.whatsapp)} target="_blank" rel="noopener noreferrer" className="truncate text-xs text-emerald-300">{r.whatsapp}</a><button type="button" className="text-slate-500" aria-label="Copy WhatsApp number" onClick={() => copyText(r.whatsapp!)}><Copy className="h-3 w-3" /></button></span> : <span />}
+                  {renderOrderActions(r)}
+                </div>
+              </div>
+            ); })}
+          </div>
+        )}
+        <div className={cn("overflow-x-auto", tab === "orders" && "hidden md:block")}><Table className={cn("table-fixed", tab === "orders" ? "min-w-[1000px] lg:min-w-0" : "min-w-[860px]")} data-testid={`table-website-${tab}`}>
           <colgroup>{columns.map(c => <col key={c.label} style={{ width: c.width }} />)}</colgroup>
           <TableHeader className="bg-slate-900/50">
             <TableRow className="border-slate-800 hover:bg-transparent">
@@ -1039,24 +1166,33 @@ export default function WebsiteRequestsPage() {
               <TableRow className="border-slate-800"><TableCell colSpan={columns.length} className="py-8 text-center text-slate-500" data-testid="text-no-website-requests">{emptyText}</TableCell></TableRow>
             )}
 
-            {tab === "orders" && rows.map((r: WebsiteOrder) => (
-              <TableRow key={r.id} className={cn("cursor-pointer border-slate-800 hover:bg-slate-900/50", busyIds.has(r.id) && "opacity-60")} onClick={() => setSelectedId(r.id)} data-testid={`row-website-request-${r.id}`}>
-                <TableCell className="py-3"><CustomerCell id={r.id} name={r.name} whatsapp={r.whatsapp} createdAt={r.created_at} /></TableCell>
-                <TableCell><PackageCell r={r} /></TableCell>
-                <TableCell>
-                  <p className="text-sm text-white">{money(r.total, r.currency)}</p>
-                  <p className="text-xs text-slate-500">{r.pay_choice === "now" ? "Pay now" : r.pay_choice === "later" ? "Pay later" : "—"}</p>
+            {tab === "orders" && rows.map((r: WebsiteOrder) => {
+              const st = requestStatus(r); const paid = paidToday(r); const m = marketOf(r);
+              return (
+              <TableRow key={r.id} className={cn("cursor-pointer border-slate-800 hover:bg-slate-900/50", isUnhandled(r) && "[&>td:first-child]:shadow-[inset_3px_0_0_rgba(244,63,94,0.7)]", busyIds.has(r.id) && "opacity-60")} onClick={() => setSelectedId(r.id)} data-testid={`row-website-request-${r.id}`}>
+                <TableCell className="py-3 text-xs text-slate-400"><span title={format(new Date(r.created_at), "MMM dd, yyyy · h:mm a")}>{timeAgo(r.created_at)}</span></TableCell>
+                <TableCell><p className="truncate text-sm font-semibold text-white" title={r.name ?? ""}>{r.name || "—"}</p></TableCell>
+                <TableCell onClick={e => e.stopPropagation()}>
+                  {r.whatsapp ? (
+                    <div className="flex min-w-0 items-center gap-1">
+                      <a href={waLink(r.whatsapp)} target="_blank" rel="noopener noreferrer" className="truncate text-xs text-emerald-300 hover:underline" data-testid={`link-whatsapp-${r.id}`}>{r.whatsapp}</a>
+                      <button type="button" className="shrink-0 text-slate-500 hover:text-white" aria-label="Copy WhatsApp number" onClick={() => copyText(r.whatsapp!)}><Copy className="h-3 w-3" /></button>
+                    </div>
+                  ) : <span className="text-slate-600">—</span>}
                 </TableCell>
+                <TableCell><span className="truncate text-xs text-slate-300" title={landingPath(r)}>{m.flag} {m.name}</span></TableCell>
+                <TableCell><p className="flex min-w-0 items-center gap-1 text-sm text-slate-200"><span className="truncate">{packageLabel(r.package)}</span>{isBundlePackage(r) && <BundleTag />}</p></TableCell>
+                <TableCell className="whitespace-nowrap text-sm text-white">{money(r.total, r.currency)}</TableCell>
+                <TableCell><PayBadge r={r} /><p className="mt-1 text-[11px] text-slate-500">{paid > 0 ? `${money(paid, r.currency)} paid` : "Nothing paid yet"}</p></TableCell>
                 <TableCell>
                   {safeUrl(r.payment_screenshot_url)
                     ? <a href={safeUrl(r.payment_screenshot_url)!} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-sm text-cyan-300 hover:underline" data-testid={`link-screenshot-${r.id}`}>View</a>
                     : <span className="text-slate-600">—</span>}
                 </TableCell>
-                <TableCell><StatusPill status={r.crm_order_id && r.status !== "paid" ? "converted" : r.status} /></TableCell>
-                {showMeta && <TableCell><MetaBadge status={r.meta_status} busy={busyIds.has(r.id)} onRetry={r.meta_status === "failed" ? () => retryMeta(r.id) : undefined} /></TableCell>}
+                <TableCell><span className={cn("text-xs font-medium", st.cls)}>{st.label}</span></TableCell>
                 <TableCell className="text-right">{renderOrderActions(r)}</TableCell>
               </TableRow>
-            ))}
+            ); })}
 
             {tab === "reviews" && rows.map((r: CvReview) => {
               const countries = r.target_countries?.length ? r.target_countries.join(", ") : r.target_country;
@@ -1109,6 +1245,7 @@ export default function WebsiteRequestsPage() {
 
       {/* Detail drawer */}
       <Sheet open={!!selectedId} onOpenChange={open => { if (!open) setSelectedId(null); }}>
+        <RecordAdvanceDialog r={advanceTarget} onClose={() => setAdvanceTarget(null)} onDone={() => list.refetch()} />
         <SheetContent className="detail-drawer flex w-full flex-col border-slate-800 bg-slate-950 p-0 sm:max-w-xl">
           <SheetHeader className="detail-drawer-header border-b border-slate-800 px-6 py-4 text-left">
             <SheetTitle className="flex items-center justify-between gap-2 font-display text-white">
@@ -1299,81 +1436,77 @@ function OrderDrawerBody({ d, isAdmin, busy, onRetry, onSaveNotes, onCopy }: {
         </div>
       )}
 
-      <DrawerSection title="Customer">
+      <DrawerSection title="Client">
         <div className="grid grid-cols-2 gap-4">
           <Field label="WhatsApp">
             {d.whatsapp ? (
               <div className="flex items-center gap-1.5">
-                <span>{d.whatsapp}</span>
+                <a href={waLink(d.whatsapp)} target="_blank" rel="noopener noreferrer" className="text-emerald-300 hover:underline" data-testid="link-open-whatsapp-chat">{d.whatsapp}</a>
                 <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-white" onClick={() => onCopy(d.whatsapp!)} aria-label="Copy WhatsApp number" data-testid="button-copy-whatsapp"><Copy className="h-3.5 w-3.5" /></Button>
-                <a href={waLink(d.whatsapp)} target="_blank" rel="noopener noreferrer" className="inline-flex h-6 w-6 items-center justify-center rounded-md text-emerald-300 hover:bg-slate-800" aria-label="Open WhatsApp chat" data-testid="link-open-whatsapp-chat"><MessageCircle className="h-3.5 w-3.5" /></a>
               </div>
             ) : null}
           </Field>
           <Field label="Email">{d.email}</Field>
-          <Field label="Target country">{d.target_country}</Field>
-          <Field label="Target role">{d.target_role}</Field>
-          {d.notes && <Field label="Customer notes" wide><span className="whitespace-pre-wrap text-slate-300">{d.notes}</span></Field>}
+          <Field label="Market">{marketOf(d).flag} {marketOf(d).name}</Field>
+          <Field label="Landing page"><span className="break-all text-xs">{landingPath(d)}</span></Field>
+        </div>
+      </DrawerSection>
+
+      <DrawerSection title="Career">
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Target countries" wide>{d.target_country}</Field>
+          <Field label="Target role" wide>{d.target_role}</Field>
+          {d.notes && <Field label="Notes from the client" wide><span className="whitespace-pre-wrap text-slate-300">{d.notes}</span></Field>}
           {safeUrl(d.cv_url) && <div className="col-span-2"><a href={safeUrl(d.cv_url)!} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-cyan-300 hover:underline">Open current CV <ExternalLink className="h-3 w-3" /></a></div>}
         </div>
       </DrawerSection>
 
       <DrawerSection title="Order">
-        <p className="flex flex-wrap items-center gap-2 text-sm text-white">{packageLabel(d.package)} <span className="text-slate-500">· {money(d.package_price, d.currency)}</span>{isBundlePackage(d) && <span className="inline-flex items-center gap-1 text-xs text-orange-300"><Tag className="h-3 w-3" />11.11{d.offer ? ` · ${d.offer}` : ""}</span>}</p>
+        <p className="flex flex-wrap items-center gap-2 text-sm text-white">{packageLabel(d.package)} <span className="text-slate-500">· {money(d.package_price, d.currency)}</span>{isBundlePackage(d) && <BundleTag />}</p>
         {(d.addons ?? []).length > 0 && (
           <ul className="space-y-1 text-sm">
             {(d.addons ?? []).map((a, i) => (
-              <li key={`${a.id}-${i}`} className="flex justify-between gap-3 text-slate-200"><span>{a.name ?? a.id} <span className="text-slate-500">× {a.qty ?? 1}</span></span><span className="text-slate-300">{money(a.price, d.currency)}</span></li>
+              <li key={`${a.id}-${i}`} className="flex justify-between gap-3 text-slate-200"><span>{a.name ?? a.id} <span className="text-slate-500">{a.qty ?? 1} × {money(a.price, d.currency)}</span></span><span className="text-slate-300">{money((a.price || 0) * (a.qty ?? 1), d.currency)}</span></li>
             ))}
           </ul>
         )}
-        {d.same_day && <p className="text-xs text-amber-300">Same-day delivery requested</p>}
+        <p className="text-sm text-slate-400">Same-day delivery: <span className={d.same_day ? "text-amber-300" : "text-slate-300"}>{d.same_day ? "Yes" : "No"}</span></p>
         <div className="space-y-1 border-t border-slate-800 pt-3 text-sm">
           <div className="flex justify-between text-slate-400"><span>Subtotal</span><span>{money(d.subtotal, d.currency)}</span></div>
-          {!!d.discount && <div className="flex justify-between text-slate-400"><span>Pay-now discount</span><span>− {money(d.discount, d.currency)}</span></div>}
+          {!!d.discount && <div className="flex justify-between text-slate-400"><span>Discount ({payKind(d) === "full" ? "10% full payment" : payKind(d) === "half" ? "5% advance" : "pay-now"})</span><span>− {money(d.discount, d.currency)}</span></div>}
           <div className="flex justify-between font-semibold text-white"><span>Total</span><span>{money(d.total, d.currency)}</span></div>
         </div>
       </DrawerSection>
 
       <DrawerSection title="Payment">
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Pay choice">{d.pay_choice === "now" ? "Pay now" : d.pay_choice === "later" ? "Pay later" : null}</Field>
+          <Field label="Choice"><PayBadge r={d} /></Field>
+          <Field label="Paid today">{paidToday(d) > 0 ? money(paidToday(d), d.currency) : "Nothing paid yet"}</Field>
+          <Field label="Balance due">{money(Math.max(0, (d.total || 0) - paidToday(d)), d.currency)}</Field>
           <Field label="Method">{d.payment_method}</Field>
           <Field label="Transaction ID" wide>{d.transaction_id}</Field>
         </div>
         {safeUrl(d.payment_screenshot_url) ? (
-          <a href={safeUrl(d.payment_screenshot_url)!} target="_blank" rel="noopener noreferrer" className="block w-fit" data-testid="link-screenshot-thumbnail">
-            <img src={safeUrl(d.payment_screenshot_url)!} alt="Payment screenshot" loading="lazy" className="max-h-48 rounded-md border border-slate-700 object-contain transition-opacity hover:opacity-80" />
+          <a href={safeUrl(d.payment_screenshot_url)!} target="_blank" rel="noopener noreferrer" className="block" data-testid="link-screenshot-thumbnail">
+            <img src={safeUrl(d.payment_screenshot_url)!} alt="Payment screenshot" loading="lazy" className="max-h-96 w-full rounded-md border border-slate-700 object-contain transition-opacity hover:opacity-80" />
           </a>
         ) : <p className="text-sm text-slate-500">No screenshot uploaded.</p>}
       </DrawerSection>
 
       {isAdmin && (
         <DrawerSection title="Meta Purchase">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
             <MetaBadge status={d.meta_status} busy={busy} error={metaResponse?.error} onRetry={d.meta_status === "failed" ? onRetry : undefined} />
-            {d.meta_event_id && <span className="truncate font-mono text-xs text-slate-500">{d.meta_event_id}</span>}
+            {d.meta_purchase_sent_at && <span className="text-xs text-slate-500">{format(new Date(d.meta_purchase_sent_at), "MMM dd, yyyy · h:mm a")}</span>}
           </div>
-          {!d.meta_status && <p className="text-xs text-slate-500">{d.crm_order_id ? "Not sent — no payment was recorded, or Meta wasn't configured when the order was placed." : "Sent automatically when an admin verifies a payment."}</p>}
-          {metaResponse && (
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              {metaResponse.events_received !== undefined && <Field label="Events received">{String(metaResponse.events_received)}</Field>}
-              {metaResponse.fbtrace_id && <Field label="fbtrace_id"><span className="font-mono text-xs">{metaResponse.fbtrace_id}</span></Field>}
-              {metaResponse.error && <Field label="Error" wide><span className="text-rose-300">{metaResponse.error}</span></Field>}
-              {d.meta_purchase_sent_at && <Field label="Sent">{format(new Date(d.meta_purchase_sent_at), "MMM dd, yyyy · h:mm a")}</Field>}
-            </div>
-          )}
-          {d.meta && <p className="text-xs text-slate-500">Match data: {[d.meta.hasFbp && "fbp", d.meta.hasFbc && "fbc", d.meta.hasIp && "IP", d.whatsapp && "phone", d.email && "email"].filter(Boolean).join(", ") || "none"}</p>}
+          {!d.meta_status && <p className="text-xs text-slate-500">{d.crm_order_id ? "Not sent — no payment was recorded, or Meta wasn't configured when the order was placed." : "Sent automatically when the order is placed with a payment."}</p>}
+          {metaResponse?.error && <p className="text-xs text-rose-300">{metaResponse.error}</p>}
           <MetaTestPurchase id={d.id} />
         </DrawerSection>
       )}
 
       <DrawerSection title="Source">
-        <div className="grid grid-cols-3 gap-4">
-          <Field label="Market"><span className="uppercase">{d.market}</span></Field>
-          <Field label="UTM source">{d.utm_source}</Field>
-          <Field label="Campaign">{d.utm_campaign}</Field>
-        </div>
+        <p className="text-sm text-slate-200" data-testid="text-source">{sourceText(d)}</p>
       </DrawerSection>
 
       <DrawerSection title="Internal notes"><NotesEditor value={d.crm_notes} busy={busy} onSave={onSaveNotes} testId="crm-notes" /></DrawerSection>
@@ -1485,9 +1618,47 @@ function MetaTestPurchase({ id }: { id: string }) {
         <div className="space-y-2 text-xs">
           <p>events_received: <b>{String(out.response?.events_received ?? "—")}</b> · fbtrace_id: <span className="font-mono">{out.response?.fbtrace_id ?? "—"}</span>{out.response?.error && <span className="text-rose-300"> · {out.response.error}</span>}</p>
           {out.missing?.length > 0 && <p className="text-amber-300">Empty (website didn't save): {out.missing.join(", ")}</p>}
-          <pre className="max-h-64 overflow-auto rounded bg-slate-950/60 p-2 font-mono text-[11px]">{JSON.stringify(out.payload, null, 2)}</pre>
         </div>
       )}
     </div>
+  );
+}
+
+/** Talk-first → client paid: amount + screenshot. Request becomes Paid 50% / 100%. */
+function RecordAdvanceDialog({ r, onClose, onDone }: { r: WebsiteOrder | null; onClose: () => void; onDone: () => void }) {
+  const { toast } = useToast();
+  const [amount, setAmount] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [txn, setTxn] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setAmount(""); setFile(null); setTxn(""); }, [r?.id]);
+  const save = async () => {
+    if (!r || !file || !(Number(amount) > 0)) return;
+    setBusy(true);
+    try {
+      const fd = new FormData(); fd.append("screenshot", file);
+      const up = await fetch(`${BASE}/orders/${r.id}/advance-screenshot`, { method: "POST", body: fd, credentials: "include" });
+      const upJson = await up.json().catch(() => ({}));
+      if (!up.ok) throw new Error(upJson.message || `Upload failed (${up.status})`);
+      const { url } = upJson;
+      await apiRequest("POST", `${BASE}/orders/${r.id}/record-advance`, { amount: Number(amount), screenshotUrl: url, transactionId: txn || null });
+      toast({ title: "Advance recorded", description: "Now use Verify & place." });
+      onDone(); onClose();
+    } catch (e) { toast({ title: "Couldn't record the advance", description: getErrorMessage(e), variant: "destructive" }); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Dialog open={!!r} onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader><DialogTitle>Record advance</DialogTitle></DialogHeader>
+        {r && <p className="text-sm text-slate-400">{r.name} · total {money(r.total, r.currency)}</p>}
+        <div className="space-y-3">
+          <div><Label>Amount received (Rs)</Label><Input type="number" min={1} value={amount} onChange={e => setAmount(e.target.value)} data-testid="input-advance-amount" /></div>
+          <div><Label>Transaction ID (optional)</Label><Input value={txn} onChange={e => setTxn(e.target.value)} /></div>
+          <div><Label>Payment screenshot</Label><Input type="file" accept="image/png,image/jpeg,image/webp" onChange={e => setFile(e.target.files?.[0] ?? null)} data-testid="input-advance-screenshot" /></div>
+          <Button className="w-full" disabled={busy || !file || !(Number(amount) > 0)} onClick={save} data-testid="button-save-advance">{busy ? "Saving…" : "Save"}</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

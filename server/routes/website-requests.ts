@@ -5,6 +5,7 @@ import { registerWebsiteRequestRoutes } from "../websiteRequests";
 import { emitRealtime } from "../sse";
 import { dispatchNotification, dispatchNotifications, requireRole, notifyAdminPlacedOrder } from "./shared";
 import { packageLabel } from "../lib/metaCapi";
+import { notifyOrderAssigned } from "../orderNotifications";
 import { rs, shortName } from "@shared/notification-events";
 
 export function registerWebsiteRequestNotifications(app: Express) {
@@ -62,6 +63,7 @@ export function registerWebsiteRequestNotifications(app: Express) {
     },
     afterPlacement: async (actor, order) => {
       await notifyAdminPlacedOrder(order, actor.id);
+      await notifyOrderAssigned(order, actor.id);
       emitRealtime(actor.id, ["payments", "orders", "stats", "website_requests"]);
     },
   });
