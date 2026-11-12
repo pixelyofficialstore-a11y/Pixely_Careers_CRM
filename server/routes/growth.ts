@@ -11,6 +11,7 @@ import { db, pool } from "../db";
 import { adSpend, catalogItems, whatsappTemplates, type User } from "@shared/schema";
 import { DEFAULT_WHATSAPP_TEMPLATES } from "@shared/whatsapp-templates";
 import { logAudit } from "../security/audit";
+import { metaCustomerListCsv } from "../metaCustomerList";
 import { requireAuth, requireRole } from "./shared";
 import { getConfiguredDeliveryDays } from "../orderProcess";
 import { effectiveDueAt } from "@shared/order-process";
@@ -20,6 +21,21 @@ const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const PUBLIC_CATALOG_ORIGINS = new Set(["https://pixelycareers.com", "https://www.pixelycareers.com"]);
 
 export function registerGrowthRoutes(app: Express) {
+  /** Settings → Data: Meta customer list CSV (admin, read-only, audited). */
+  app.get("/api/exports/meta-customer-list.csv", requireRole(["admin"]), async (req, res) => {
+    try {
+      const { csv, rows } = await metaCustomerListCsv();
+      void logAudit({ action: "export", actor: req.user as User, targetType: "export", targetId: "meta_customer_list", details: { rows }, req });
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="meta-customer-list-${new Date().toISOString().slice(0, 10)}.csv"`);
+      res.setHeader("Cache-Control", "no-store");
+      res.send(csv);
+    } catch (err) {
+      console.error("[export] meta customer list failed:", err);
+      res.status(500).json({ message: "Couldn't build the customer list." });
+    }
+  });
+
   // ---- WhatsApp templates -------------------------------------------------------
   app.get("/api/whatsapp-templates", requireAuth, async (req, res) => {
     const user = req.user as User;

@@ -46,6 +46,8 @@ import {
   Moon,
   Monitor,
   MessageCircle,
+  Database,
+  Download,
 } from "lucide-react";
 import SecuritySettings from "@/components/SecuritySettings";
 import { CatalogItemsSection, WhatsAppTemplatesSection } from "@/components/GrowthSettings";
@@ -80,7 +82,7 @@ function DeliveryDaysInput({ value, fallback, disabled, onSave }: { value: numbe
 
 const TeamPage = lazy(() => import("./TeamPage"));
 const NotificationSettingsPage = lazy(() => import("./NotificationSettingsPage"));
-const SETTINGS_TABS = ["catalog", "whatsapp", "team", "notifications", "security", "appearance"] as const;
+const SETTINGS_TABS = ["catalog", "whatsapp", "team", "notifications", "security", "data", "appearance"] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 function AppearanceSection() {
@@ -138,6 +140,7 @@ export default function AdminSettingsPage() {
           <TabsTrigger value="team" className={trigger} data-testid="settings-tab-team"><Users className="h-4 w-4" />Team</TabsTrigger>
           <TabsTrigger value="notifications" className={trigger} data-testid="settings-tab-notifications"><BellRing className="h-4 w-4" />Notifications</TabsTrigger>
           <TabsTrigger value="security" className={trigger} data-testid="settings-tab-security"><Shield className="h-4 w-4" />Security log</TabsTrigger>
+          <TabsTrigger value="data" className={trigger} data-testid="settings-tab-data"><Database className="h-4 w-4" />Data</TabsTrigger>
           <TabsTrigger value="appearance" className={trigger} data-testid="settings-tab-appearance"><Palette className="h-4 w-4" />Appearance</TabsTrigger>
         </TabsList>
 
@@ -165,6 +168,9 @@ export default function AdminSettingsPage() {
           <SecuritySettings />
         </TabsContent>
 
+        <TabsContent value="data">
+          <DataExportsSection />
+        </TabsContent>
         <TabsContent value="appearance">
           <AppearanceSection />
         </TabsContent>
@@ -982,5 +988,23 @@ function PlatformsSection() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+function DataExportsSection() {
+  return (
+    <section className="rounded-xl border border-border bg-card p-5" data-testid="section-data-exports">
+      <h2 className="font-semibold text-slate-200">Data exports</h2>
+      <p className="mt-1 text-sm text-slate-500">Read-only downloads. Every export is recorded in the Security log.</p>
+      <div className="mt-4 flex flex-col gap-3 rounded-lg border border-slate-800 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="font-medium text-white">Meta customer list CSV</p>
+          <p className="text-sm text-slate-500">One row per client (by phone) with at least one approved payment. Columns: phone, email, fn, ln, country, value (PKR paid). For a Custom / Value-based Lookalike audience in Meta Ads.</p>
+        </div>
+        <Button asChild className="shrink-0" data-testid="button-export-meta-list">
+          <a href="/api/exports/meta-customer-list.csv" download><Download className="mr-2 h-4 w-4" />Download CSV</a>
+        </Button>
+      </div>
+    </section>
   );
 }
