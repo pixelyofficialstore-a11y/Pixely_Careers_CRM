@@ -379,6 +379,8 @@ export default function PaymentsPage() {
         )}
       </div>
 
+      {isAdmin && <WebsiteApprovals />}
+
       {isAdmin && (
         <section aria-labelledby="verify-heading" className="space-y-3">
           <h2 id="verify-heading" className="flex items-center gap-2 text-base font-semibold text-slate-200">
@@ -722,5 +724,30 @@ export default function PaymentsPage() {
 
       {(isAdmin || user?.role === "support") && <RefundsQueue isAdmin={isAdmin} />}
     </div>
+  );
+}
+
+/** Website requests that support sent for approval. Admin places them on Website Requests. */
+function WebsiteApprovals() {
+  const { data } = useQuery<{ rows: Array<{ id: string; name: string | null; package: string; total: number; currency: string; submitted_at: string | null; created_at: string; last_change?: { by: string | null } | null }> }>({
+    queryKey: ["/api/website-requests/orders?status=awaiting_approval&page=1"],
+  });
+  const rows = data?.rows ?? [];
+  if (rows.length === 0) return null;
+  return (
+    <section className="space-y-3" data-testid="section-website-approvals">
+      <h2 className="text-base font-semibold text-slate-200">Website requests waiting for approval · {rows.length}</h2>
+      <div className="divide-y divide-slate-800 rounded-xl border border-border bg-card">
+        {rows.map(r => (
+          <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+            <div className="min-w-0">
+              <p className="truncate font-medium text-white">{r.name || "—"} <span className="text-slate-400">· {r.package.replace(/_/g, " ")} · {(r.currency || "PKR").toUpperCase() === "PKR" ? "Rs" : r.currency} {Math.round(Number(r.total || 0)).toLocaleString("en-US")}</span></p>
+              <p className="text-xs text-slate-500">Sent by {(r.last_change?.by || "support").split(" ")[0]} · {format(new Date(r.submitted_at || r.created_at), "d MMM, HH:mm")}</p>
+            </div>
+            <Button size="sm" asChild data-testid={`button-review-website-${r.id}`}><a href={`/website-requests?tab=orders&q=${encodeURIComponent(r.name || "")}`}>Review &amp; place</a></Button>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }

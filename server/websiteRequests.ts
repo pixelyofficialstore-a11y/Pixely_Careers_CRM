@@ -137,6 +137,8 @@ function buildWhere(cfg: ListConfig, query: Record<string, any>) {
   return { status, where: where.join(" AND "), params };
 }
 
+const STATUS_ACTIONS = ["placed", "approved_and_placed", "rejected", "declined", "contacted", "status_changed", "reopened", "sent_for_approval", "converted"];
+
 async function runList(cfg: ListConfig, query: Record<string, any>) {
   const parsed = listQuerySchema.safeParse(query);
   if (!parsed.success) throw new HttpError(400, "Invalid filters");
@@ -149,7 +151,17 @@ async function runList(cfg: ListConfig, query: Record<string, any>) {
     params,
   );
   const total = rows[0] ? Number(rows[0].__total) : 0;
-  return { rows: rows.map(({ __total, ...r }: any) => r), total, page, pageSize, status };
+  const last = new Map<string, any>();
+  if (rows.length) {
+    const acts = await pool.query(
+      `SELECT DISTINCT ON (a.request_id) a.request_id::text AS rid, a.action, a.details, a.created_at, u.name AS actor_name
+       FROM website_request_activity a LEFT JOIN users u ON u.id = a.actor_id
+       WHERE a.request_id::text = ANY($1::text[]) AND a.action = ANY($2::text[])
+       ORDER BY a.request_id, a.created_at DESC, a.id DESC`,
+      [rows.map((r: any) => String(r.id)), STATUS_ACTIONS]);
+    for (const a of acts.rows) last.set(a.rid, { action: a.action, to: a.details?.to ?? null, by: a.actor_name, at: a.created_at });
+  }
+  return { rows: rows.map(({ __total, ...r }: any) => ({ ...r, last_change: last.get(String(r.id)) ?? null })), total, page, pageSize, status };
 }
 
 function csvCell(value: unknown) {
@@ -194,7 +206,12 @@ const LIVE_SQL = `status NOT IN ('cart','abandoned')`;
 const ORDER_STATUSES: Record<string, string> = {
   paid: `${PENDING_SQL} AND ${HAS_PAY_SQL}`,
   paid_all: `${LIVE_SQL} AND ${HAS_PAY_SQL}`,
-  talk: `${PENDING_SQL} AND NOT ${HAS_PAY_SQL}`,
+  paid_placed: `${CONVERTED_SQL} AND ${HAS_PAY_SQL}`,
+  paid_rejected: `status = 'rejected' AND ${HAS_PAY_SQL}`,
+  talk: `${PENDING_SQL} AND status <> 'contacted' AND NOT ${HAS_PAY_SQL}`,
+  talk_contacted: `status = 'contacted' AND crm_order_id IS NULL AND NOT ${HAS_PAY_SQL}`,
+  talk_placed: `${CONVERTED_SQL} AND NOT ${HAS_PAY_SQL}`,
+  talk_rejected: `status = 'rejected' AND NOT ${HAS_PAY_SQL}`,
   talk_all: `${LIVE_SQL} AND NOT ${HAS_PAY_SQL}`,
   pending: PENDING_SQL,
   paid_full: `${PENDING_SQL} AND ${PAY_FULL_SQL}`,
@@ -304,8 +321,8 @@ const PARTNER_STATUS_VALUES = ["new", "contacted", "trial", "active", "lost"] as
 const PARTNERS_CFG: ListConfig = {
   table: "website.partners",
   columns: PARTNER_COLUMNS,
-  statuses: { open: `status <> 'lost'`, ...Object.fromEntries(PARTNER_STATUS_VALUES.map(s => [s, `status = '${s}'`])), all: `TRUE` },
-  defaultStatus: "open",
+  statuses: { open: `status <> 'lost'`, call: `status IN ('contacted','trial')`, closed: `status = 'active'`, ...Object.fromEntries(PARTNER_STATUS_VALUES.map(s => [s, `status = '${s}'`])), all: `TRUE` },
+  defaultStatus: "new",
   searchColumns: ["org_name", "contact_name", "whatsapp", "email", "country_hq"],
   extraFilters: { country: "country_hq" },
   csv: [
@@ -653,6 +670,29 @@ export function registerWebsiteRequestRoutes(app: Express, deps: Deps) {
     } catch (err) { fail(res, req, err, "Mark contacted"); }
   });
 
+  /** Row status dropdown: back to New, or Contacted. Placed/Rejected use their own flows. */
+  app.post(`${base}/orders/:id/status`, guard, async (req, res) => {
+    const user = req.user as User;
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ message: "Invalid request id" });
+    const body = z.object({ status: z.enum(["new", "contacted"]) }).safeParse(req.body);
+    if (!body.success) return res.status(400).json({ message: "Invalid status" });
+    try {
+      const cur = (await pool.query(`SELECT status::text AS status, crm_order_id, ${HAS_PAY_SQL} AS has_pay FROM website.orders WHERE id = $1`, [id])).rows[0];
+      if (!cur) return res.status(404).json({ message: "Request not found" });
+      if (cur.crm_order_id) return res.status(409).json({ message: "This request is already placed." });
+      const next = body.data.status === "contacted" ? "contacted" : cur.has_pay ? "payment_submitted" : "new";
+      if (body.data.status === "contacted" && cur.has_pay) return res.status(409).json({ message: "Paid requests don't use Contacted." });
+      if (cur.status === next) return res.json(await getOrderRequest(id));
+      await pool.query(
+        `UPDATE website.orders SET status = $2::website.order_status,
+           contacted_at = CASE WHEN $2 = 'contacted' THEN COALESCE(contacted_at, NOW()) ELSE contacted_at END, updated_at = NOW()
+         WHERE id = $1`, [id, next]);
+      await logActivity(id, user.id, next === "contacted" ? "contacted" : "reopened", { from: cur.status, to: next });
+      res.json(await getOrderRequest(id));
+    } catch (err) { fail(res, req, err, "Changing status"); }
+  });
+
   /** Screenshot for "Record advance" (private Cloudinary file; returns /api/files/:id). */
   const advanceUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 },
     fileFilter: (_req, file, cb) => cb(null, ["image/png", "image/jpeg", "image/webp"].includes(file.mimetype)) });
@@ -894,11 +934,12 @@ export function registerWebsiteRequestRoutes(app: Express, deps: Deps) {
     if (!id) return res.status(400).json({ message: "Invalid partner id" });
     const body = z.object({
       status: z.enum(PARTNER_STATUS_VALUES).optional(),
+      reason: z.enum(REJECT_REASONS).optional(),
       notes: z.string().max(5000).optional(),
     }).refine(b => b.status !== undefined || b.notes !== undefined, "Nothing to update").safeParse(req.body);
     if (!body.success) return res.status(400).json({ message: body.error.issues[0]?.message || "Invalid update" });
     const user = req.user as User;
-    const { status, notes } = body.data;
+    const { status, notes, reason } = body.data;
     try {
       await db.transaction(async tx => {
         const row = rowsOf(await tx.execute(sql`SELECT id, status::text AS status FROM website.partners WHERE id = ${id} FOR UPDATE`))[0];
@@ -908,7 +949,7 @@ export function registerWebsiteRequestRoutes(app: Express, deps: Deps) {
             UPDATE website.partners SET status = ${status}::website.partner_status,
               contacted_at = CASE WHEN ${status} = 'contacted' THEN COALESCE(contacted_at, NOW()) ELSE contacted_at END
             WHERE id = ${id}`);
-          await logActivity(id, user.id, "status_changed", { from: row.status, to: status }, tx);
+          await logActivity(id, user.id, "status_changed", { from: row.status, to: status, reason: reason ?? null }, tx);
         } else if (status && notes === undefined) {
           throw new HttpError(409, `This partner is already "${status}".`);
         }

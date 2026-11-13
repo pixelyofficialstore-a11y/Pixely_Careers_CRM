@@ -44,6 +44,7 @@ type WebsiteOrder = {
   id: string; created_at: string; updated_at: string; market: string | null; country: string | null;
   utm_source: string | null; utm_medium: string | null; utm_campaign: string | null;
   utm_content?: string | null; landing_page?: string | null; referrer?: string | null;
+  last_change?: LastChange | null;
   status: string; package: string; package_price: number; addons: Addon[] | null; same_day: boolean; offer: string | null;
   is_bundle: boolean; pay_choice: string | null; discount: number; subtotal: number; total: number; currency: string;
   name: string | null; whatsapp: string | null; email: string | null; target_country: string | null; target_role: string | null;
@@ -70,6 +71,7 @@ type CvReviewDetail = CvReview & { activity: Activity[]; crmOrder: { id: number;
 
 type Partner = {
   id: string; created_at: string; market: string | null; utm_source: string | null; utm_campaign: string | null;
+  last_change?: LastChange | null;
   status: string; org_name: string; org_type: string | null; contact_name: string; designation: string | null; whatsapp: string;
   email: string | null; country_hq: string | null; destinations: string | null; monthly_volume: string | null; model: string | null;
   notes: string | null; internal_notes: string | null; contacted_at: string | null;
@@ -93,6 +95,11 @@ const TAB_LABELS: Record<TabKey, string> = { orders: "Orders", reviews: "Free CV
 const STATUS_FILTERS: Record<TabKey, Array<{ value: string; label: string }>> = {
   orders: [
     { value: "paid", label: "Paid" },
+    { value: "paid_placed", label: "Placed" },
+    { value: "paid_rejected", label: "Rejected" },
+    { value: "talk_contacted", label: "Contacted" },
+    { value: "talk_placed", label: "Placed" },
+    { value: "talk_rejected", label: "Not interested" },
     { value: "paid_all", label: "Paid (all)" },
     { value: "talk", label: "Talk first" },
     { value: "talk_all", label: "Talk first (all)" },
@@ -115,6 +122,8 @@ const STATUS_FILTERS: Record<TabKey, Array<{ value: string; label: string }>> = 
   ],
   partners: [
     { value: "open", label: "Open" },
+    { value: "call", label: "Call scheduled" },
+    { value: "closed", label: "Closed" },
     { value: "new", label: "New" },
     { value: "contacted", label: "Contacted" },
     { value: "trial", label: "Trial" },
@@ -123,8 +132,26 @@ const STATUS_FILTERS: Record<TabKey, Array<{ value: string; label: string }>> = 
     { value: "all", label: "All" },
   ],
 };
-const DEFAULT_STATUS: Record<TabKey, string> = { orders: "paid", reviews: "new", partners: "open" };
+const DEFAULT_STATUS: Record<TabKey, string> = { orders: "paid", reviews: "new", partners: "new" };
 type View = "paid" | "talk" | "partners";
+type LastChange = { action: string; to: string | null; by: string | null; at: string };
+// Row statuses per view. Old DB values are mapped here; nothing is rewritten.
+const ROW_STATUSES: Record<View, Array<{ key: string; label: string; filter: string }>> = {
+  paid: [{ key: "new", label: "New", filter: "paid" }, { key: "placed", label: "Placed", filter: "paid_placed" }, { key: "rejected", label: "Rejected", filter: "paid_rejected" }],
+  talk: [{ key: "new", label: "New", filter: "talk" }, { key: "contacted", label: "Contacted", filter: "talk_contacted" }, { key: "placed", label: "Placed", filter: "talk_placed" }, { key: "rejected", label: "Not interested", filter: "talk_rejected" }],
+  partners: [{ key: "new", label: "New", filter: "new" }, { key: "call", label: "Call scheduled", filter: "call" }, { key: "closed", label: "Closed", filter: "closed" }, { key: "lost", label: "Not interested", filter: "lost" }],
+};
+const ALL_FILTER: Record<View, string> = { paid: "paid_all", talk: "talk_all", partners: "all" };
+const PARTNER_DB: Record<string, string> = { new: "new", call: "contacted", closed: "active", lost: "lost" };
+const orderRowStatus = (r: { status: string; crm_order_id: number | string | null }) =>
+  r.crm_order_id || r.status === "converted" || r.status === "paid" ? "placed" : r.status === "rejected" ? "rejected" : r.status === "contacted" ? "contacted" : "new";
+const partnerRowStatus = (st: string) => (st === "contacted" || st === "trial" ? "call" : st === "active" ? "closed" : st === "lost" ? "lost" : "new");
+const ACTION_VERB: Record<string, string> = { placed: "Placed", approved_and_placed: "Placed", converted: "Placed", rejected: "Rejected", declined: "Declined", contacted: "Contacted", reopened: "Reopened", sent_for_approval: "Sent for approval" };
+function whoLine(lc: LastChange | null | undefined, statusLabel: string) {
+  if (!lc) return null;
+  const verb = lc.action === "status_changed" ? statusLabel : ACTION_VERB[lc.action] ?? statusLabel;
+  return `${verb} by ${(lc.by || "someone").split(" ")[0]} · ${format(new Date(lc.at), "d MMM, HH:mm")}`;
+}
 const VIEW_LABELS: Record<View, string> = { paid: "Paid", talk: "Talk first", partners: "Partners" };
 const balanceOf = (r: WebsiteOrder) => Math.max(0, (r.total || 0) - paidToday(r));
 const TABLE_TEXT: Record<TabKey, { title: string; subtitle: string; search: string }> = {
@@ -660,13 +687,11 @@ export default function WebsiteRequestsPage() {
     navigate(`/website-requests?${p.toString()}`, { replace: true });
   };
   const view: View = tab === "partners" ? "partners" : status.startsWith("talk") ? "talk" : "paid";
-  const completed = status.endsWith("_all") || (tab === "partners" && status === "all");
   const switchView = (v: View) => {
     if (v === view) return;
     setSearchInput("");
     navigate(`/website-requests?tab=${v === "partners" ? "partners" : "orders"}${v === "talk" ? "&status=talk" : ""}`, { replace: false });
   };
-  const toggleCompleted = () => setFilters({ status: view === "partners" ? (completed ? "" : "all") : completed ? (view === "paid" ? "" : "talk") : `${view}_all` });
 
   // Debounced search (300ms) → URL.
   const [searchInput, setSearchInput] = useState(filters.q);
@@ -678,7 +703,8 @@ export default function WebsiteRequestsPage() {
   }, [searchInput]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const queryString = useMemo(() => {
-    const p = new URLSearchParams({ status, page: String(filters.page) });
+    // Search covers every status of the tab.
+    const p = new URLSearchParams({ status: filters.q ? ALL_FILTER[view] : status, page: String(filters.page) });
     if (filters.q) p.set("q", filters.q);
     if (filters.from) p.set("from", new Date(`${filters.from}T00:00:00`).toISOString());
     if (filters.to) p.set("to", new Date(`${filters.to}T23:59:59.999`).toISOString());
@@ -686,11 +712,11 @@ export default function WebsiteRequestsPage() {
     if (tab === "orders" && filters.package !== "all") p.set("package", filters.package);
     if (tab === "partners" && filters.country !== "all") p.set("country", filters.country);
     return p.toString();
-  }, [tab, status, filters]);
+  }, [tab, view, status, filters]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [advanceTarget, setAdvanceTarget] = useState<WebsiteOrder | null>(null);
-  const [rejectTarget, setRejectTarget] = useState<{ kind: "order" | "review"; id: string; name: string | null; awaiting: boolean; amount?: string } | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<{ kind: "order" | "review" | "partner"; id: string; name: string | null; awaiting: boolean; amount?: string } | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [rejectNote, setRejectNote] = useState("");
   const [editTarget, setEditTarget] = useState<WebsiteOrder | null>(null);
@@ -815,6 +841,7 @@ export default function WebsiteRequestsPage() {
       setBusy(v.id, false);
       queryClient.invalidateQueries({ queryKey: [`${BASE}/${v.tab}/stats`] });
       queryClient.invalidateQueries({ queryKey: [`${BASE}/${v.tab}`, v.id] });
+      refreshTab(v.tab);
       refreshCounts();
     },
   });
@@ -851,9 +878,7 @@ export default function WebsiteRequestsPage() {
       <div className="flex min-w-0 items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
         {talk && r.whatsapp && <Button asChild size="sm" variant="outline" className="h-8 px-2.5 text-xs"><a href={waLink(r.whatsapp)} target="_blank" rel="noopener noreferrer" data-testid={`button-open-whatsapp-${r.id}`}><MessageCircle className="mr-1 h-3.5 w-3.5" />WhatsApp</a></Button>}
         {talk ? (
-          r.status === "contacted"
-            ? <span className="text-xs text-cyan-300">Contacted</span>
-            : <PrimaryButton busy={busy} icon={MessageCircle} onClick={() => run({ tab: "orders", id: r.id, method: "POST", path: "/contacted", optimistic: { status: "contacted" }, success: "Marked contacted" })} testId={`button-contacted-${r.id}`}>Mark contacted</PrimaryButton>
+          r.status === "contacted" ? null : <PrimaryButton busy={busy} icon={MessageCircle} onClick={() => run({ tab: "orders", id: r.id, method: "POST", path: "/contacted", optimistic: { status: "contacted" }, success: "Marked contacted" })} testId={`button-contacted-${r.id}`}>Mark contacted</PrimaryButton>
         ) : isAdmin ? (
           <PlacePopover r={r} busy={busy} platformNames={platformNames} label={awaiting ? "Approve & place" : "Verify & place"} onConfirm={(designerId) => placeOrder(r, designerId)} onEdit={() => openEdit(r)} />
         ) : (
@@ -902,6 +927,43 @@ export default function WebsiteRequestsPage() {
   // ── Partners tab actions ──
   const setPartnerStatus = (p: Partner, next: string) =>
     run({ tab: "partners", id: p.id, method: "PATCH", path: "", body: { status: next }, optimistic: { status: next }, success: `Marked as ${STATUS_STYLES[next]?.label.toLowerCase() ?? next}` });
+  const changeStatus = (kind: "order" | "partner", r: WebsiteOrder | Partner, next: string) => {
+    const name = kind === "order" ? (r as WebsiteOrder).name : (r as Partner).org_name;
+    const lc = { action: "status_changed", to: next, by: user?.name ?? null, at: new Date().toISOString() };
+    if (next === "rejected" || next === "lost") {
+      setRejectTarget({ kind, id: r.id, name, awaiting: r.status === "pending_approval" });
+      if (view !== "paid") setRejectReason("not_interested");
+      return;
+    }
+    if (kind === "partner") {
+      run({ tab: "partners", id: r.id, method: "PATCH", path: "", body: { status: PARTNER_DB[next] }, optimistic: { status: PARTNER_DB[next], last_change: lc }, success: "Status saved" });
+    } else {
+      run({ tab: "orders", id: r.id, method: "POST", path: "/status", body: { status: next }, optimistic: { last_change: lc }, success: "Status saved" });
+    }
+  };
+  const renderStatus = (kind: "order" | "partner", r: WebsiteOrder | Partner) => {
+    const cur = kind === "order" ? orderRowStatus(r as WebsiteOrder) : partnerRowStatus(r.status);
+    const opts = ROW_STATUSES[view];
+    const label = opts.find(o => o.key === cur)?.label ?? cur;
+    const locked = cur === "placed";
+    const who = whoLine(r.last_change, label);
+    return (
+      <div className="min-w-0" onClick={e => e.stopPropagation()}>
+        <Select value={cur} disabled={locked || busyIds.has(r.id)} onValueChange={v => v !== cur && changeStatus(kind, r, v)}>
+          <SelectTrigger className="h-8 w-full max-w-[150px] text-xs" data-testid={`select-row-status-${r.id}`}><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {opts.map(o => <SelectItem key={o.key} value={o.key} disabled={o.key === "placed"}>{o.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        {kind === "order" && r.status === "pending_approval" && <p className="mt-1 text-[11px] text-orange-200">Waiting for admin</p>}
+        {who && <p className="mt-1 truncate text-[11px] text-slate-500" title={who} data-testid={`who-${r.id}`}>{who}</p>}
+      </div>
+    );
+  };
+
+  const partnerAction = (p: Partner) => p.whatsapp
+    ? <Button asChild size="sm" variant="outline" className="h-8 px-2.5 text-xs" onClick={e => e.stopPropagation()}><a href={waLink(p.whatsapp)} target="_blank" rel="noopener noreferrer" aria-label="Open WhatsApp"><MessageCircle className="h-3.5 w-3.5" /></a></Button>
+    : null;
   const renderPartnerActions = (p: Partner) => {
     const busy = busyIds.has(p.id);
     const primary: Record<string, { next: string; label: string; icon: React.ElementType } | undefined> = {
@@ -941,22 +1003,22 @@ export default function WebsiteRequestsPage() {
   // Column layouts (fixed widths → no horizontal scroll).
   const cols: Record<View, Array<{ label: string; width: string; className?: string }>> = {
     paid: [
-      { label: "Received", width: "9%" }, { label: "Client", width: "18%" }, { label: "Package", width: "14%" },
+      { label: "Received", width: "8%" }, { label: "Client", width: "13%" }, { label: "Package", width: "11%" },
       { label: "Total", width: "9%" }, { label: "Paid", width: "9%" }, { label: "Balance", width: "9%" },
-      { label: "Proof", width: "6%" }, { label: "Action", width: "26%", className: "text-right" },
+      { label: "Proof", width: "6%" }, { label: "Status", width: "16%" }, { label: "Action", width: "19%", className: "text-right" },
     ],
     talk: [
-      { label: "Received", width: "12%" }, { label: "Client", width: "26%" }, { label: "Package", width: "20%" },
-      { label: "Total", width: "12%" }, { label: "Action", width: "30%", className: "text-right" },
+      { label: "Received", width: "10%" }, { label: "Client", width: "22%" }, { label: "Package", width: "17%" },
+      { label: "Total", width: "10%" }, { label: "Status", width: "16%" }, { label: "Action", width: "25%", className: "text-right" },
     ],
     partners: [
-      { label: "Received", width: "11%" }, { label: "Organization", width: "22%" }, { label: "Contact", width: "22%" },
-      { label: "Country", width: "13%" }, { label: "Monthly volume", width: "13%" }, { label: "Action", width: "19%", className: "text-right" },
+      { label: "Received", width: "10%" }, { label: "Organization", width: "20%" }, { label: "Contact", width: "21%" },
+      { label: "Country", width: "11%" }, { label: "Monthly volume", width: "12%" }, { label: "Status", width: "16%" }, { label: "Action", width: "10%", className: "text-right" },
     ],
   };
   const columns = cols[view];
 
-  const emptyText = hasFilters ? "No requests match your search." : completed ? "No requests yet" : "Nothing waiting here.";
+  const emptyText = hasFilters ? "No requests match your search." : "Nothing here.";
 
   return (
     <div className="crm-page space-y-5">
@@ -983,10 +1045,13 @@ export default function WebsiteRequestsPage() {
           <Input placeholder={TABLE_TEXT[tab].search} className="pl-10" value={searchInput} onChange={e => setSearchInput(e.target.value)} data-testid="input-search-website-requests" />
           {(list.isFetching || searchInput.trim() !== filters.q) && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-500" />}
         </div>
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-400" data-testid="toggle-show-completed">
-          <input type="checkbox" checked={completed} onChange={toggleCompleted} className="h-4 w-4 accent-[hsl(var(--primary))]" />
-          Show completed
-        </label>
+        <Select value={status === ALL_FILTER[view] ? "all" : status} onValueChange={v => setFilters({ status: v === "all" ? ALL_FILTER[view] : v === DEFAULT_STATUS[tab] ? "" : v })}>
+          <SelectTrigger className="w-full sm:w-44" data-testid="select-status-filter"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All</SelectItem>
+            {ROW_STATUSES[view].map(o => <SelectItem key={o.filter} value={o.filter}>{o.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-card">
@@ -999,7 +1064,7 @@ export default function WebsiteRequestsPage() {
                 <div className="flex items-baseline justify-between gap-2"><p className="truncate font-semibold text-white">{r.name || "—"}</p><span className="shrink-0 text-xs text-slate-500">{timeAgo(r.created_at)}</span></div>
                 <p className="truncate text-sm text-slate-300">{packageLabel(r.package)}</p>
                 <p className="text-xs text-slate-400">Total <span className="text-white">{money(r.total, r.currency)}</span>{view === "paid" && <> · Paid <span className="text-emerald-300">{money(paid, r.currency)}</span> · Balance <span className="text-amber-200">{money(balanceOf(r), r.currency)}</span></>}</p>
-                <div className="flex justify-end pt-1" onClick={e => e.stopPropagation()}>{renderOrderActions(r)}</div>
+                <div className="flex items-start justify-between gap-2 pt-1" onClick={e => e.stopPropagation()}><div className="w-36">{renderStatus("order", r)}</div>{renderOrderActions(r)}</div>
               </div>
             ); })}
           </div>
@@ -1012,7 +1077,7 @@ export default function WebsiteRequestsPage() {
                 <div className="flex items-baseline justify-between gap-2"><p className="truncate font-semibold text-white">{p.org_name}</p><span className="shrink-0 text-xs text-slate-500">{timeAgo(p.created_at)}</span></div>
                 <p className="truncate text-sm text-slate-300">{p.contact_name || "—"}{p.country_hq ? ` · ${p.country_hq}` : ""}</p>
                 <p className="text-xs text-slate-400">Monthly volume <span className="text-white">{p.monthly_volume || "—"}</span></p>
-                <div className="flex justify-end pt-1" onClick={e => e.stopPropagation()}>{renderPartnerActions(p)}</div>
+                <div className="flex items-start justify-between gap-2 pt-1" onClick={e => e.stopPropagation()}><div className="w-36">{renderStatus("partner", p)}</div>{partnerAction(p)}</div>
               </div>
             ))}
           </div>
@@ -1053,6 +1118,7 @@ export default function WebsiteRequestsPage() {
                       : <span className="text-slate-600">—</span>}
                   </TableCell>
                 </>}
+                <TableCell>{renderStatus("order", r)}</TableCell>
                 <TableCell className="text-right">{renderOrderActions(r)}</TableCell>
               </TableRow>
             ))}
@@ -1085,7 +1151,8 @@ export default function WebsiteRequestsPage() {
                 </TableCell>
                 <TableCell><p className="truncate text-sm text-slate-300">{p.country_hq || "—"}</p></TableCell>
                 <TableCell><p className="truncate text-sm text-slate-300">{p.monthly_volume || "—"}</p></TableCell>
-                <TableCell className="text-right">{renderPartnerActions(p)}</TableCell>
+                <TableCell>{renderStatus("partner", p)}</TableCell>
+                <TableCell className="text-right">{partnerAction(p)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -1142,7 +1209,7 @@ export default function WebsiteRequestsPage() {
       {/* Reject / Decline dialog */}
       <Dialog open={!!rejectTarget} onOpenChange={open => { if (!open) { setRejectTarget(null); setRejectReason(""); setRejectNote(""); } }}>
         <DialogContent className="max-w-sm border-slate-800 bg-slate-900">
-          <DialogHeader><DialogTitle className="text-white">{rejectTarget?.awaiting ? "Decline request" : "Reject request"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-white">{rejectTarget?.awaiting ? "Decline request" : view === "paid" ? "Reject request" : "Not interested"}</DialogTitle></DialogHeader>
           <p className="text-sm text-slate-400">{rejectTarget?.name || "Customer"}{rejectTarget?.amount ? ` · ${rejectTarget.amount}` : ""}</p>
           <div className="space-y-2">
             <Label className="text-slate-300">Reason *</Label>
@@ -1164,6 +1231,8 @@ export default function WebsiteRequestsPage() {
                 const done = () => { setRejectTarget(null); setRejectReason(""); setRejectNote(""); };
                 if (rejectTarget.kind === "order") {
                   run({ tab: "orders", id: rejectTarget.id, method: "POST", path: "/reject", body: { reason: rejectReason, note: rejectNote.trim() || null }, optimistic: { status: "rejected", reject_reason: rejectReason }, success: rejectTarget.awaiting ? "Request declined" : "Request rejected", onDone: done });
+                } else if (rejectTarget.kind === "partner") {
+                  run({ tab: "partners", id: rejectTarget.id, method: "PATCH", path: "", body: { status: "lost", reason: rejectReason }, optimistic: { status: "lost" }, success: "Marked not interested", onDone: done });
                 } else {
                   run({ tab: "reviews", id: rejectTarget.id, method: "PATCH", path: "", body: { status: "rejected", reason: rejectReason }, optimistic: { status: "rejected", reject_reason: rejectReason }, success: "Review rejected", onDone: done });
                 }
@@ -1171,7 +1240,7 @@ export default function WebsiteRequestsPage() {
               data-testid="button-confirm-reject"
             >
               {rejectTarget && busyIds.has(rejectTarget.id) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              {rejectTarget?.awaiting ? "Decline" : "Reject"}
+              {rejectTarget?.awaiting ? "Decline" : view === "paid" ? "Reject" : "Save"}
             </Button>
           </div>
         </DialogContent>
