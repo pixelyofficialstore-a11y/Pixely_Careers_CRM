@@ -189,7 +189,13 @@ const PAY_FULL_SQL = `lower(coalesce(pay_choice,'')) IN ('now','full','paid_full
 const PAY_HALF_SQL = `lower(coalesce(pay_choice,'')) IN ('half','advance','partial','50','paid_half')`;
 const PAY_TALK_SQL = `NOT (${PAY_FULL_SQL}) AND NOT (${PAY_HALF_SQL})`;
 const PENDING_SQL = `crm_order_id IS NULL AND status NOT IN ('rejected','cart','abandoned','converted','paid')`;
+const HAS_PAY_SQL = `(${PAY_FULL_SQL} OR ${PAY_HALF_SQL} OR coalesce(paid_amount,0) > 0)`;
+const LIVE_SQL = `status NOT IN ('cart','abandoned')`;
 const ORDER_STATUSES: Record<string, string> = {
+  paid: `${PENDING_SQL} AND ${HAS_PAY_SQL}`,
+  paid_all: `${LIVE_SQL} AND ${HAS_PAY_SQL}`,
+  talk: `${PENDING_SQL} AND NOT ${HAS_PAY_SQL}`,
+  talk_all: `${LIVE_SQL} AND NOT ${HAS_PAY_SQL}`,
   pending: PENDING_SQL,
   paid_full: `${PENDING_SQL} AND ${PAY_FULL_SQL}`,
   paid_half: `${PENDING_SQL} AND ${PAY_HALF_SQL}`,
@@ -210,7 +216,7 @@ const ORDERS_CFG: ListConfig = {
   table: "website.orders",
   columns: ORDER_COLUMNS,
   statuses: ORDER_STATUSES,
-  defaultStatus: "pending",
+  defaultStatus: "paid",
   searchColumns: ["name", "whatsapp", "transaction_id", "email"],
   extraFilters: { market: "market", package: "package" },
   csv: [
@@ -298,8 +304,8 @@ const PARTNER_STATUS_VALUES = ["new", "contacted", "trial", "active", "lost"] as
 const PARTNERS_CFG: ListConfig = {
   table: "website.partners",
   columns: PARTNER_COLUMNS,
-  statuses: { ...Object.fromEntries(PARTNER_STATUS_VALUES.map(s => [s, `status = '${s}'`])), all: `TRUE` },
-  defaultStatus: "new",
+  statuses: { open: `status <> 'lost'`, ...Object.fromEntries(PARTNER_STATUS_VALUES.map(s => [s, `status = '${s}'`])), all: `TRUE` },
+  defaultStatus: "open",
   searchColumns: ["org_name", "contact_name", "whatsapp", "email", "country_hq"],
   extraFilters: { country: "country_hq" },
   csv: [
@@ -324,6 +330,8 @@ export function registerWebsiteRequestRoutes(app: Express, deps: Deps) {
       const { rows } = await pool.query(`
         SELECT
           (SELECT COUNT(*) FROM website.orders WHERE ${ORDER_NEW_SQL})::int AS orders_new,
+          (SELECT COUNT(*) FROM website.orders WHERE ${ORDER_NEW_SQL} AND ${HAS_PAY_SQL})::int AS paid_new,
+          (SELECT COUNT(*) FROM website.orders WHERE ${ORDER_NEW_SQL} AND NOT ${HAS_PAY_SQL})::int AS talk_new,
           (SELECT COUNT(*) FROM website.orders WHERE ${ORDER_STATUSES.awaiting_approval})::int AS awaiting_approval,
           (SELECT COUNT(*) FROM website.cv_reviews WHERE status = 'new')::int AS reviews_new,
           (SELECT COUNT(*) FROM website.partners WHERE status = 'new')::int AS partners_new,
@@ -340,6 +348,8 @@ export function registerWebsiteRequestRoutes(app: Express, deps: Deps) {
         orders_new: r.orders_new,
         reviews_new: r.reviews_new,
         partners_new: r.partners_new,
+        paid_new: r.paid_new,
+        talk_new: r.talk_new,
         awaiting_approval: r.awaiting_approval,
         latest: { orders: ms(r.latest_order), reviews: ms(r.latest_review), partners: ms(r.latest_partner) },
         version: { orders: r.v_orders, reviews: r.v_reviews, partners: r.v_partners },

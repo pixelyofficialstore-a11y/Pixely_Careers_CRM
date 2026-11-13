@@ -78,7 +78,7 @@ type PartnerDetail = Partner & { activity: Activity[] };
 
 type ListPage<T> = { rows: T[]; total: number; page: number; pageSize: number; status: string };
 type Counts = {
-  orders_new: number; reviews_new: number; partners_new: number; awaiting_approval: number;
+  orders_new: number; paid_new?: number; talk_new?: number; reviews_new: number; partners_new: number; awaiting_approval: number;
   latest: Record<TabKey, number>; version: Record<TabKey, string>;
 };
 type OrderStats = { newToday: number; awaitingVerification: number; awaitingApproval: number; convertedThisMonth: number; markets: string[]; packages: string[]; statusCounts: Record<string, number> };
@@ -92,6 +92,10 @@ const TAB_LABELS: Record<TabKey, string> = { orders: "Orders", reviews: "Free CV
 
 const STATUS_FILTERS: Record<TabKey, Array<{ value: string; label: string }>> = {
   orders: [
+    { value: "paid", label: "Paid" },
+    { value: "paid_all", label: "Paid (all)" },
+    { value: "talk", label: "Talk first" },
+    { value: "talk_all", label: "Talk first (all)" },
     { value: "pending", label: "All pending" },
     { value: "paid_full", label: "Paid 100%" },
     { value: "paid_half", label: "Paid 50%" },
@@ -110,6 +114,7 @@ const STATUS_FILTERS: Record<TabKey, Array<{ value: string; label: string }>> = 
     { value: "all", label: "All" },
   ],
   partners: [
+    { value: "open", label: "Open" },
     { value: "new", label: "New" },
     { value: "contacted", label: "Contacted" },
     { value: "trial", label: "Trial" },
@@ -118,7 +123,10 @@ const STATUS_FILTERS: Record<TabKey, Array<{ value: string; label: string }>> = 
     { value: "all", label: "All" },
   ],
 };
-const DEFAULT_STATUS: Record<TabKey, string> = { orders: "pending", reviews: "new", partners: "new" };
+const DEFAULT_STATUS: Record<TabKey, string> = { orders: "paid", reviews: "new", partners: "open" };
+type View = "paid" | "talk" | "partners";
+const VIEW_LABELS: Record<View, string> = { paid: "Paid", talk: "Talk first", partners: "Partners" };
+const balanceOf = (r: WebsiteOrder) => Math.max(0, (r.total || 0) - paidToday(r));
 const TABLE_TEXT: Record<TabKey, { title: string; subtitle: string; search: string }> = {
   orders: { title: "Website Orders", subtitle: "Checkout submissions from pixelycareers.com", search: "Search name, WhatsApp, email or transaction ID..." },
   reviews: { title: "Free CV Reviews", subtitle: "Free CV review requests from the website", search: "Search name, WhatsApp, email or role..." },
@@ -198,7 +206,6 @@ const ADDON_RULES: Array<[RegExp, string]> = [
 
 const numberFmt = new Intl.NumberFormat("en-PK", { maximumFractionDigits: 0 });
 const packageLabel = (key: string) => PACKAGE_MAP[key?.toLowerCase()]?.label ?? key?.replace(/[_-]+/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-const isBundlePackage = (r: { package: string; is_bundle: boolean }) => r.is_bundle || r.package?.toLowerCase() === "executive_bundle";
 /** "Rs 19,000" for PKR; "USD 120" otherwise. */
 const money = (amount: number | string | null | undefined, currency = "PKR") => {
   const n = numberFmt.format(Math.round(Number(amount || 0)));
@@ -289,9 +296,8 @@ function buildPrefill(r: WebsiteOrder, platformNames: string[]): { orderType: Or
   const pkr = isPkr(r);
   const total = pkr ? String(Math.round(r.total || 0)) : "";
   const noteLines = [
-    `Website request — ${packageLabel(r.package)}${r.is_bundle && r.package !== "executive_bundle" ? " (11.11 bundle)" : ""}`,
+    `Website request — ${packageLabel(r.package)}`,
     addons.length ? `Add-ons: ${addons.map(a => `${a.name ?? a.id} ×${a.qty ?? 1} (${money(a.price, r.currency)})`).join(", ")}` : null,
-    r.discount ? `Pay-now discount: ${money(r.discount, r.currency)}` : null,
     r.same_day ? "Same-day delivery requested" : null,
     r.target_country || r.target_role ? `Target: ${[r.target_role, r.target_country].filter(Boolean).join(" · ")}` : null,
     r.cv_url ? `Current CV: ${r.cv_url}` : null,
@@ -387,19 +393,7 @@ function StatusPill({ status }: { status: string }) {
   return <Badge variant="outline" className={`whitespace-nowrap font-medium ${style.className}`} data-testid={`status-${status}`}>{style.label}</Badge>;
 }
 
-function BundleTag({ label = "11.11" }: { label?: string }) {
-  return <Badge variant="outline" className="border-orange-400/40 bg-orange-500/15 px-1.5 py-0 text-[10px] font-semibold text-orange-200">{label}</Badge>;
-}
 
-function PackageCell({ r }: { r: WebsiteOrder }) {
-  if (r.package?.toLowerCase() === "executive_bundle") return <BundleTag label="11.11 Bundle" />;
-  return (
-    <span className="flex min-w-0 items-center gap-1.5">
-      <span className="truncate text-slate-200" title={packageLabel(r.package)}>{packageLabel(r.package)}</span>
-      {isBundlePackage(r) && <BundleTag />}
-    </span>
-  );
-}
 
 function MetaBadge({ status, error, busy, onRetry }: { status: MetaStatus | null; error?: string | null; busy?: boolean; onRetry?: () => void }) {
   if (!status) return <span className="text-slate-600">—</span>;
@@ -665,11 +659,14 @@ export default function WebsiteRequestsPage() {
     }
     navigate(`/website-requests?${p.toString()}`, { replace: true });
   };
-  const switchTab = (t: TabKey) => {
-    if (t === tab) return;
+  const view: View = tab === "partners" ? "partners" : status.startsWith("talk") ? "talk" : "paid";
+  const completed = status.endsWith("_all") || (tab === "partners" && status === "all");
+  const switchView = (v: View) => {
+    if (v === view) return;
     setSearchInput("");
-    navigate(`/website-requests?tab=${t}`, { replace: false });
+    navigate(`/website-requests?tab=${v === "partners" ? "partners" : "orders"}${v === "talk" ? "&status=talk" : ""}`, { replace: false });
   };
+  const toggleCompleted = () => setFilters({ status: view === "partners" ? (completed ? "" : "all") : completed ? (view === "paid" ? "" : "talk") : `${view}_all` });
 
   // Debounced search (300ms) → URL.
   const [searchInput, setSearchInput] = useState(filters.q);
@@ -711,9 +708,6 @@ export default function WebsiteRequestsPage() {
     enabled: allowed,
   });
 
-  const { data: orderStats } = useQuery<OrderStats>({ queryKey: [`${BASE}/orders/stats`], enabled: allowed && tab === "orders", staleTime: 30_000 });
-  const { data: reviewStats } = useQuery<ReviewStats>({ queryKey: [`${BASE}/reviews/stats`], enabled: allowed && tab === "reviews", staleTime: 30_000 });
-  const { data: partnerStats } = useQuery<PartnerStats>({ queryKey: [`${BASE}/partners/stats`], enabled: allowed && tab === "partners", staleTime: 30_000 });
 
   const listKey = [`${BASE}/${tab}`, "list", queryString] as const;
   const list = useQuery<ListPage<any>>({
@@ -762,13 +756,6 @@ export default function WebsiteRequestsPage() {
   const refreshTab = (t: TabKey) => queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith(`${BASE}/${t}`) });
   const refreshCounts = () => queryClient.invalidateQueries({ queryKey: [`${BASE}/counts`] });
 
-  // Admins land on "Awaiting approval" once when something is waiting.
-  const statusChosen = useRef(!!filters.status);
-  useEffect(() => {
-    if (!counts || statusChosen.current) return;
-    statusChosen.current = true;
-    if (isAdmin && tab === "orders" && !filters.status && counts.awaiting_approval > 0) setFilters({ status: "awaiting_approval" }, { resetPage: false });
-  }, [counts, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Someone else changed data → refetch that tab; new submissions → toast.
   const lastCounts = useRef<Counts | null>(null);
@@ -862,6 +849,7 @@ export default function WebsiteRequestsPage() {
     const talk = payKind(r) === "talk" && paidToday(r) === 0;
     return (
       <div className="flex min-w-0 items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+        {talk && r.whatsapp && <Button asChild size="sm" variant="outline" className="h-8 px-2.5 text-xs"><a href={waLink(r.whatsapp)} target="_blank" rel="noopener noreferrer" data-testid={`button-open-whatsapp-${r.id}`}><MessageCircle className="mr-1 h-3.5 w-3.5" />WhatsApp</a></Button>}
         {talk ? (
           r.status === "contacted"
             ? <span className="text-xs text-cyan-300">Contacted</span>
@@ -942,52 +930,33 @@ export default function WebsiteRequestsPage() {
   };
 
   // ── Header pieces ──
-  const filterOptions = STATUS_FILTERS[tab];
-  const hasFilters = !!(filters.q || filters.from || filters.to || filters.market !== "all" || filters.package !== "all" || filters.country !== "all" || filters.status);
+  const hasFilters = !!filters.q;
   const exportHref = `${BASE}/${tab}/export?${queryString}`;
-  const tabBadge: Record<TabKey, number> = {
-    orders: (counts?.orders_new ?? 0) + (isAdmin ? counts?.awaiting_approval ?? 0 : 0),
-    reviews: counts?.reviews_new ?? 0,
+  const viewBadge: Record<View, number> = {
+    paid: (counts?.paid_new ?? 0) + (isAdmin ? counts?.awaiting_approval ?? 0 : 0),
+    talk: counts?.talk_new ?? 0,
     partners: counts?.partners_new ?? 0,
   };
-  const statusCounts = (tab === "orders" ? orderStats : tab === "reviews" ? reviewStats : partnerStats)?.statusCounts;
-  const showMeta = isAdmin && tab === "orders";
 
   // Column layouts (fixed widths → no horizontal scroll).
-  const cols: Record<TabKey, Array<{ label: string; width: string; className?: string }>> = {
-    orders: [
-      { label: "Received", width: "8%" },
-      { label: "Client", width: "12%" },
-      { label: "WhatsApp", width: "11%" },
-      { label: "Market", width: "8%" },
-      { label: "Package", width: "11%" },
-      { label: "Total", width: "8%" },
-      { label: "Payment", width: "11%" },
-      { label: "Proof", width: "5%" },
-      { label: "Status", width: "8%" },
-      { label: "Action", width: "18%", className: "text-right" },
+  const cols: Record<View, Array<{ label: string; width: string; className?: string }>> = {
+    paid: [
+      { label: "Received", width: "9%" }, { label: "Client", width: "18%" }, { label: "Package", width: "14%" },
+      { label: "Total", width: "9%" }, { label: "Paid", width: "9%" }, { label: "Balance", width: "9%" },
+      { label: "Proof", width: "6%" }, { label: "Action", width: "26%", className: "text-right" },
     ],
-    reviews: [
-      { label: "Customer", width: "24%" },
-      { label: "Target role", width: "16%" },
-      { label: "Target countries", width: "17%" },
-      { label: "CV", width: "8%" },
-      { label: "Status", width: "12%" },
-      { label: "Actions", width: "23%", className: "text-right" },
+    talk: [
+      { label: "Received", width: "12%" }, { label: "Client", width: "26%" }, { label: "Package", width: "20%" },
+      { label: "Total", width: "12%" }, { label: "Action", width: "30%", className: "text-right" },
     ],
     partners: [
-      { label: "Organization", width: "17%" },
-      { label: "Contact", width: "19%" },
-      { label: "Country / destinations", width: "15%" },
-      { label: "Monthly volume", width: "10%" },
-      { label: "Model", width: "10%" },
-      { label: "Status", width: "10%" },
-      { label: "Actions", width: "19%", className: "text-right" },
+      { label: "Received", width: "11%" }, { label: "Organization", width: "22%" }, { label: "Contact", width: "22%" },
+      { label: "Country", width: "13%" }, { label: "Monthly volume", width: "13%" }, { label: "Action", width: "19%", className: "text-right" },
     ],
   };
-  const columns = cols[tab];
+  const columns = cols[view];
 
-  const emptyText = hasFilters ? "No requests match the selected filters." : "No requests yet";
+  const emptyText = hasFilters ? "No requests match your search." : completed ? "No requests yet" : "Nothing waiting here.";
 
   return (
     <div className="crm-page space-y-5">
@@ -997,158 +966,58 @@ export default function WebsiteRequestsPage() {
         </Button>
       } />
 
-      <Tabs value={tab} onValueChange={v => switchTab(v as TabKey)} className="w-full">
+      <Tabs value={view} onValueChange={v => switchView(v as View)} className="w-full">
         <TabsList className="w-full justify-start overflow-x-auto sm:w-fit">
-          {(["orders", "reviews", "partners"] as TabKey[]).map(t => (
-            <TabsTrigger key={t} value={t} className="px-5" data-testid={`tab-${t}`}>
-              {TAB_LABELS[t]}
-              {tabBadge[t] > 0 && <span className="ml-2 rounded-full bg-primary px-1.5 text-[10px] font-bold text-on-color" data-testid={`badge-tab-${t}`}>{tabBadge[t]}</span>}
+          {(["paid", "talk", "partners"] as View[]).map(v => (
+            <TabsTrigger key={v} value={v} className="shrink-0 px-5" data-testid={`tab-${v}`}>
+              {VIEW_LABELS[v]}
+              {viewBadge[v] > 0 && <span className="ml-2 rounded-full bg-primary px-1.5 text-[10px] font-bold text-on-color" data-testid={`badge-tab-${v}`}>{viewBadge[v]}</span>}
             </TabsTrigger>
           ))}
         </TabsList>
       </Tabs>
 
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative min-w-0 flex-1 sm:min-w-[280px]">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-              <Input
-                placeholder={TABLE_TEXT[tab].search}
-                className="pl-10"
-                value={searchInput}
-                onChange={e => setSearchInput(e.target.value)}
-                data-testid="input-search-website-requests"
-              />
-              {(list.isFetching || searchInput.trim() !== filters.q) && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-500" />}
-            </div>
-          </div>
-
-          {tab === "orders" && (
-            <div className="flex flex-wrap gap-2" data-testid="order-chips">
-              {filterOptions.filter(o => o.value !== "awaiting_approval" || (statusCounts?.awaiting_approval ?? 0) > 0).map(o => (
-                <button key={o.value} type="button" onClick={() => setFilters({ status: o.value === DEFAULT_STATUS.orders ? "" : o.value })}
-                  className={cn("rounded-full border px-3 py-1 text-xs font-medium transition-colors", status === o.value ? "border-primary bg-primary text-on-color" : "border-slate-700 text-slate-300 hover:border-slate-500")}
-                  data-testid={`chip-${o.value}`}>
-                  {o.label}{statusCounts?.[o.value] !== undefined ? ` · ${statusCounts[o.value]}` : ""}
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="flex flex-wrap items-center gap-2" data-testid="website-request-filters">
-            <Filter className="mr-1 hidden h-4 w-4 text-slate-500 md:block" aria-hidden="true" />
-            {tab !== "orders" && <Select value={status} onValueChange={v => setFilters({ status: v === DEFAULT_STATUS[tab] ? "" : v })}>
-              <SelectTrigger className="w-52" data-testid="select-status-filter"><SelectValue /></SelectTrigger>
-              <SelectContent className="">
-                {filterOptions.map(o => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}{statusCounts?.[o.value] !== undefined ? ` (${statusCounts[o.value]})` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>}
-            {tab === "orders" && (
-              <>
-                <Select value={filters.market} onValueChange={v => setFilters({ market: v })}>
-                  <SelectTrigger className="w-32 " data-testid="select-market-filter"><SelectValue placeholder="All markets" /></SelectTrigger>
-                  <SelectContent className="">
-                    <SelectItem value="all">All markets</SelectItem>
-                    {(orderStats?.markets ?? []).map(m => <SelectItem key={m} value={m}>{m.toUpperCase()}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <Select value={filters.package} onValueChange={v => setFilters({ package: v })}>
-                  <SelectTrigger className="w-44 " data-testid="select-package-filter"><SelectValue placeholder="All packages" /></SelectTrigger>
-                  <SelectContent className="">
-                    <SelectItem value="all">All packages</SelectItem>
-                    {(orderStats?.packages ?? []).map(p => <SelectItem key={p} value={p}>{packageLabel(p)}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </>
-            )}
-            {tab === "partners" && (
-              <Select value={filters.country} onValueChange={v => setFilters({ country: v })}>
-                <SelectTrigger className="w-40 " data-testid="select-country-filter"><SelectValue placeholder="All countries" /></SelectTrigger>
-                <SelectContent className="">
-                  <SelectItem value="all">All countries</SelectItem>
-                  {(partnerStats?.countries ?? []).map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            )}
-            <Input type="date" value={filters.from} onChange={e => setFilters({ from: e.target.value })} className="w-[140px]  dark:[color-scheme:dark]" aria-label="From date" data-testid="input-from-date" />
-            <span className="text-xs text-slate-500">–</span>
-            <Input type="date" value={filters.to} onChange={e => setFilters({ to: e.target.value })} className="w-[140px]  dark:[color-scheme:dark]" aria-label="To date" data-testid="input-to-date" />
-            {hasFilters && (
-              <Button type="button" variant="ghost" size="sm" onClick={() => { setSearchInput(""); navigate(`/website-requests?tab=${tab}`, { replace: true }); }} className="text-slate-400 hover:text-white" data-testid="button-clear-website-filters">
-                <X className="mr-1 h-4 w-4" />Clear
-              </Button>
-            )}
-          </div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative min-w-0 flex-1 sm:max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <Input placeholder={TABLE_TEXT[tab].search} className="pl-10" value={searchInput} onChange={e => setSearchInput(e.target.value)} data-testid="input-search-website-requests" />
+          {(list.isFetching || searchInput.trim() !== filters.q) && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-500" />}
         </div>
-
-      {/* Stat cards — per tab */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {tab === "orders" && (
-          <>
-            <MetricCard label="New today" value={orderStats?.newToday ?? "—"} icon={Inbox} testId="metric-new-today" />
-            <MetricCard label="Awaiting verification" value={orderStats?.awaitingVerification ?? "—"} icon={ShieldCheck} tone="warning" onClick={() => setFilters({ status: "" })} testId="metric-awaiting-verification" />
-            <MetricCard label="Awaiting approval" value={orderStats?.awaitingApproval ?? "—"} icon={Clock} tone="warning" onClick={() => setFilters({ status: "awaiting_approval" })} testId="metric-awaiting-approval" />
-            <MetricCard label="Converted this month" value={orderStats?.convertedThisMonth ?? "—"} icon={TrendingUp} tone="success" onClick={() => setFilters({ status: "converted" })} testId="metric-converted-month" />
-          </>
-        )}
-        {tab === "reviews" && (
-          <>
-            <MetricCard label="New today" value={reviewStats?.newToday ?? "—"} icon={Inbox} testId="metric-reviews-new-today" />
-            <MetricCard label="In review" value={reviewStats?.inReview ?? "—"} icon={FileText} tone="warning" onClick={() => setFilters({ status: "in_review" })} testId="metric-reviews-in-review" />
-            <MetricCard label="Sent this month" value={reviewStats?.sentThisMonth ?? "—"} icon={Send} onClick={() => setFilters({ status: "sent" })} testId="metric-reviews-sent" />
-            <MetricCard label="Converted this month" value={reviewStats?.convertedThisMonth ?? "—"} icon={TrendingUp} tone="success" onClick={() => setFilters({ status: "converted" })} testId="metric-reviews-converted" />
-          </>
-        )}
-        {tab === "partners" && (
-          <>
-            <MetricCard label="New this week" value={partnerStats?.newThisWeek ?? "—"} icon={Inbox} testId="metric-partners-new-week" />
-            <MetricCard label="In trial" value={partnerStats?.inTrial ?? "—"} icon={CalendarCheck} tone="warning" onClick={() => setFilters({ status: "trial" })} testId="metric-partners-trial" />
-            <MetricCard label="Active partners" value={partnerStats?.active ?? "—"} icon={Handshake} tone="success" onClick={() => setFilters({ status: "active" })} testId="metric-partners-active" />
-            <MetricCard label="Total" value={partnerStats?.total ?? "—"} icon={Users} onClick={() => setFilters({ status: "all" })} testId="metric-partners-total" />
-          </>
-        )}
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-400" data-testid="toggle-show-completed">
+          <input type="checkbox" checked={completed} onChange={toggleCompleted} className="h-4 w-4 accent-[hsl(var(--primary))]" />
+          Show completed
+        </label>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-card">
-        <div className="flex flex-col gap-1 border-b border-border px-4 py-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-slate-200">{TABLE_TEXT[tab].title}</h3>
-            <p className="text-sm text-slate-500">
-              {TABLE_TEXT[tab].subtitle} · {filterOptions.find(o => o.value === status)?.label}
-              {list.data ? ` · ${total} ${total === 1 ? "request" : "requests"}` : ""}
-            </p>
-          </div>
-          {isAdmin && tab === "orders" && counts && counts.awaiting_approval > 0 && status !== "awaiting_approval" && (
-            <Button variant="ghost" size="sm" className="w-fit text-orange-200 hover:text-orange-100" onClick={() => setFilters({ status: "awaiting_approval" })} data-testid="button-show-awaiting">
-              <Clock className="mr-1.5 h-4 w-4" />{counts.awaiting_approval} awaiting approval
-            </Button>
-          )}
-        </div>
         {tab === "orders" && (
           <div className="divide-y divide-slate-800 md:hidden" data-testid="order-cards">
             {list.isLoading && <p className="p-4 text-sm text-slate-500">Loading…</p>}
             {!list.isLoading && rows.length === 0 && <p className="p-6 text-center text-sm text-slate-500">{emptyText}</p>}
-            {rows.map((r: WebsiteOrder) => { const st = requestStatus(r); const paid = paidToday(r); const m = marketOf(r); return (
-              <div key={r.id} className={cn("space-y-2 p-4", isUnhandled(r) && "shadow-[inset_3px_0_0_rgba(244,63,94,0.7)]")} onClick={() => setSelectedId(r.id)} data-testid={`card-website-request-${r.id}`}>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0"><p className="truncate font-semibold text-white">{r.name || "—"}</p><p className="text-xs text-slate-500" title={format(new Date(r.created_at), "MMM dd, yyyy · h:mm a")}>{timeAgo(r.created_at)} · {m.flag} {m.name}</p></div>
-                  <span className={cn("shrink-0 text-xs font-medium", st.cls)}>{st.label}</span>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 text-sm"><span className="text-slate-200">{packageLabel(r.package)}</span>{isBundlePackage(r) && <BundleTag />}<span className="ml-auto font-medium text-white">{money(r.total, r.currency)}</span></div>
-                <div className="flex flex-wrap items-center gap-2"><PayBadge r={r} /><span className="text-xs text-slate-500">{paid > 0 ? `${money(paid, r.currency)} paid` : "Nothing paid yet"}</span>
-                  {safeUrl(r.payment_screenshot_url) && <a href={safeUrl(r.payment_screenshot_url)!} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-xs text-cyan-300 hover:underline">Proof</a>}</div>
-                <div className="flex items-center justify-between gap-2" onClick={e => e.stopPropagation()}>
-                  {r.whatsapp ? <span className="flex min-w-0 items-center gap-1"><a href={waLink(r.whatsapp)} target="_blank" rel="noopener noreferrer" className="truncate text-xs text-emerald-300">{r.whatsapp}</a><button type="button" className="text-slate-500" aria-label="Copy WhatsApp number" onClick={() => copyText(r.whatsapp!)}><Copy className="h-3 w-3" /></button></span> : <span />}
-                  {renderOrderActions(r)}
-                </div>
+            {rows.map((r: WebsiteOrder) => { const paid = paidToday(r); return (
+              <div key={r.id} className={cn("space-y-1.5 p-4", isUnhandled(r) && "shadow-[inset_3px_0_0_rgba(244,63,94,0.7)]")} onClick={() => setSelectedId(r.id)} data-testid={`card-website-request-${r.id}`}>
+                <div className="flex items-baseline justify-between gap-2"><p className="truncate font-semibold text-white">{r.name || "—"}</p><span className="shrink-0 text-xs text-slate-500">{timeAgo(r.created_at)}</span></div>
+                <p className="truncate text-sm text-slate-300">{packageLabel(r.package)}</p>
+                <p className="text-xs text-slate-400">Total <span className="text-white">{money(r.total, r.currency)}</span>{view === "paid" && <> · Paid <span className="text-emerald-300">{money(paid, r.currency)}</span> · Balance <span className="text-amber-200">{money(balanceOf(r), r.currency)}</span></>}</p>
+                <div className="flex justify-end pt-1" onClick={e => e.stopPropagation()}>{renderOrderActions(r)}</div>
               </div>
             ); })}
           </div>
         )}
-        <div className={cn("overflow-x-auto", tab === "orders" && "hidden md:block")}><Table className={cn("table-fixed", tab === "orders" ? "min-w-[1000px] lg:min-w-0" : "min-w-[860px]")} data-testid={`table-website-${tab}`}>
+        {tab === "partners" && (
+          <div className="divide-y divide-slate-800 md:hidden" data-testid="partner-cards">
+            {!list.isLoading && rows.length === 0 && <p className="p-6 text-center text-sm text-slate-500">{emptyText}</p>}
+            {rows.map((p: Partner) => (
+              <div key={p.id} className="space-y-1.5 p-4" onClick={() => setSelectedId(p.id)} data-testid={`card-partner-${p.id}`}>
+                <div className="flex items-baseline justify-between gap-2"><p className="truncate font-semibold text-white">{p.org_name}</p><span className="shrink-0 text-xs text-slate-500">{timeAgo(p.created_at)}</span></div>
+                <p className="truncate text-sm text-slate-300">{p.contact_name || "—"}{p.country_hq ? ` · ${p.country_hq}` : ""}</p>
+                <p className="text-xs text-slate-400">Monthly volume <span className="text-white">{p.monthly_volume || "—"}</span></p>
+                <div className="flex justify-end pt-1" onClick={e => e.stopPropagation()}>{renderPartnerActions(p)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className={cn("overflow-x-auto", tab !== "reviews" && "hidden md:block")}><Table className="min-w-[760px] table-fixed lg:min-w-0" data-testid={`table-website-${tab}`}>
           <colgroup>{columns.map(c => <col key={c.label} style={{ width: c.width }} />)}</colgroup>
           <TableHeader className="bg-slate-900/50">
             <TableRow className="border-slate-800 hover:bg-transparent">
@@ -1166,33 +1035,27 @@ export default function WebsiteRequestsPage() {
               <TableRow className="border-slate-800"><TableCell colSpan={columns.length} className="py-8 text-center text-slate-500" data-testid="text-no-website-requests">{emptyText}</TableCell></TableRow>
             )}
 
-            {tab === "orders" && rows.map((r: WebsiteOrder) => {
-              const st = requestStatus(r); const paid = paidToday(r); const m = marketOf(r);
-              return (
+            {tab === "orders" && rows.map((r: WebsiteOrder) => (
               <TableRow key={r.id} className={cn("cursor-pointer border-slate-800 hover:bg-slate-900/50", isUnhandled(r) && "[&>td:first-child]:shadow-[inset_3px_0_0_rgba(244,63,94,0.7)]", busyIds.has(r.id) && "opacity-60")} onClick={() => setSelectedId(r.id)} data-testid={`row-website-request-${r.id}`}>
                 <TableCell className="py-3 text-xs text-slate-400"><span title={format(new Date(r.created_at), "MMM dd, yyyy · h:mm a")}>{timeAgo(r.created_at)}</span></TableCell>
-                <TableCell><p className="truncate text-sm font-semibold text-white" title={r.name ?? ""}>{r.name || "—"}</p></TableCell>
-                <TableCell onClick={e => e.stopPropagation()}>
-                  {r.whatsapp ? (
-                    <div className="flex min-w-0 items-center gap-1">
-                      <a href={waLink(r.whatsapp)} target="_blank" rel="noopener noreferrer" className="truncate text-xs text-emerald-300 hover:underline" data-testid={`link-whatsapp-${r.id}`}>{r.whatsapp}</a>
-                      <button type="button" className="shrink-0 text-slate-500 hover:text-white" aria-label="Copy WhatsApp number" onClick={() => copyText(r.whatsapp!)}><Copy className="h-3 w-3" /></button>
-                    </div>
-                  ) : <span className="text-slate-600">—</span>}
-                </TableCell>
-                <TableCell><span className="truncate text-xs text-slate-300" title={landingPath(r)}>{m.flag} {m.name}</span></TableCell>
-                <TableCell><p className="flex min-w-0 items-center gap-1 text-sm text-slate-200"><span className="truncate">{packageLabel(r.package)}</span>{isBundlePackage(r) && <BundleTag />}</p></TableCell>
-                <TableCell className="whitespace-nowrap text-sm text-white">{money(r.total, r.currency)}</TableCell>
-                <TableCell><PayBadge r={r} /><p className="mt-1 text-[11px] text-slate-500">{paid > 0 ? `${money(paid, r.currency)} paid` : "Nothing paid yet"}</p></TableCell>
                 <TableCell>
-                  {safeUrl(r.payment_screenshot_url)
-                    ? <a href={safeUrl(r.payment_screenshot_url)!} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-sm text-cyan-300 hover:underline" data-testid={`link-screenshot-${r.id}`}>View</a>
-                    : <span className="text-slate-600">—</span>}
+                  <p className="truncate text-sm font-semibold text-white" title={r.name ?? ""}>{r.name || "—"}</p>
+                  {r.whatsapp && <span className="flex min-w-0 items-center gap-1" onClick={e => e.stopPropagation()}><a href={waLink(r.whatsapp)} target="_blank" rel="noopener noreferrer" className="truncate text-xs text-emerald-300 hover:underline" data-testid={`link-whatsapp-${r.id}`}>{r.whatsapp}</a><button type="button" className="shrink-0 text-slate-500 hover:text-white" aria-label="Copy WhatsApp number" onClick={() => copyText(r.whatsapp!)}><Copy className="h-3 w-3" /></button></span>}
                 </TableCell>
-                <TableCell><span className={cn("text-xs font-medium", st.cls)}>{st.label}</span></TableCell>
+                <TableCell><p className="truncate text-sm text-slate-200" title={packageLabel(r.package)}>{packageLabel(r.package)}</p></TableCell>
+                <TableCell className="whitespace-nowrap text-sm text-white">{money(r.total, r.currency)}</TableCell>
+                {view === "paid" && <>
+                  <TableCell className="whitespace-nowrap text-sm text-emerald-300">{money(paidToday(r), r.currency)}</TableCell>
+                  <TableCell className="whitespace-nowrap text-sm text-amber-200">{money(balanceOf(r), r.currency)}</TableCell>
+                  <TableCell>
+                    {safeUrl(r.payment_screenshot_url)
+                      ? <a href={safeUrl(r.payment_screenshot_url)!} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-sm text-cyan-300 hover:underline" data-testid={`link-screenshot-${r.id}`}>View</a>
+                      : <span className="text-slate-600">—</span>}
+                  </TableCell>
+                </>}
                 <TableCell className="text-right">{renderOrderActions(r)}</TableCell>
               </TableRow>
-            ); })}
+            ))}
 
             {tab === "reviews" && rows.map((r: CvReview) => {
               const countries = r.target_countries?.length ? r.target_countries.join(", ") : r.target_country;
@@ -1214,19 +1077,14 @@ export default function WebsiteRequestsPage() {
 
             {tab === "partners" && rows.map((p: Partner) => (
               <TableRow key={p.id} className={cn("cursor-pointer border-slate-800 hover:bg-slate-900/50", busyIds.has(p.id) && "opacity-60")} onClick={() => setSelectedId(p.id)} data-testid={`row-partner-${p.id}`}>
-                <TableCell className="py-3">
-                  <p className="truncate text-sm font-semibold text-white" title={p.org_name}>{p.org_name}</p>
-                  <p className="truncate text-xs text-slate-400">{p.org_type || "—"}</p>
-                  <p className="text-xs text-slate-500">{timeAgo(p.created_at)}</p>
-                </TableCell>
-                <TableCell><CustomerCell id={p.id} name={p.contact_name} sub={p.designation} whatsapp={p.whatsapp} createdAt={p.created_at} /></TableCell>
+                <TableCell className="py-3 text-xs text-slate-400">{timeAgo(p.created_at)}</TableCell>
+                <TableCell><p className="truncate text-sm font-semibold text-white" title={p.org_name}>{p.org_name}</p></TableCell>
                 <TableCell>
-                  <p className="truncate text-sm text-slate-200">{p.country_hq || "—"}</p>
-                  <p className="line-clamp-2 text-xs text-slate-500" title={p.destinations ?? ""}>{p.destinations || ""}</p>
+                  <p className="truncate text-sm text-slate-200">{p.contact_name || "—"}</p>
+                  {p.whatsapp && <a href={waLink(p.whatsapp)} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="truncate text-xs text-emerald-300 hover:underline">{p.whatsapp}</a>}
                 </TableCell>
+                <TableCell><p className="truncate text-sm text-slate-300">{p.country_hq || "—"}</p></TableCell>
                 <TableCell><p className="truncate text-sm text-slate-300">{p.monthly_volume || "—"}</p></TableCell>
-                <TableCell><p className="truncate text-sm text-slate-300" title={p.model ?? ""}>{p.model || "—"}</p></TableCell>
-                <TableCell><StatusPill status={p.status} /></TableCell>
                 <TableCell className="text-right">{renderPartnerActions(p)}</TableCell>
               </TableRow>
             ))}
@@ -1462,7 +1320,7 @@ function OrderDrawerBody({ d, isAdmin, busy, onRetry, onSaveNotes, onCopy }: {
       </DrawerSection>
 
       <DrawerSection title="Order">
-        <p className="flex flex-wrap items-center gap-2 text-sm text-white">{packageLabel(d.package)} <span className="text-slate-500">· {money(d.package_price, d.currency)}</span>{isBundlePackage(d) && <BundleTag />}</p>
+        <p className="flex flex-wrap items-center gap-2 text-sm text-white">{packageLabel(d.package)} <span className="text-slate-500">· {money(d.package_price, d.currency)}</span></p>
         {(d.addons ?? []).length > 0 && (
           <ul className="space-y-1 text-sm">
             {(d.addons ?? []).map((a, i) => (
@@ -1472,8 +1330,6 @@ function OrderDrawerBody({ d, isAdmin, busy, onRetry, onSaveNotes, onCopy }: {
         )}
         <p className="text-sm text-slate-400">Same-day delivery: <span className={d.same_day ? "text-amber-300" : "text-slate-300"}>{d.same_day ? "Yes" : "No"}</span></p>
         <div className="space-y-1 border-t border-slate-800 pt-3 text-sm">
-          <div className="flex justify-between text-slate-400"><span>Subtotal</span><span>{money(d.subtotal, d.currency)}</span></div>
-          {!!d.discount && <div className="flex justify-between text-slate-400"><span>Discount ({payKind(d) === "full" ? "10% full payment" : payKind(d) === "half" ? "5% advance" : "pay-now"})</span><span>− {money(d.discount, d.currency)}</span></div>}
           <div className="flex justify-between font-semibold text-white"><span>Total</span><span>{money(d.total, d.currency)}</span></div>
         </div>
       </DrawerSection>
