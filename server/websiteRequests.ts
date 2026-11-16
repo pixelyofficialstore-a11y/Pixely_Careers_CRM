@@ -148,7 +148,7 @@ async function runList(cfg: ListConfig, query: Record<string, any>) {
   params.push(pageSize, (page - 1) * pageSize);
   const { rows } = await pool.query(
     `SELECT ${cfg.columns}, COUNT(*) OVER() AS __total FROM ${cfg.table} WHERE ${where}
-     ORDER BY ${status.startsWith("carts") ? "(coalesce(step_reached,0) >= 3) DESC, " : ""}created_at DESC LIMIT ${params.length - 1} OFFSET ${params.length}`,
+     ORDER BY ${status.startsWith("carts") ? "(coalesce(step_reached,0) >= 3) DESC, " : ""}created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params,
   );
   const total = rows[0] ? Number(rows[0].__total) : 0;
