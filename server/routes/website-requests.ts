@@ -18,6 +18,19 @@ export function registerWebsiteRequestNotifications(app: Express) {
         ? `${request.currency} ${Number(request.total || 0).toLocaleString("en-PK")}`
         : rs(request.total);
       const paymentSubmitted = request.status === "payment_submitted";
+      // Talk first (website checkout): "📞 Talk first · Ahmed R. · ATS Career · Rs 2,400"
+      if (kind === "order" && request.pay_choice === "talk_first" && !paymentSubmitted) {
+        await dispatchNotifications(recipientIds, {
+          event: "website_request_new",
+          type: "website_request",
+          title: "📞 Talk first",
+          message: ["📞 Talk first", shortName(request.name), request.package ? packageLabel(request.package) : null, amount].filter(Boolean).join(" · "),
+          priority: "action_required",
+          relatedType: "website_request",
+          sourceEventId: `${request.id}:${request.status}`,
+        });
+        return;
+      }
       await dispatchNotifications(recipientIds, {
         event: "website_request_new",
         type: "website_request",
@@ -28,6 +41,19 @@ export function registerWebsiteRequestNotifications(app: Express) {
         priority: "action_required",
         relatedType: "website_request",
         sourceEventId: `${request.id}:${request.status}`,
+      });
+    },
+    // "🛒 Left at payment · Ahmed R. · ATS Career · Rs 2,400" (once per cart)
+    notifyLeftAtPayment: async (recipientIds, cart) => {
+      if (recipientIds.length === 0) return;
+      await dispatchNotifications(recipientIds, {
+        event: "website_request_new",
+        type: "website_request",
+        title: "🛒 Left at payment",
+        message: ["🛒 Left at payment", shortName(cart.name) || "Someone", cart.package ? packageLabel(cart.package) : null, rs(cart.total)].filter(Boolean).join(" · "),
+        priority: "action_required",
+        relatedType: "website_request",
+        sourceEventId: `${cart.id}:left_payment`,
       });
     },
     notifyApprovalRequested: async (request, submitter, note) => {

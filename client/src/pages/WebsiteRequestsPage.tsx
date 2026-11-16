@@ -45,6 +45,7 @@ type WebsiteOrder = {
   utm_source: string | null; utm_medium: string | null; utm_campaign: string | null;
   utm_content?: string | null; landing_page?: string | null; referrer?: string | null;
   last_change?: LastChange | null;
+  step_reached?: number | null; last_activity_at?: string | null;
   status: string; package: string; package_price: number; addons: Addon[] | null; same_day: boolean; offer: string | null;
   is_bundle: boolean; pay_choice: string | null; discount: number; subtotal: number; total: number; currency: string;
   name: string | null; whatsapp: string | null; email: string | null; target_country: string | null; target_role: string | null;
@@ -57,6 +58,7 @@ type WebsiteOrder = {
 type MetaStatus = "pending" | "sent" | "test" | "failed";
 type WebsiteOrderDetail = WebsiteOrder & {
   flags: { code: string; message: string }[]; activity: Activity[];
+  submitErrors?: Array<{ created_at: string; reason: string | null }>;
   crmOrder: { id: number; orderNumber: string | null } | null; verifiedByName: string | null; submittedByName: string | null;
   meta: { response: Record<string, any> | null; hasFbp: boolean; hasFbc: boolean; hasIp: boolean } | null;
 };
@@ -80,7 +82,7 @@ type PartnerDetail = Partner & { activity: Activity[] };
 
 type ListPage<T> = { rows: T[]; total: number; page: number; pageSize: number; status: string };
 type Counts = {
-  orders_new: number; paid_new?: number; talk_new?: number; reviews_new: number; partners_new: number; awaiting_approval: number;
+  orders_new: number; paid_new?: number; talk_new?: number; carts_new?: number; reviews_new: number; partners_new: number; awaiting_approval: number;
   latest: Record<TabKey, number>; version: Record<TabKey, string>;
 };
 type OrderStats = { newToday: number; awaitingVerification: number; awaitingApproval: number; convertedThisMonth: number; markets: string[]; packages: string[]; statusCounts: Record<string, number> };
@@ -103,9 +105,11 @@ const STATUS_FILTERS: Record<TabKey, Array<{ value: string; label: string }>> = 
     { value: "paid_all", label: "Paid (all)" },
     { value: "talk", label: "Talk first" },
     { value: "talk_all", label: "Talk first (all)" },
+    { value: "carts", label: "Left at checkout" },
+    { value: "carts_all", label: "Left at checkout (all)" },
+    { value: "carts_payment", label: "Reached payment" },
     { value: "pending", label: "All pending" },
     { value: "paid_full", label: "Paid 100%" },
-    { value: "paid_half", label: "Paid 50%" },
     { value: "talk_first", label: "Talk first" },
     { value: "awaiting_approval", label: "Awaiting approval" },
     { value: "placed", label: "Placed" },
@@ -133,15 +137,18 @@ const STATUS_FILTERS: Record<TabKey, Array<{ value: string; label: string }>> = 
   ],
 };
 const DEFAULT_STATUS: Record<TabKey, string> = { orders: "paid", reviews: "new", partners: "new" };
-type View = "paid" | "talk" | "partners";
+type View = "paid" | "talk" | "carts" | "partners";
 type LastChange = { action: string; to: string | null; by: string | null; at: string };
 // Row statuses per view. Old DB values are mapped here; nothing is rewritten.
 const ROW_STATUSES: Record<View, Array<{ key: string; label: string; filter: string }>> = {
   paid: [{ key: "new", label: "New", filter: "paid" }, { key: "placed", label: "Placed", filter: "paid_placed" }, { key: "rejected", label: "Rejected", filter: "paid_rejected" }],
   talk: [{ key: "new", label: "New", filter: "talk" }, { key: "contacted", label: "Contacted", filter: "talk_contacted" }, { key: "placed", label: "Placed", filter: "talk_placed" }, { key: "rejected", label: "Not interested", filter: "talk_rejected" }],
+  carts: [{ key: "new", label: "With a number", filter: "carts" }, { key: "payment", label: "Reached payment", filter: "carts_payment" }],
   partners: [{ key: "new", label: "New", filter: "new" }, { key: "call", label: "Call scheduled", filter: "call" }, { key: "closed", label: "Closed", filter: "closed" }, { key: "lost", label: "Not interested", filter: "lost" }],
 };
-const ALL_FILTER: Record<View, string> = { paid: "paid_all", talk: "talk_all", partners: "all" };
+const ALL_FILTER: Record<View, string> = { paid: "paid_all", talk: "talk_all", carts: "carts_all", partners: "all" };
+// How far a visitor got in checkout before leaving.
+const CART_STEP: Record<number, string> = { 1: "Opened checkout", 2: "Gave details", 3: "Reached payment" };
 const PARTNER_DB: Record<string, string> = { new: "new", call: "contacted", closed: "active", lost: "lost" };
 const orderRowStatus = (r: { status: string; crm_order_id: number | string | null }) =>
   r.crm_order_id || r.status === "converted" || r.status === "paid" ? "placed" : r.status === "rejected" ? "rejected" : r.status === "contacted" ? "contacted" : "new";
@@ -152,7 +159,7 @@ function whoLine(lc: LastChange | null | undefined, statusLabel: string) {
   const verb = lc.action === "status_changed" ? statusLabel : ACTION_VERB[lc.action] ?? statusLabel;
   return `${verb} by ${(lc.by || "someone").split(" ")[0]} · ${format(new Date(lc.at), "d MMM, HH:mm")}`;
 }
-const VIEW_LABELS: Record<View, string> = { paid: "Paid", talk: "Talk first", partners: "Partners" };
+const VIEW_LABELS: Record<View, string> = { paid: "Paid", talk: "Talk first", carts: "Left at checkout", partners: "Partners" };
 const balanceOf = (r: WebsiteOrder) => Math.max(0, (r.total || 0) - paidToday(r));
 const TABLE_TEXT: Record<TabKey, { title: string; subtitle: string; search: string }> = {
   orders: { title: "Website Orders", subtitle: "Checkout submissions from pixelycareers.com", search: "Search name, WhatsApp, email or transaction ID..." },
@@ -198,7 +205,7 @@ const EXEC_SERVICES = [...ICP_SERVICES, "Infographics Resume", "Interview Prep G
 type PackageDef = { label: string; orderType: OrderServiceType; services: string[]; revisions: string; support: string };
 const ATS_DEF: PackageDef = { label: "ATS Career", orderType: "documentation", services: ATS_SERVICES, revisions: "3", support: "1_month" };
 const ICP_DEF: PackageDef = { label: "International Career Pro", orderType: "documentation", services: ICP_SERVICES, revisions: "3", support: "3_months" };
-const EXEC_DEF: PackageDef = { label: "Executive Career Branding", orderType: "documentation", services: EXEC_SERVICES, revisions: "4", support: "6_months" };
+const EXEC_DEF: PackageDef = { label: "Executive Branding", orderType: "documentation", services: EXEC_SERVICES, revisions: "4", support: "6_months" };
 /** ONE map: website package key → label + CRM order defaults. */
 const PACKAGE_MAP: Record<string, PackageDef> = {
   executive_bundle: { ...EXEC_DEF, label: "11.11 Bundle" },
@@ -686,11 +693,11 @@ export default function WebsiteRequestsPage() {
     }
     navigate(`/website-requests?${p.toString()}`, { replace: true });
   };
-  const view: View = tab === "partners" ? "partners" : status.startsWith("talk") ? "talk" : "paid";
+  const view: View = tab === "partners" ? "partners" : status.startsWith("talk") ? "talk" : status.startsWith("carts") ? "carts" : "paid";
   const switchView = (v: View) => {
     if (v === view) return;
     setSearchInput("");
-    navigate(`/website-requests?tab=${v === "partners" ? "partners" : "orders"}${v === "talk" ? "&status=talk" : ""}`, { replace: false });
+    navigate(`/website-requests?tab=${v === "partners" ? "partners" : "orders"}${v === "talk" || v === "carts" ? `&status=${v}` : ""}`, { replace: false });
   };
 
   // Debounced search (300ms) → URL.
@@ -869,6 +876,8 @@ export default function WebsiteRequestsPage() {
   const renderOrderActions = (r: WebsiteOrder) => {
     const busy = busyIds.has(r.id);
     if (r.crm_order_id) return <ViewOrderLink orderId={r.crm_order_id} testId={`link-view-order-${r.id}`} />;
+    // A cart was never submitted or paid: the only action is to reach out.
+    if (r.status === "cart" || r.status === "abandoned") return cartAction(r);
     if (r.status === "rejected") return <span className="truncate text-xs text-slate-500">{REJECT_LABEL[r.reject_reason ?? ""] ?? "Rejected"}</span>;
     const awaiting = r.status === "pending_approval";
     if (awaiting && !isAdmin) return <span className="inline-flex items-center gap-1 text-xs text-orange-200"><Clock className="h-3.5 w-3.5" />Waiting for admin</span>;
@@ -961,6 +970,12 @@ export default function WebsiteRequestsPage() {
     );
   };
 
+  // Left at checkout: read only. The team reaches out on WhatsApp (or email); nothing is saved on the cart.
+  const cartAction = (r: WebsiteOrder) => r.whatsapp
+    ? <Button asChild size="sm" variant="outline" className="h-8 px-2.5 text-xs" onClick={e => e.stopPropagation()}><a href={waLink(r.whatsapp)} target="_blank" rel="noopener noreferrer" data-testid={`button-cart-whatsapp-${r.id}`}><MessageCircle className="mr-1 h-3.5 w-3.5" />WhatsApp</a></Button>
+    : r.email
+      ? <Button asChild size="sm" variant="outline" className="h-8 px-2.5 text-xs" onClick={e => e.stopPropagation()}><a href={`mailto:${r.email}`}>Email</a></Button>
+      : null;
   const partnerAction = (p: Partner) => p.whatsapp
     ? <Button asChild size="sm" variant="outline" className="h-8 px-2.5 text-xs" onClick={e => e.stopPropagation()}><a href={waLink(p.whatsapp)} target="_blank" rel="noopener noreferrer" aria-label="Open WhatsApp"><MessageCircle className="h-3.5 w-3.5" /></a></Button>
     : null;
@@ -997,6 +1012,7 @@ export default function WebsiteRequestsPage() {
   const viewBadge: Record<View, number> = {
     paid: (counts?.paid_new ?? 0) + (isAdmin ? counts?.awaiting_approval ?? 0 : 0),
     talk: counts?.talk_new ?? 0,
+    carts: counts?.carts_new ?? 0,
     partners: counts?.partners_new ?? 0,
   };
 
@@ -1010,6 +1026,10 @@ export default function WebsiteRequestsPage() {
     talk: [
       { label: "Received", width: "10%" }, { label: "Client", width: "22%" }, { label: "Package", width: "17%" },
       { label: "Total", width: "10%" }, { label: "Status", width: "16%" }, { label: "Action", width: "25%", className: "text-right" },
+    ],
+    carts: [
+      { label: "Left", width: "7%" }, { label: "Client", width: "21%" }, { label: "Package", width: "20%" },
+      { label: "Total", width: "9%" }, { label: "Got to", width: "16%" }, { label: "Source", width: "15%" }, { label: "Action", width: "12%", className: "text-right" },
     ],
     partners: [
       { label: "Received", width: "10%" }, { label: "Organization", width: "20%" }, { label: "Contact", width: "21%" },
@@ -1030,7 +1050,7 @@ export default function WebsiteRequestsPage() {
 
       <Tabs value={view} onValueChange={v => switchView(v as View)} className="w-full">
         <TabsList className="w-full justify-start overflow-x-auto sm:w-fit">
-          {(["paid", "talk", "partners"] as View[]).map(v => (
+          {(["paid", "talk", "carts", "partners"] as View[]).map(v => (
             <TabsTrigger key={v} value={v} className="shrink-0 px-5" data-testid={`tab-${v}`}>
               {VIEW_LABELS[v]}
               {viewBadge[v] > 0 && <span className="ml-2 rounded-full bg-primary px-1.5 text-[10px] font-bold text-on-color" data-testid={`badge-tab-${v}`}>{viewBadge[v]}</span>}
@@ -1049,9 +1069,14 @@ export default function WebsiteRequestsPage() {
           <SelectTrigger className="w-full sm:w-44" data-testid="select-status-filter"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All</SelectItem>
-            {ROW_STATUSES[view].map(o => <SelectItem key={o.filter} value={o.filter}>{o.label}</SelectItem>)}
+            {ROW_STATUSES[view].map(o => <SelectItem key={o.filter} value={o.filter} className={o.filter === "carts_payment" ? "font-bold" : undefined}>{o.label}</SelectItem>)}
           </SelectContent>
         </Select>
+        {view === "carts" && (
+          <Button type="button" size="sm" variant={status === "carts_payment" ? "default" : "outline"} className="font-bold" onClick={() => setFilters({ status: status === "carts_payment" ? "" : "carts_payment" })} data-testid="button-reached-payment">
+            Reached payment
+          </Button>
+        )}
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-card">
@@ -1059,7 +1084,17 @@ export default function WebsiteRequestsPage() {
           <div className="divide-y divide-slate-800 md:hidden" data-testid="order-cards">
             {list.isLoading && <p className="p-4 text-sm text-slate-500">Loading…</p>}
             {!list.isLoading && rows.length === 0 && <p className="p-6 text-center text-sm text-slate-500">{emptyText}</p>}
-            {rows.map((r: WebsiteOrder) => { const paid = paidToday(r); return (
+            {view === "carts" && rows.map((r: WebsiteOrder) => (
+              <div key={r.id} className="space-y-1.5 p-4" onClick={() => setSelectedId(r.id)} data-testid={`card-cart-${r.id}`}>
+                <div className="flex items-baseline justify-between gap-2"><p className="truncate font-semibold text-white">{r.name || "—"}</p><span className="shrink-0 text-xs text-slate-500">{timeAgo(r.last_activity_at || r.created_at)}</span></div>
+                <p className="truncate text-sm text-slate-300">{packageLabel(r.package)} · <span className="text-white">{money(r.total, r.currency)}</span></p>
+                <p className="truncate text-xs text-slate-400">{CART_STEP[r.step_reached ?? 1] ?? `Step ${r.step_reached}`} · {sourceText(r)}</p>
+                <div className="flex items-center justify-between gap-2 pt-1" onClick={e => e.stopPropagation()}>
+                  <p className="min-w-0 truncate text-xs text-emerald-300">{r.whatsapp || r.email || ""}</p>{cartAction(r)}
+                </div>
+              </div>
+            ))}
+            {view !== "carts" && rows.map((r: WebsiteOrder) => { const paid = paidToday(r); return (
               <div key={r.id} className={cn("space-y-1.5 p-4", isUnhandled(r) && "shadow-[inset_3px_0_0_rgba(244,63,94,0.7)]")} onClick={() => setSelectedId(r.id)} data-testid={`card-website-request-${r.id}`}>
                 <div className="flex items-baseline justify-between gap-2"><p className="truncate font-semibold text-white">{r.name || "—"}</p><span className="shrink-0 text-xs text-slate-500">{timeAgo(r.created_at)}</span></div>
                 <p className="truncate text-sm text-slate-300">{packageLabel(r.package)}</p>
@@ -1100,7 +1135,23 @@ export default function WebsiteRequestsPage() {
               <TableRow className="border-slate-800"><TableCell colSpan={columns.length} className="py-8 text-center text-slate-500" data-testid="text-no-website-requests">{emptyText}</TableCell></TableRow>
             )}
 
-            {tab === "orders" && rows.map((r: WebsiteOrder) => (
+            {tab === "orders" && view === "carts" && rows.map((r: WebsiteOrder) => (
+              <TableRow key={r.id} className="cursor-pointer border-slate-800 hover:bg-slate-900/50" onClick={() => setSelectedId(r.id)} data-testid={`row-cart-${r.id}`}>
+                <TableCell className="py-3 text-xs text-slate-400"><span title={format(new Date(r.last_activity_at || r.created_at), "MMM dd, yyyy · h:mm a")}>{timeAgo(r.last_activity_at || r.created_at)}</span></TableCell>
+                <TableCell>
+                  <p className="truncate text-sm font-semibold text-white" title={r.name ?? ""}>{r.name || "—"}</p>
+                  {r.whatsapp && <span className="flex min-w-0 items-center gap-1" onClick={e => e.stopPropagation()}><a href={waLink(r.whatsapp)} target="_blank" rel="noopener noreferrer" className="truncate text-xs text-emerald-300 hover:underline">{r.whatsapp}</a><button type="button" className="shrink-0 text-slate-500 hover:text-white" aria-label="Copy WhatsApp number" onClick={() => copyText(r.whatsapp!)}><Copy className="h-3 w-3" /></button></span>}
+                  {r.email && <p className="truncate text-xs text-slate-400" title={r.email}>{r.email}</p>}
+                </TableCell>
+                <TableCell><p className="truncate text-sm text-slate-200" title={packageLabel(r.package)}>{packageLabel(r.package)}</p></TableCell>
+                <TableCell className="whitespace-nowrap text-sm text-white">{money(r.total, r.currency)}</TableCell>
+                <TableCell><p className="truncate text-sm text-slate-300">{CART_STEP[r.step_reached ?? 1] ?? `Step ${r.step_reached}`}</p></TableCell>
+                <TableCell><p className="truncate text-sm text-slate-300" title={sourceText(r)}>{sourceText(r)}</p></TableCell>
+                <TableCell className="text-right">{cartAction(r)}</TableCell>
+              </TableRow>
+            ))}
+
+            {tab === "orders" && view !== "carts" && rows.map((r: WebsiteOrder) => (
               <TableRow key={r.id} className={cn("cursor-pointer border-slate-800 hover:bg-slate-900/50", isUnhandled(r) && "[&>td:first-child]:shadow-[inset_3px_0_0_rgba(244,63,94,0.7)]", busyIds.has(r.id) && "opacity-60")} onClick={() => setSelectedId(r.id)} data-testid={`row-website-request-${r.id}`}>
                 <TableCell className="py-3 text-xs text-slate-400"><span title={format(new Date(r.created_at), "MMM dd, yyyy · h:mm a")}>{timeAgo(r.created_at)}</span></TableCell>
                 <TableCell>
@@ -1388,6 +1439,12 @@ function OrderDrawerBody({ d, isAdmin, busy, onRetry, onSaveNotes, onCopy }: {
         </div>
       </DrawerSection>
 
+      {(d.submitErrors ?? []).length > 0 && (
+        <div className="space-y-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-100" data-testid="submit-errors">
+          <p className="font-medium">Submit failed</p>
+          {d.submitErrors!.map((e, i) => <p key={i} className="text-xs">{format(new Date(e.created_at), "d MMM, HH:mm")} · {e.reason || "Unknown error"}</p>)}
+        </div>
+      )}
       <DrawerSection title="Order">
         <p className="flex flex-wrap items-center gap-2 text-sm text-white">{packageLabel(d.package)} <span className="text-slate-500">· {money(d.package_price, d.currency)}</span></p>
         {(d.addons ?? []).length > 0 && (

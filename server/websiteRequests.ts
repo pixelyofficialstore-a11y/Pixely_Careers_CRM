@@ -35,11 +35,12 @@ const POLL_INTERVAL_MS = 10_000;
 const PAGE_SIZE = 50;
 
 export type RequestKind = "order" | "review" | "partner";
-type RequestSummary = { id: string; name: string | null; status: string; total?: number | null; currency?: string | null; kind?: RequestKind; package?: string | null };
+type RequestSummary = { id: string; name: string | null; status: string; total?: number | null; currency?: string | null; kind?: RequestKind; package?: string | null; pay_choice?: string | null };
 
 type Deps = {
   requireRole: (roles: string[]) => any;
   notifyNewRequest: (recipientIds: number[], request: RequestSummary) => Promise<void>;
+  notifyLeftAtPayment: (recipientIds: number[], cart: { id: string; name: string | null; total: number | null; currency: string | null; package: string | null }) => Promise<void>;
   notifyApprovalRequested: (request: RequestSummary & { submittedAt: string }, submitter: User, note: string | null) => Promise<void>;
   notifySubmitterDecision: (submitterId: number, request: RequestSummary, decision: "approved" | "declined", actorId: number, orderId?: number) => Promise<void>;
   afterPlacement: (actor: User, order: Order) => Promise<void>;
@@ -147,7 +148,7 @@ async function runList(cfg: ListConfig, query: Record<string, any>) {
   params.push(pageSize, (page - 1) * pageSize);
   const { rows } = await pool.query(
     `SELECT ${cfg.columns}, COUNT(*) OVER() AS __total FROM ${cfg.table} WHERE ${where}
-     ORDER BY created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+     ORDER BY ${status.startsWith("carts") ? "(coalesce(step_reached,0) >= 3) DESC, " : ""}created_at DESC LIMIT ${params.length - 1} OFFSET ${params.length}`,
     params,
   );
   const total = rows[0] ? Number(rows[0].__total) : 0;
@@ -203,6 +204,8 @@ const PAY_TALK_SQL = `NOT (${PAY_FULL_SQL}) AND NOT (${PAY_HALF_SQL})`;
 const PENDING_SQL = `crm_order_id IS NULL AND status NOT IN ('rejected','cart','abandoned','converted','paid')`;
 const HAS_PAY_SQL = `(${PAY_FULL_SQL} OR ${PAY_HALF_SQL} OR coalesce(paid_amount,0) > 0)`;
 const LIVE_SQL = `status NOT IN ('cart','abandoned')`;
+// Left at checkout: carts that already left a WhatsApp number or email, so the team can reach out.
+const CART_CONTACT_SQL = `status IN ('cart','abandoned') AND crm_order_id IS NULL AND (NULLIF(TRIM(whatsapp), '') IS NOT NULL OR NULLIF(TRIM(email), '') IS NOT NULL)`;
 const ORDER_STATUSES: Record<string, string> = {
   paid: `${PENDING_SQL} AND ${HAS_PAY_SQL}`,
   paid_all: `${LIVE_SQL} AND ${HAS_PAY_SQL}`,
@@ -222,6 +225,9 @@ const ORDER_STATUSES: Record<string, string> = {
   awaiting_approval: `status = 'pending_approval' AND crm_order_id IS NULL`,
   pay_later: `pay_choice = 'later' AND NOT ${CONVERTED_SQL} AND status NOT IN ('rejected','cart','abandoned','pending_approval')`,
   abandoned: `status IN ('cart','abandoned') AND crm_order_id IS NULL`,
+  carts: CART_CONTACT_SQL,
+  carts_all: `status IN ('cart','abandoned') AND crm_order_id IS NULL`,
+  carts_payment: `${CART_CONTACT_SQL} AND coalesce(step_reached,0) >= 3`,
   converted: CONVERTED_SQL,
   rejected: `status = 'rejected'`,
   all: `TRUE`,
@@ -352,6 +358,7 @@ export function registerWebsiteRequestRoutes(app: Express, deps: Deps) {
           (SELECT COUNT(*) FROM website.orders WHERE ${ORDER_STATUSES.awaiting_approval})::int AS awaiting_approval,
           (SELECT COUNT(*) FROM website.cv_reviews WHERE status = 'new')::int AS reviews_new,
           (SELECT COUNT(*) FROM website.partners WHERE status = 'new')::int AS partners_new,
+          (SELECT COUNT(*) FROM website.orders WHERE ${CART_CONTACT_SQL} AND created_at >= NOW() - INTERVAL '2 days')::int AS carts_new,
           (SELECT COUNT(*) || ':' || COALESCE(EXTRACT(EPOCH FROM MAX(updated_at))::text, '0') FROM website.orders) AS v_orders,
           (SELECT COUNT(*) || ':' || COALESCE(EXTRACT(EPOCH FROM MAX(updated_at))::text, '0') FROM website.cv_reviews) AS v_reviews,
           (SELECT COUNT(*) || ':' || COALESCE(EXTRACT(EPOCH FROM MAX(updated_at))::text, '0') FROM website.partners) AS v_partners,
@@ -365,6 +372,7 @@ export function registerWebsiteRequestRoutes(app: Express, deps: Deps) {
         orders_new: r.orders_new,
         reviews_new: r.reviews_new,
         partners_new: r.partners_new,
+        carts_new: r.carts_new,
         paid_new: r.paid_new,
         talk_new: r.talk_new,
         awaiting_approval: r.awaiting_approval,
@@ -444,6 +452,12 @@ export function registerWebsiteRequestRoutes(app: Express, deps: Deps) {
           ? pool.query(`SELECT meta_response, (fbp IS NOT NULL) AS has_fbp, (fbc IS NOT NULL) AS has_fbc, (client_ip IS NOT NULL) AS has_ip FROM website.orders WHERE id = $1`, [id])
           : Promise.resolve({ rows: [] as any[] }),
       ]);
+      const failed = ["cart", "abandoned"].includes(request.status)
+        ? (await pool.query(
+          `SELECT created_at, COALESCE(meta->>'error', meta->>'message', meta->>'reason', status, name) AS reason
+           FROM website.events WHERE order_id = $1 AND (name ILIKE '%fail%' OR name ILIKE '%error%')
+           ORDER BY created_at DESC LIMIT 5`, [id])).rows
+        : [];
       const flags: { code: string; message: string }[] = [];
       if (repeat.rows.length > 0) flags.push({ code: "repeat_whatsapp", message: `Same WhatsApp already ordered ${repeat.rows.length} time${repeat.rows.length === 1 ? "" : "s"} in the last 30 days.` });
       if (duplicateTxn.rows.length > 0) flags.push({ code: "duplicate_transaction", message: `Transaction ID already used on ${duplicateTxn.rows.length} other request${duplicateTxn.rows.length === 1 ? "" : "s"}.` });
@@ -456,6 +470,7 @@ export function registerWebsiteRequestRoutes(app: Express, deps: Deps) {
       res.json({
         ...request,
         flags,
+        submitErrors: failed,
         activity,
         crmOrder: order ? { id: order.id, orderNumber: order.order_number } : null,
         verifiedByName: nameOf(request.verified_by),
@@ -976,15 +991,24 @@ function startNewRequestPoller(deps: Deps) {
     if (running) return;
     running = true;
     try {
+      const left = await pool.query(`
+        SELECT id, name, total, currency, package::text AS package FROM website.orders
+        WHERE ${CART_CONTACT_SQL} AND coalesce(step_reached,0) >= 3
+          AND COALESCE(last_activity_at, updated_at) BETWEEN NOW() - interval '6 hours' AND NOW() - interval '30 minutes'
+        ORDER BY created_at ASC LIMIT 20`);
+      if (left.rows.length) {
+        const admins = (await storage.getUsers()).filter(u => u.isActive && u.role === "admin").map(u => u.id);
+        for (const row of left.rows) await deps.notifyLeftAtPayment(admins, row);
+      }
       const { rows } = await pool.query(`
         SELECT * FROM (
-          SELECT id, name, status::text AS status, total, currency, 'order' AS kind, package::text AS package, created_at FROM website.orders
+          SELECT id, name, status::text AS status, total, currency, 'order' AS kind, package::text AS package, pay_choice, created_at FROM website.orders
             WHERE ${ORDER_NEW_SQL} AND updated_at >= NOW() - interval '15 minutes'
           UNION ALL
-          SELECT id, name, status::text, NULL, NULL, 'review', NULL, created_at FROM website.cv_reviews
+          SELECT id, name, status::text, NULL, NULL, 'review', NULL, NULL, created_at FROM website.cv_reviews
             WHERE status = 'new' AND created_at >= NOW() - interval '15 minutes'
           UNION ALL
-          SELECT id, COALESCE(org_name, contact_name), status::text, NULL, NULL, 'partner', NULL, created_at FROM website.partners
+          SELECT id, COALESCE(org_name, contact_name), status::text, NULL, NULL, 'partner', NULL, NULL, created_at FROM website.partners
             WHERE status = 'new' AND created_at >= NOW() - interval '15 minutes'
         ) t ORDER BY created_at ASC LIMIT 50
       `);

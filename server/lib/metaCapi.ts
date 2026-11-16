@@ -72,8 +72,8 @@ export function splitName(full: string | null | undefined): { fn: string | null;
 
 const PACKAGE_LABELS: Record<string, string> = {
   executive_bundle: "11.11 Bundle",
-  executive: "Executive Career Branding",
-  executive_career: "Executive Career Branding",
+  executive: "Executive Branding",
+  executive_career: "Executive Branding",
   pro: "International Career Pro",
   "international-pro": "International Career Pro",
   international_career_pro: "International Career Pro",

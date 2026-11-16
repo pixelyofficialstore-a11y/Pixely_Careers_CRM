@@ -126,7 +126,7 @@ const FALLBACK_PACKAGE_LABELS: Record<string, string> = {
   executive: "Executive",
   ats_career: "ATS Career Package",
   international_career_pro: "International Career Pro",
-  executive_career_branding: "Executive Career Branding",
+  executive_career_branding: "Executive Branding",
   custom: "Custom Order",
 };
 

@@ -112,7 +112,7 @@ const titleCase = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g,
 const packageLabels: Record<string, string> = {
   ats_career: "ATS Career Package",
   international_career_pro: "International Career Pro",
-  executive_career_branding: "Executive Career Branding",
+  executive_career_branding: "Executive Branding",
   starter: "Starter",
   professional: "Professional",
   executive: "Executive",
